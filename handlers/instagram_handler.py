@@ -1,4 +1,4 @@
-from download.instagram_download import download_instagram
+from download.instagram_download import download_instagram_video
 import telebot
 
 def register(bot: telebot.TeleBot):
