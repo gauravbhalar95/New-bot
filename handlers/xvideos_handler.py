@@ -1,5 +1,5 @@
 # For example, handling "xvideos.com"
-from download.xvideos_download import download_xvideos
+from download.xvideos_download import download_xvideo
 import telebot
 
 def register(bot: telebot.TeleBot):
