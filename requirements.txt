@@ -1,0 +1,7 @@
+flask
+pyTelegramBotAPI
+yt-dlp
+requests
+beautifulsoup4
+lxml
+urllib3
