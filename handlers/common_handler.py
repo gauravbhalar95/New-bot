@@ -5,7 +5,7 @@ import telebot
 from queue import Queue
 from threading import Thread
 from urllib.parse import urlparse
-from common_download import download_video, get_streaming_url
+from download.common_download import download_video, get_streaming_url
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
