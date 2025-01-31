@@ -1,0 +1,63 @@
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.threads.net        TRUE        /        TRUE        1727100680        dpr        2.8125
+.threads.net        TRUE        /        TRUE        1761055843        mid        Zug8YQABAAGV6D4uXWs9brB7VeBD
+.threads.net        TRUE        /        TRUE        1758031844        ig_did        883A265B-F848-4195-8FAB-C6627CB7F306
+.threads.net        TRUE        /        TRUE        1757945497        csrftoken        R61J9CDGJNjrl2U6q1PHWIVzyjKson6K
+.threads.net        TRUE        /        TRUE        1734271897        ds_user_id        44518703457
+.threads.net        TRUE        /        TRUE        1758031876        sessionid        44518703457%3AeHV6HcIebrpkB1%3A3%3AAYeHF78UYJnXDSjygcNEeNMeC3MJ7t2BDktlmcJ5FQ
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.instagram.com        TRUE        /        TRUE        1771146692        mid        Z4I1wgABAAHroTQX-QXPPiMeLLKA
+.instagram.com        TRUE        /        TRUE        1771146693        datr        wjWCZ0dhvWLBrvNRo1NsH8pU
+.instagram.com        TRUE        /        TRUE        1768122738        ig_did        081F8369-1D9F-4D2C-B499-B8FAB9359079
+.instagram.com        TRUE        /        TRUE        1737392184        dpr        3.0921943187713623
+.instagram.com        TRUE        /        TRUE        1771347319        ps_l        1
+.instagram.com        TRUE        /        TRUE        1771347319        ps_n        1
+.instagram.com        TRUE        /        TRUE        1768236984        csrftoken        1B5yCihVwMIM1bN0j2nn2WUUPy9OjzfA
+.instagram.com        TRUE        /        TRUE        1737392184        wd        891x1692
+.instagram.com        TRUE        /        TRUE        1768323375        sessionid        67842185883%3AvENbvatF0WEGci%3A9%3AAYdP2lArPoWRpAsceHbO61T3L27p0-o0ize4xTWeaQ
+.instagram.com        TRUE        /        TRUE        1744563384        ds_user_id        67842185883
+.instagram.com        TRUE        /        TRUE        0        rur        "CCO\05467842185883\0541768323384:01f756c242da7238091d10d750de02326d0319efc11975ad08317765a1d36c6c666d83ab"
+
+
+
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.youtube.com        TRUE        /        TRUE        1762195893        PREF        tz=Asia.Calcutta
+.youtube.com        TRUE        /        TRUE        1757700569        __Secure-1PSIDTS        sidts-CjIBUFGoh733896W6mefBwP752ZzKGzT3zY7-nsDuOru3OC4N7MaiX-lvQM_gYkj7L6f0BAA
+.youtube.com        TRUE        /        TRUE        1757700569        __Secure-3PSIDTS        sidts-CjIBUFGoh733896W6mefBwP752ZzKGzT3zY7-nsDuOru3OC4N7MaiX-lvQM_gYkj7L6f0BAA
+.youtube.com        TRUE        /        FALSE        1760724571        HSID        AuL_94SlnWcTctGg2
+.youtube.com        TRUE        /        TRUE        1760724571        SSID        Aio-5EjM8akAGo5kw
+.youtube.com        TRUE        /        FALSE        1760724571        APISID        zEPA7llxaDHRRjrn/AB5491sq8EbEScSUi
+.youtube.com        TRUE        /        TRUE        1760724571        SAPISID        FstAp8fpeXjAUNBp/ASHz0XRFREAJHyqSG
+.youtube.com        TRUE        /        TRUE        1760724571        __Secure-1PAPISID        FstAp8fpeXjAUNBp/ASHz0XRFREAJHyqSG
+.youtube.com        TRUE        /        TRUE        1760724571        __Secure-3PAPISID        FstAp8fpeXjAUNBp/ASHz0XRFREAJHyqSG
+.youtube.com        TRUE        /        TRUE        1760724571        LOGIN_INFO        AFmmF2swRQIgFI2C93fMAnr-c67jE5Dwi6aCupFvoutuaqwb5z-E4fICIQDFCqLIGOwy185gvbQNwLPmxG3zOEwhvM5oyFZkdNBMXQ:QUQ3MjNmd1d1OWJVcXRvZlg0OE1RdTgzc2YwclVmN3Y2SS1DYjA3XzN6Z2VCVVdXSFdtU1ZwUUp0QnJ0Y3llbUNSakNiajMtOGNHbWNBbS0tZVVVcUprMUMzc2dCN2ttdm9ETkRKb1AyQ0QyMVdDZWdRcVRSdkMxNWwyMG05MTRkcmV5TUZSc0ZNcjJ6NGRxY0ZpR1IxSDJoOXF5UFBMZVF3
+.youtube.com        TRUE        /        FALSE        1760724571        SID        g.a000oAhRUHJY9H7lU5PYO81C0FwYlcdqtH4v-3RF1uSsWQNLXbh7M0_8I43VmrMm04v0XcHsnQACgYKARMSARcSFQHGX2MiRUbdktpyqPsbDUecKONnNhoVAUF8yKqwlR42YG2AxItUhGQjamqU0076
+.youtube.com        TRUE        /        TRUE        1760724571        __Secure-1PSID        g.a000oAhRUHJY9H7lU5PYO81C0FwYlcdqtH4v-3RF1uSsWQNLXbh7q8ozYLZ9JgxTYZff4qdLwgACgYKARASARcSFQHGX2Min0nl5NPYaMgqQB-fAR5_zxoVAUF8yKpKT9fyqP4xpAQ5h6nfHWIj0076
+.youtube.com        TRUE        /        TRUE        1760724571        __Secure-3PSID        g.a000oAhRUHJY9H7lU5PYO81C0FwYlcdqtH4v-3RF1uSsWQNLXbh7P9Vimq4d5P3aRj-80i6s9AACgYKAZESARcSFQHGX2Mitg4Uj1PUM1tEKTjyGahychoVAUF8yKp06yW4nBgSgHxM-oEcKHsN0076
+.youtube.com        TRUE        /        FALSE        1759171908        SIDCC        AKEyXzV96J0yZ-gVf-p5z-8h8k0kG9dOBy9MaweOkoP7B9_GKstaxrNLYH8NHF453F74cqnMf34
+.youtube.com        TRUE        /        TRUE        1759171908        __Secure-1PSIDCC        AKEyXzXlF360Em6PEFatPcK3lU_xULnDTa4Dx31nFYET64rEo25TYrXNiG2_orh1zjmDTYsBUbY
+.youtube.com        TRUE        /        TRUE        1759171908        __Secure-3PSIDCC        AKEyXzX0ymsdUTcbqz0FUMTYOEAbqpV2eCe4qNoIOiHr80aRva5BOBBeqaDfNbkirY83E2wZ1Qk
+
+.x.com        TRUE        /        TRUE        1760692330        kdt        ngabJlDul5WKlYZOhDfr529mt50kILvxjp9jkN1c
+.x.com        TRUE        /        TRUE        1757668332        night_mode        2
+x.com        FALSE        /        TRUE        1741684328        g_state        {"i_l":0}
+.x.com        TRUE        /        TRUE        1760670144        dnt        1
+.x.com        TRUE        /        TRUE        1760670144        guest_id        v1%3A172611014479023409
+.x.com        TRUE        /        TRUE        1760692344        guest_id_marketing        v1%3A172611014479023409
+.x.com        TRUE        /        TRUE        1760692344        guest_id_ads        v1%3A172611014479023409
+.x.com        TRUE        /        TRUE        1726141320        gt        1834158009599263143
+.x.com        TRUE        /        TRUE        1760692330        auth_token        f23dac4796afef0323421669fd8c7f8d79ac2266
+.x.com        TRUE        /        TRUE        1760692331        ct0        155acb7e6a88beda629ec6c3c7c942fc073bed15cc4253f71b3de85b7e634551015941aea5fa16f5ae49c91ed9a32624736a857c29e2bf4528ec99cd70fc2e53db5303b837836cd87453ae384eec3288
+x.com        FALSE        /        FALSE        0        lang        en
+.x.com        TRUE        /        TRUE        1757668344        twid        u%3D1666375496257650688
+.x.com        TRUE        /        TRUE        1726218731        att        1-h7SyVcS0KvaAnOXIF281P6JzBO2G2oBAP3Tpulkg
+.x.com        TRUE        /        TRUE        1760692344        personalization_id        "v1_Nz8LZ5j5u96OhfR6ufxL9w=="
