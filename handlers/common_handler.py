@@ -1,7 +1,6 @@
 import os
 import gc
 import logging
-import telebot
 from queue import Queue
 from threading import Thread
 from urllib.parse import urlparse
@@ -10,10 +9,6 @@ from download.common_download import download_video, get_streaming_url
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Initialize bot
-API_TOKEN = os.getenv('BOT_TOKEN')
-bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
 # Task queue
 task_queue = Queue()
@@ -26,6 +21,9 @@ SUPPORTED_DOMAINS = [
 
 # Validate URL function
 def is_valid_url(url):
+    """
+    Check if the URL is valid and belongs to a supported domain.
+    """
     try:
         result = urlparse(url)
         return result.scheme in ["http", "https"] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
@@ -33,7 +31,11 @@ def is_valid_url(url):
         return False
 
 # Handle video download task
-def handle_download_task(url, message):
+def handle_download_task(url, message, bot):
+    """
+    Download the video and send it to the user.
+    If the video is too large, provide a streaming link.
+    """
     file_path, file_size = download_video(url)
 
     if not file_path:
@@ -68,27 +70,37 @@ def handle_download_task(url, message):
         gc.collect()
 
 # Worker function to process download tasks
-def worker():
+def worker(bot):
+    """
+    Worker thread to process tasks from the queue.
+    """
     while True:
         task = task_queue.get()
         if task is None:
             break
         url, message = task
-        handle_download_task(url, message)
+        handle_download_task(url, message, bot)
         task_queue.task_done()
 
-# Start worker threads
-for _ in range(4):  # Adjust the number of threads as needed
-    Thread(target=worker, daemon=True).start()
+# Register handler for download requests
+def register(bot):
+    """
+    Register the common handler with the bot.
+    """
+    # Start worker threads
+    for _ in range(4):  # Adjust the number of threads as needed
+        Thread(target=worker, args=(bot,), daemon=True).start()
 
-# Handler for download requests
-@bot.message_handler(func=lambda message: True, content_types=["text"])
-def handle_message(message):
-    url = message.text.strip()
-    
-    if not is_valid_url(url):
-        bot.reply_to(message, "❌ Invalid or unsupported URL.")
-        return
+    @bot.message_handler(func=lambda message: True, content_types=["text"])
+    def handle_message(message):
+        """
+        Handle incoming messages and process download requests.
+        """
+        url = message.text.strip()
 
-    bot.reply_to(message, "⏳ Processing your request. Please wait...")
-    task_queue.put((url, message))
+        if not is_valid_url(url):
+            bot.reply_to(message, "❌ Invalid or unsupported URL.")
+            return
+
+        bot.reply_to(message, "⏳ Processing your request. Please wait...")
+        task_queue.put((url, message))
