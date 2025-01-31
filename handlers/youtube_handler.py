@@ -1,15 +1,17 @@
-from download.yt_dlp_download import download_video
-import telebot
+from urllib.parse import urlparse
 
-def register(bot: telebot.TeleBot):
-    @bot.message_handler(func=lambda message: is_supported_domain(message.text) and 'youtube' in get_domain(message.text))
-    def handle_youtube(message):
-        url = message.text.strip()
-        bot.reply_to(message, "Processing your YouTube video download...")
-        file_path, file_size = download_video(url)
-        if file_path:
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-            os.remove(file_path)
-        else:
-            bot.reply_to(message, "Error downloading the video.")
+def is_supported_domain(url):
+    """
+    Check if the URL belongs to a supported domain.
+    """
+    try:
+        domain = urlparse(url).netloc
+        return any(supported_domain in domain for supported_domain in SUPPORTED_DOMAINS)
+    except Exception:
+        return False
+
+def get_domain(url):
+    """
+    Extract the domain from the URL.
+    """
+    return urlparse(url).netloc
