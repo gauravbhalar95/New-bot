@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, request
 import telebot
-from handlers import youtube_handler, instagram_handler, common_handler
+from handlers import youtube_handler, instagram_handler, xvideos_handler, common_handler  # import all handlers
 
 # Environment variables
 API_TOKEN = os.getenv('BOT_TOKEN')
@@ -23,7 +23,8 @@ app = Flask(__name__)
 def register_handlers():
     youtube_handler.register(bot)
     instagram_handler.register(bot)
-    common_handler.register(bot)
+    xvideos_handler.register(bot)
+    common_handler.register(bot)  # For generic download if needed
 
 register_handlers()
 
