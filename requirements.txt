@@ -6,3 +6,4 @@ beautifulsoup4
 lxml
 urllib3
 moviepy
+imageio[ffmpeg]
