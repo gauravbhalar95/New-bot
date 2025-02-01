@@ -7,7 +7,7 @@ from utils.sanitize import sanitize_filename
 # Logger
 logger = logging.getLogger(__name__)
 
-def def process_instagram(url):
+def process_instagram(url):
     """
     Downloads Instagram videos or images using yt-dlp.
 
