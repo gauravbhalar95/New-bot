@@ -22,7 +22,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Cookies file for authenticated downloads
-COOKIES_FILE = "Cookies/cookies.txt"
+COOKIES_FILE = "cookies.txt"
 
 # Supported video platforms
 SUPPORTED_DOMAINS = [
