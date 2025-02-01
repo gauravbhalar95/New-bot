@@ -1,106 +1,41 @@
 import os
-import gc
 import logging
-from queue import Queue
-from threading import Thread
-from urllib.parse import urlparse
-from download.common_download import download_video, get_streaming_url
+import yt_dlp
+from config import DOWNLOAD_DIR, SUPPORTED_DOMAINS
+from utils.sanitize import sanitize_filename
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
+# Logger
 logger = logging.getLogger(__name__)
 
-# Task queue
-task_queue = Queue()
-
-# Supported domains
-SUPPORTED_DOMAINS = [
-    'x.com',
-    'facebook.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
-]
-
-# Validate URL function
-def is_valid_url(url):
+def is_supported_url(url):
     """
-    Check if the URL is valid and belongs to a supported domain.
-    """
-    try:
-        result = urlparse(url)
-        return result.scheme in ["http", "https"] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
-    except ValueError:
-        return False
+    Checks if the given URL belongs to a supported domain.
 
-# Handle video download task
-def handle_download_task(url, message, bot):
+    :param url: The video URL.
+    :return: True if supported, False otherwise.
     """
-    Download the video and send it to the user.
-    If the video is too large, provide a streaming link.
-    """
-    file_path, file_size = download_video(url)
+    return any(domain in url for domain in SUPPORTED_DOMAINS)
 
-    if not file_path:
-        bot.reply_to(message, "❌ Error: Video download failed. Ensure the URL is correct.")
-        return
+def download_media(url):
+    """
+    Downloads media from a given URL using yt-dlp.
+
+    :param url: The media URL.
+    :return: File path and file size if successful, else (None, 0).
+    """
+    ydl_opts = {
+        "format": "best[ext=mp4]/best",
+        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+        "retries": 5,
+        "socket_timeout": 10,
+    }
 
     try:
-        # Check Telegram's file size limit (2GB)
-        if file_size > 2 * 1024 * 1024 * 1024:
-            streaming_url = get_streaming_url(url)
-            if streaming_url:
-                bot.reply_to(message, f"⚠️ The video is too large for Telegram.\n🔗 Streaming Link: {streaming_url}")
-            else:
-                bot.reply_to(message, "❌ Error: Unable to fetch a streaming link.")
-        else:
-            # Send the video
-            with open(file_path, "rb") as video:
-                bot.send_video(message.chat.id, video)
-
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get("filesize", 0)
+            return file_path, file_size
     except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            bot.reply_to(message, f"⚠️ Video is too large.\n🔗 Streaming Link: {streaming_url}")
-        else:
-            bot.reply_to(message, f"❌ Error: {e}")
-
-    finally:
-        # Cleanup
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        gc.collect()
-
-# Worker function to process download tasks
-def worker(bot):
-    """
-    Worker thread to process tasks from the queue.
-    """
-    while True:
-        task = task_queue.get()
-        if task is None:
-            break
-        url, message = task
-        handle_download_task(url, message, bot)
-        task_queue.task_done()
-
-# Register handler for download requests
-def register(bot):
-    """
-    Register the common handler with the bot.
-    """
-    # Start worker threads
-    for _ in range(4):  # Adjust the number of threads as needed
-        Thread(target=worker, args=(bot,), daemon=True).start()
-
-    @bot.message_handler(func=lambda message: True, content_types=["text"])
-    def handle_message(message):
-        """
-        Handle incoming messages and process download requests.
-        """
-        url = message.text.strip()
-
-        if not is_valid_url(url):
-            bot.reply_to(message, "❌ Invalid or unsupported URL.")
-            return
-
-        bot.reply_to(message, "⏳ Processing your request. Please wait...")
-        task_queue.put((url, message))
+        logger.error(f"Error downloading media: {e}")
+        return None, 0
