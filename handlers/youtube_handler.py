@@ -1,42 +1,19 @@
-import os
-import logging
-from urllib.parse import urlparse
-from download.yt_dlp_download import download_video
-from config import SUPPORTED_DOMAINS
-import telebot
+import yt_dlp
+from utils.sanitize import sanitize_filename
+from utils.thumb_generator import generate_thumbnail
 
-logger = logging.getLogger(__name__)
-
-def is_supported_domain(url):
-    """
-    Check if the URL belongs to a supported domain.
-    """
+def process_youtube(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'downloads/{sanitize_filename("%(title)s")}.%(ext)s',
+    }
     try:
-        domain = urlparse(url).netloc
-        return any(supported_domain in domain for supported_domain in SUPPORTED_DOMAINS)
-    except Exception:
-        return False
-
-def get_domain(url):
-    """
-    Extract the domain from the URL.
-    """
-    return urlparse(url).netloc
-
-def register(bot: telebot.TeleBot):
-    @bot.message_handler(func=lambda message: is_supported_domain(message.text) and 'youtube' in get_domain(message.text))
-    def handle_youtube(message):
-        url = message.text.strip()
-        logger.info(f"Processing YouTube URL: {url}")
-        bot.reply_to(message, "Processing your YouTube video download...")
-        file_path, file_size = download_video(url)
-        if file_path:
-            try:
-                with open(file_path, 'rb') as video:
-                    bot.send_video(message.chat.id, video)
-                os.remove(file_path)
-            except Exception as e:
-                logger.error(f"Error sending video: {e}")
-                bot.reply_to(message, "Error sending the video.")
-        else:
-            bot.reply_to(message, "Error downloading the video.")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get('filesize', 0)
+            thumb_path = generate_thumbnail(file_path)
+            return file_path, file_size, thumb_path
+    except Exception as e:
+        print(f"Error downloading YouTube video: {e}")
+        return None, 0, None
