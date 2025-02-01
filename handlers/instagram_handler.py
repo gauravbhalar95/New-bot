@@ -1,7 +1,7 @@
 import os
 import logging
 import yt_dlp
-from config import DOWNLOAD_DIR, COOKIES_FILE
+from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.sanitize import sanitize_filename
 
 # Logger
