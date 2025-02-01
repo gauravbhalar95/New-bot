@@ -1,24 +1,30 @@
 import os
+from dotenv import load_dotenv
 
-# Telegram Bot Configuration
-API_TOKEN = os.getenv("BOT_TOKEN")  # Your Telegram bot token
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Webhook URL for Telegram
+# Load environment variables from .env file
+load_dotenv()
 
-# Server Configuration
-PORT = int(os.getenv("PORT", 8080))  # Default port 8080
+# Telegram Bot Token
+API_TOKEN = os.getenv("BOT_TOKEN")
 
-# Download Settings
+# Webhook URL for deployment
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+# Server Port (default: 8080)
+PORT = int(os.getenv("PORT", 8080))
+
+# Download directory
 DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)  # Ensure the directory exists
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Cookie File (for Instagram & other sites requiring authentication)
+# Cookies file for authenticated downloads
 COOKIES_FILE = "cookies.txt"
 
-# Supported Domains
+# Supported video platforms
 SUPPORTED_DOMAINS = [
     "youtube.com", "youtu.be", "instagram.com", "x.com",
     "facebook.com", "xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com"
 ]
 
-# Worker Settings
-MAX_THREADS = 4  # Number of concurrent download threads
+# Telegram file size limit (2GB)
+TELEGRAM_FILE_LIMIT = 2 * 1024 * 1024 * 1024  # 2GB in bytes
