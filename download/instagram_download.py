@@ -1,38 +1,25 @@
-import yt_dlp
 import os
-import re
+import logging
+import yt_dlp
+from config import DOWNLOAD_DIR
+from utils.sanitize import sanitize_filename
 
-# Directory to store downloads
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# Logger
+logger = logging.getLogger(__name__)
 
-# Authentication details
-COOKIES_FILE = "cookies.txt"  # Ensure this file is up-to-date
-INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")  # Set this in your environment
-INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")  # Set this in your environment
+def download_instagram_media(url):
+    """
+    Downloads Instagram videos or images using yt-dlp.
 
-# Utility to sanitize filenames
-def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.strip()[:max_length]
-
-# Function to download Instagram video
-def download_instagram_video(url):
+    :param url: The Instagram post URL.
+    :return: File path and file size if successful, else (None, 0).
+    """
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'socket_timeout': 10,
-        'retries': 5,
+        "format": "best",
+        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+        "retries": 5,
+        "socket_timeout": 10,
     }
-
-    # Use cookies if available, otherwise use username & password
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts["cookiefile"] = COOKIES_FILE
-    elif INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-        ydl_opts["username"] = INSTAGRAM_USERNAME
-        ydl_opts["password"] = INSTAGRAM_PASSWORD
-    else:
-        print("Warning: No authentication method found. Private videos may fail.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -41,27 +28,5 @@ def download_instagram_video(url):
             file_size = info_dict.get("filesize", 0)
             return file_path, file_size
     except Exception as e:
-        print(f"Error downloading Instagram video: {e}")
+        logger.error(f"Error downloading Instagram media: {e}")
         return None, 0
-
-# Function to fetch Instagram streaming URL
-def get_instagram_streaming_url(url):
-    ydl_opts = {
-        'format': 'best',
-        'noplaylist': True,
-    }
-
-    # Use authentication if required
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts["cookiefile"] = COOKIES_FILE
-    elif INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-        ydl_opts["username"] = INSTAGRAM_USERNAME
-        ydl_opts["password"] = INSTAGRAM_PASSWORD
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get("url")
-    except Exception as e:
-        print(f"Error fetching Instagram streaming URL: {e}")
-        return None
