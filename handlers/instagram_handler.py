@@ -1,15 +1,32 @@
-from download.instagram_download import download_instagram_video
-import telebot
+import os
+import logging
+import yt_dlp
+from config import DOWNLOAD_DIR
+from utils.sanitize import sanitize_filename
 
-def register(bot: telebot.TeleBot):
-    @bot.message_handler(func=lambda message: is_supported_domain(message.text) and 'instagram' in get_domain(message.text))
-    def handle_instagram(message):
-        url = message.text.strip()
-        bot.reply_to(message, "Processing your Instagram video download...")
-        file_path = download_instagram(url)
-        if file_path:
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-            os.remove(file_path)
-        else:
-            bot.reply_to(message, "Error downloading from Instagram.")
+# Logger
+logger = logging.getLogger(__name__)
+
+def download_instagram_media(url):
+    """
+    Downloads Instagram videos or images using yt-dlp.
+
+    :param url: The Instagram post URL.
+    :return: File path and file size if successful, else (None, 0).
+    """
+    ydl_opts = {
+        "format": "best",
+        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+        "retries": 5,
+        "socket_timeout": 10,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get("filesize", 0)
+            return file_path, file_size
+    except Exception as e:
+        logger.error(f"Error downloading Instagram media: {e}")
+        return None, 0
