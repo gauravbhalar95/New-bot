@@ -1,6 +1,6 @@
 import os
 import moviepy
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip
 
 def generate_thumbnail(video_path):
     thumbnail_path = video_path.replace(".mp4", "_thumb.jpg")
