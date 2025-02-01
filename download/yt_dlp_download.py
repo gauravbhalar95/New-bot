@@ -1,24 +1,33 @@
 import os
-from yt_dlp import YoutubeDL
-from config import DOWNLOAD_DIR
+import logging
+import yt_dlp
+from config import DOWNLOAD_DIR, COOKIES_FILE
+from utils.sanitize import sanitize_filename
+
+# Logger
+logger = logging.getLogger(__name__)
 
 def download_video(url):
     """
-    Download a video using yt-dlp.
-    Returns the file path and file size.
+    Downloads a video from a given URL using yt-dlp.
+
+    :param url: The video URL.
+    :return: File path and file size if successful, else (None, 0).
     """
     ydl_opts = {
-        'format': 'best',
-        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'quiet': True,
+        "format": "best[ext=mp4]/best",
+        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+        "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        "retries": 5,
+        "socket_timeout": 10,
     }
 
     try:
-        with YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-            file_size = os.path.getsize(file_path)
+            file_size = info_dict.get("filesize", 0)
             return file_path, file_size
     except Exception as e:
-        print(f"Error downloading video: {e}")
-        return None, None
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
