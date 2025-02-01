@@ -1,16 +1,12 @@
 import os
 import logging
 import yt_dlp
-from config import DOWNLOAD_DIR
+from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
 
 # Logger
 logger = logging.getLogger(__name__)
 
-# Instagram authentication settings
-INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")  # Set this in your environment
-INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")  # Set this in your environment
-COOKIES_FILE = "cookies.txt"  # Path to Instagram cookies file
 
 def process_instagram(url):
     """
