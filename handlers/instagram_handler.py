@@ -16,13 +16,16 @@ def process_instagram(url):
     :return: File path and file size if successful, else (None, 0).
     """
     ydl_opts = {
-        "format": "best",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "retries": 5,
-        "socket_timeout": 10,
-        "noplaylist": True,  # Download only the given URL
-    }
-
+    "format": "best",
+    "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+    "retries": 5,
+    "socket_timeout": 10,
+    "noplaylist": True,
+    "cookiefile": "cookies.txt",  # Ensure this file is updated
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
+    },
+}
     # Use cookies or login credentials if available
     if os.path.exists(COOKIES_FILE):
         ydl_opts["cookiefile"] = COOKIES_FILE
