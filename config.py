@@ -7,6 +7,10 @@ load_dotenv()
 # Telegram Bot Token
 API_TOKEN = os.getenv("BOT_TOKEN")
 
+# Instagram authentication settings
+INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")  # Set this in your environment
+INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")  # Set this in your environment
+
 # Webhook URL for deployment
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
