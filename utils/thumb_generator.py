@@ -1,4 +1,5 @@
 import os
+import moviepy
 from moviepy.editor import VideoFileClip
 
 def generate_thumbnail(video_path):
