@@ -21,7 +21,7 @@ def process_instagram(url):
     "retries": 5,
     "socket_timeout": 10,
     "noplaylist": True,
-    "cookiefile": "cookies.txt",  # Ensure this file is updated
+    "cookiefile": "COOKIES_FILE",  # Ensure this file is updated
     "http_headers": {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
     },
