@@ -32,53 +32,51 @@ def detect_platform(url):
 def start(message):
     bot.reply_to(message, "👋 Welcome! Send me a YouTube or Instagram link to download.")
 
-# Handle video download and optional streaming
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
-    if not is_valid_url(url):
-        bot.reply_to(message, "Invalid or unsupported URL.")
+    platform = detect_platform(url)
+
+    if not platform:
+        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube or Instagram link.")
         return
 
-    bot.reply_to(message, "Downloading video, please wait...")
-    file_path, file_size = download_video(url)
-
-    if not file_path:
-        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
-        return
+    bot.reply_to(message, f"⏳ Downloading from {platform.capitalize()}... Please wait.")
 
     try:
-        # Check if the file size exceeds Telegram's limit (2GB)
-        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB in bytes
-            streaming_url = get_streaming_url(url)
-            if streaming_url:
-                bot.reply_to(
-                    message,
-                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
-                )
-            else:
-                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
+        if platform == "youtube":
+            result = process_youtube(url)
+        elif platform == "instagram":
+            result = process_instagram(url)
+
+        # Ensure result always contains 3 values
+        if len(result) == 2:
+            file_path, file_size = result
+            thumb_path = None  # No thumbnail available
         else:
-            # Try sending the video
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-    except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        # If the video is too large, provide streaming link instead
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            bot.reply_to(
-                message,
-                f"The video is too large to send directly on Telegram. Here is the streaming link:\n{streaming_url}"
+            file_path, file_size, thumb_path = result
+
+        if not file_path:
+            bot.reply_to(message, "❌ Download failed. Please try again later.")
+            return
+
+        # Send video with a thumbnail if available
+        with open(file_path, 'rb') as video:
+            thumb = open(thumb_path, 'rb') if thumb_path else None
+            bot.send_video(
+                message.chat.id, 
+                video, 
+                thumb=thumb, 
+                caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
             )
-        else:
-            bot.reply_to(message, f"Error: {e}")
-    finally:
-        # Clean up the downloaded file and memory
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        # Free up memory by triggering garbage collection
-        gc.collect()
+            if thumb:
+                thumb.close()
+
+        logger.info(f"✔ Video sent: {file_path}")
+
+    except Exception as e:
+        logger.error(f"⚠️ Error sending video: {e}")
+        bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
 
 
 # Flask Webhook
