@@ -5,10 +5,10 @@ import telebot
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from utils.thumb_generator import generate_thumbnail
-from config import BOT_TOKEN
+from config import API_TOKEN
 
 # Initialize bot
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -80,7 +80,7 @@ def webhook():
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
-    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}", timeout=60)
+    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
     return "Webhook set" if success else "Webhook failed", 200
 
 if __name__ == '__main__':
