@@ -8,3 +8,4 @@ urllib3
 moviepy
 imageio[ffmpeg]
 ffmpeg
+pytube
