@@ -14,10 +14,16 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Supported domains
+# Supported domains, now including more adult sites.
 SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
-    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']
+    'youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com', 
+    'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com', 'redtube.com',
+    'tube8.com', 'spankbang.com', 'youjizz.com', 'tnaflix.com', 'youporn.com', 
+    'brazzers.com', 'mofos.com', 'vivid.com', 'bangbros.com', 'clips4sale.com', 
+    'chaturbate.com', 'livejasmin.com', 'bongacams.com', 'myfreecams.com', 'cam4.com',
+    'stripchat.com', 'femdomempire.com', 'naughtyamerica.com', 'hustler.com', 
+    'evolvedfights.com', 'hustler.com', 'fuckbook.com', 'xlovecam.com'
+]
 
 def detect_platform(url):
     """Detects if the URL belongs to YouTube, Instagram, or other supported platforms."""
@@ -25,12 +31,14 @@ def detect_platform(url):
         return "youtube"
     elif "instagram.com" in url:
         return "instagram"
+    elif any(domain in url for domain in SUPPORTED_DOMAINS):  # Check if the domain is in SUPPORTED_DOMAINS
+        return "adult"
     else:
         return None
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Welcome! Send me a YouTube or Instagram link to download.")
+    bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, or Adult site link to download.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
@@ -38,7 +46,7 @@ def handle_message(message):
     platform = detect_platform(url)
 
     if not platform:
-        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube or Instagram link.")
+        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube, Instagram, or supported adult site link.")
         return
 
     bot.reply_to(message, f"⏳ Downloading from {platform.capitalize()}... Please wait.")
@@ -48,6 +56,8 @@ def handle_message(message):
             result = process_youtube(url)
         elif platform == "instagram":
             result = process_instagram(url)
+        elif platform == "adult":
+            result = process_adult(url)  # Placeholder for processing adult content
 
         # Ensure result always contains 3 values
         if len(result) == 2:
