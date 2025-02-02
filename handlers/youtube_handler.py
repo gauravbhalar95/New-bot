@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def download_video(url):
+def process_youtube(url):
     """
     Downloads YouTube video using yt-dlp.
     Falls back to pytube if yt-dlp fails.
