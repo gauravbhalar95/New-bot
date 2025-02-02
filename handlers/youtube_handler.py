@@ -35,19 +35,3 @@ def process_youtube(url):
             file_path = ydl.prepare_filename(info_dict)
             file_size = info_dict.get("filesize", 0)
 
-           
-def download_thumbnail(url, video_path):
-    """Download thumbnail and save it in the same directory as the video."""
-    if not url:
-        return None
-    
-    thumb_path = os.path.splitext(video_path)[0] + ".jpg"  # Save as .jpg
-    try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(url, download=True)
-        file_path = ydl.prepare_filename(info_dict)
-        file_size = info_dict.get("filesize", 0)
-        return file_path, file_size
-except Exception as e:
-    logger.error(f"Failed to download video: {e}")
-    return None, 0  # Return a default value in case of failure
