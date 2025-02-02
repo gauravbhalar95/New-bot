@@ -1,41 +1,104 @@
 import os
-import logging
-import yt_dlp
-from config import DOWNLOAD_DIR, SUPPORTED_DOMAINS
-from utils.sanitize import sanitize_filename
+import requests
 
-# Logger
-logger = logging.getLogger(__name__)
-
-def is_supported_url(url):
+def process_adult(url):
     """
-    Checks if the given URL belongs to a supported domain.
-
-    :param url: The video URL.
-    :return: True if supported, False otherwise.
+    Processes downloading from an adult site. This will vary depending on the domain.
+    This function can be expanded to handle different adult sites.
     """
-    return any(domain in url for domain in SUPPORTED_DOMAINS)
-
-def download_media(url):
-    """
-    Downloads media from a given URL using yt-dlp.
-
-    :param url: The media URL.
-    :return: File path and file size if successful, else (None, 0).
-    """
-    ydl_opts = {
-        "format": "best[ext=mp4]/best",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "retries": 5,
-        "socket_timeout": 10,
+    # Define a dictionary of supported adult sites and their download handling functions
+    domain_handlers = {
+        'xvideos.com': download_xvideos,
+        'xnxx.com': download_xnxx,
+        'xhamster.com': download_xhamster,
+        'pornhub.com': download_pornhub,
+        'redtube.com': download_redtube,
+        # Add more sites and their respective handlers as needed
     }
 
+    # Check for supported domains and call the appropriate handler
+    for domain, handler in domain_handlers.items():
+        if domain in url:
+            return handler(url)
+
+    # If the domain is not supported
+    return None, None, None
+
+def download_xvideos(url):
+    """Download video from Xvideos"""
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get("filesize", 0)
-            return file_path, file_size
+        # Extract video ID or other necessary info from the URL
+        video_id = extract_video_id(url, "xvideos")
+        
+        # Construct the URL to download the video
+        download_url = f"https://www.xvideos.com/video{video_id}/download"
+        
+        # Send a request to the download URL
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()  # Raise an exception if the request failed
+        
+        # Save the video file
+        file_path = f"xvideos_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        # Return file path and size
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail for now
+
     except Exception as e:
-        logger.error(f"Error downloading media: {e}")
-        return None, 0
+        print(f"Error downloading from Xvideos: {e}")
+        return None, None, None
+
+def download_xnxx(url):
+    """Download video from XNXX"""
+    try:
+        video_id = extract_video_id(url, "xnxx")
+        download_url = f"https://www.xnxx.com/video{video_id}/download"
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+        
+        file_path = f"xnxx_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail
+
+    except Exception as e:
+        print(f"Error downloading from XNXX: {e}")
+        return None, None, None
+
+def download_pornhub(url):
+    """Download video from Pornhub"""
+    try:
+        video_id = extract_video_id(url, "pornhub")
+        download_url = f"https://www.pornhub.com/video{video_id}/download"
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+        
+        file_path = f"pornhub_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail
+
+    except Exception as e:
+        print(f"Error downloading from Pornhub: {e}")
+        return None, None, None
+
+def extract_video_id(url, site):
+    """Extract video ID from URL based on the site"""
+    # This is a placeholder function. You can implement logic to extract video ID for each site.
+    if site == "xvideos":
+        return url.split('/')[-1]  # Just an example, adjust based on how the URL is structured
+    elif site == "xnxx":
+        return url.split('/')[-1]
+    elif site == "pornhub":
+        return url.split('/')[-1]
+    else:
+        return None
