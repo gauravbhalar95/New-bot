@@ -1,4 +1,5 @@
 import yt_dlp
+import logging
 from utils.sanitize import sanitize_filename
 from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, COOKIES_FILE
