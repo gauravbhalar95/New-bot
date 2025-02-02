@@ -18,20 +18,21 @@ def process_youtube(url):
     :param url: The youtube post URL.
     :return: File path and file size if successful, else (None, 0).
     """
+    # Download video using yt-dlp
+def download_video(url):
     ydl_opts = {
-    "format": "best",
-    "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-    "retries": 5,
-    "socket_timeout": 10,
-    "noplaylist": True,
-    "cookiefile": COOKIES_FILE,  # Remove quotes, as COOKIES_FILE is a variable
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
-    },
-}
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+    }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get("filesize", 0)
-
+            file_size = info_dict.get('filesize', 0)
+            return file_path, file_size
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
