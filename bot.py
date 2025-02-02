@@ -43,10 +43,17 @@ def handle_message(message):
 
     try:
         if platform == "youtube":
-            file_path, file_size, thumb_path = process_youtube(url)
+            result = process_youtube(url)
         elif platform == "instagram":
-            file_path, file_size, thumb_path = process_instagram(url)
-        
+            result = process_instagram(url)
+
+        # Ensure result always contains 3 values
+        if len(result) == 2:
+            file_path, file_size = result
+            thumb_path = None  # No thumbnail available
+        else:
+            file_path, file_size, thumb_path = result
+
         if not file_path:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
             return
