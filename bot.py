@@ -72,7 +72,7 @@ def handle_message(message):
 # Flask Webhook
 app = Flask(__name__)
 
-@app.route('/' + BOT_TOKEN, methods=['POST'])
+@app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "OK", 200
