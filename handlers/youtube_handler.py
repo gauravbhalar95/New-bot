@@ -1,7 +1,7 @@
 import yt_dlp
 from utils.sanitize import sanitize_filename
 from utils.thumb_generator import generate_thumbnail
-
+from config import DOWNLOAD_DIR
 
 
 def process_youtube(url):
