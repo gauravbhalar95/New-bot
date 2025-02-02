@@ -1,90 +1,69 @@
-from PIL import Image
 import os
-import telebot
-from config import API_TOKEN
-from yt_dlp import YoutubeDL
-from tempfile import NamedTemporaryFile
+import re
+import requests
 
-
-
-# Create the Telegram bot
-bot = telebot.TeleBot(API_TOKEN)
-
-def is_supported_domain(url):
-    """
-    Check if the URL is from a supported domain like xvideos.com.
-    """
-    return 'xvideos' in get_domain(url)
-
-def get_domain(url):
-    """
-    Extract the domain name from the URL.
-    """
-    from urllib.parse import urlparse
-    return urlparse(url).netloc
+def extract_video_id(url, site):
+    """Extract the video ID from the URL based on the site."""
+    if site == "xvideos":
+        # Regular expression to extract the video ID from Xvideos URL
+        match = re.search(r"xvideos\.com/video(\d+)", url)
+        if match:
+            return match.group(1)  # Return the video ID
+    return None
 
 def download_xvideos(url):
-    """
-    Downloads the video from Xvideos and returns the file path.
-    Uses yt-dlp to handle large videos and download them.
-    """
-    ydl_opts = {
-        'format': 'best',  # Download the best available format
-        'outtmpl': 'downloads/%(title)s.%(ext)s',  # Save to a specific directory
-        'quiet': True,  # Suppress unnecessary output
-        'noplaylist': True  # Don't download playlists
-    }
-
+    """Download video from Xvideos using the video ID."""
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-            return file_path
+        # Extract video ID from URL
+        video_id = extract_video_id(url, "xvideos")
+        if not video_id:
+            print(f"Error: Could not extract video ID from URL: {url}")
+            return None, None, None
+
+        # Construct the download URL (this is an example, adjust if needed)
+        download_url = f"https://www.xvideos.com/video{video_id}/download"
+
+        # Send request to the download URL
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()  # Raise an error if the request fails
+
+        # Save the video file
+        file_path = f"xvideos_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        # Return the file path and its size
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail available for now
+
     except Exception as e:
-        print(f"Error downloading video: {e}")
-        return None
+        print(f"Error downloading from Xvideos: {e}")
+        return None, None, None
 
-def generate_thumbnail(video_path):
-    """
-    Generates a thumbnail for the video using Pillow.
-    """
-    # Open the first frame or use a thumbnail generator
-    try:
-        with Image.open(video_path) as img:
-            img.thumbnail((128, 128))  # Resize to a smaller size
-            thumb_path = f"{video_path}_thumbnail.jpg"
-            img.save(thumb_path)
-            return thumb_path
-    except Exception as e:
-        print(f"Error generating thumbnail: {e}")
-        return None
-
-@bot.message_handler(func=lambda message: is_supported_domain(message.text) and 'xvideos' in get_domain(message.text))
-def handle_xvideos(message):
-    url = message.text.strip()
-    bot.reply_to(message, "Processing your Xvideos video download...")
-
-    # Download the video
-    file_path = download_xvideos(url)
-    if file_path:
-        # Generate the thumbnail
-        thumb_path = generate_thumbnail(file_path)
-
-        # Send the thumbnail to the user
-        if thumb_path:
-            with open(thumb_path, 'rb') as thumb:
-                bot.send_photo(message.chat.id, thumb)
-
-        # Handle large video files by sending via stream
-        try:
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-            os.remove(file_path)  # Clean up after sending
-            if thumb_path:
-                os.remove(thumb_path)  # Clean up the thumbnail as well
-        except Exception as e:
-            bot.reply_to(message, f"Error sending video: {e}")
-            print(f"Error sending video: {e}")
+# Domain Handler Function for Xvideos
+def handle_xvideos(url):
+    """Handles video download for Xvideos."""
+    # Check if the URL is a valid Xvideos URL
+    if 'xvideos.com' in url:
+        print(f"Processing video from Xvideos: {url}")
+        file_path, file_size, thumb_path = download_xvideos(url)
+        
+        if file_path:
+            print(f"Download successful! File saved as {file_path}. File size: {file_size / (1024 * 1024):.2f} MB")
+            return file_path, file_size, thumb_path
+        else:
+            print("Download failed.")
+            return None, None, None
     else:
-        bot.reply_to(message, "Error downloading from Xvideos.")
+        print(f"Error: The URL is not from Xvideos.")
+        return None, None, None
 
+# Example Usage
+if __name__ == "__main__":
+    test_url = "https://www.xvideos.com/video12345678/sample-video-title"
+    result = handle_xvideos(test_url)
+    if result[0]:
+        print(f"Video saved at {result[0]}")
+    else:
+        print("Failed to download video.")
