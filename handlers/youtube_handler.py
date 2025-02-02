@@ -43,13 +43,11 @@ def download_thumbnail(url, video_path):
     
     thumb_path = os.path.splitext(video_path)[0] + ".jpg"  # Save as .jpg
     try:
-        response = requests.get(url, stream=True)
-        if response.status_code == 200:
-            with open(thumb_path, "wb") as file:
-                for chunk in response.iter_content(1024):
-                    file.write(chunk)
-            return thumb_path
-    except Exception as e:
-        logger.error(f"Failed to download thumbnail: {e}")
-    
-    return None
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=True)
+        file_path = ydl.prepare_filename(info_dict)
+        file_size = info_dict.get("filesize", 0)
+        return file_path, file_size
+except Exception as e:
+    logger.error(f"Failed to download video: {e}")
+    return None, 0  # Return a default value in case of failure
