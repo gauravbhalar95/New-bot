@@ -1,24 +1,16 @@
 import os
 import logging
 import yt_dlp
-import instaloader
-from instagram_private_api import Client, ClientCompatPatch
-from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
+import requests
+from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
-
-username = INSTAGRAM_USERNAME
-password = INSTAGRAM_PASSWORD
-
 
 # Logger setup
 logger = logging.getLogger(__name__)
 
-# Instaloader instance
-L = instaloader.Instaloader()
-
-# Instagram Private API Client
-api = Client(username, password)
-
+# Instagram Scraper API endpoint and key from RapidAPI
+RAPIDAPI_HOST = "instagram-scraper-stable-api.p.rapidapi.com"
+RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
 
 def process_instagram(url):
     """
@@ -61,21 +53,30 @@ def process_instagram(url):
             logger.error(f"Error downloading with Instaloader: {e}")
             return None, 0
 
-
 def get_instagram_user_info(username):
     """
-    Fetches Instagram user information using the private API.
+    Fetches Instagram user information using RapidAPI's Instagram Scraper API.
     """
+    url = f"https://{RAPIDAPI_HOST}/profile/{username}"
+
+    headers = {
+        "X-RapidAPI-Host": RAPIDAPI_HOST,
+        "X-RapidAPI-Key": RAPIDAPI_KEY
+    }
+
     try:
-        user_info = api.username_info(username)
-        return {
-            "full_name": user_info["user"]["full_name"],
-            "followers": user_info["user"]["follower_count"],
-            "following": user_info["user"]["following_count"],
-            "profile_pic_url": user_info["user"]["profile_pic_url"],
-        }
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            user_data = response.json()
+            return {
+                "full_name": user_data["full_name"],
+                "followers": user_data["followers_count"],
+                "following": user_data["following_count"],
+                "profile_pic_url": user_data["profile_pic_url"],
+            }
+        else:
+            logger.error(f"Error fetching user info from RapidAPI: {response.status_code}")
+            return None
     except Exception as e:
         logger.error(f"Error fetching user info: {e}")
         return None
-
-
