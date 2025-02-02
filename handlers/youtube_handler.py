@@ -2,6 +2,15 @@ import yt_dlp
 from utils.sanitize import sanitize_filename
 from utils.thumb_generator import generate_thumbnail
 
+
+
+def process_youtube(url):
+    """
+    Downloads youtube video o
+
+    :param url: The youtube post URL.
+    :return: File path and file size if successful, else (None, 0).
+    """
     ydl_opts = {
     "format": "best",
     "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
