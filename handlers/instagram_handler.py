@@ -6,6 +6,10 @@ from instagram_private_api import Client, ClientCompatPatch
 from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.sanitize import sanitize_filename
 
+username = INSTAGRAM_USERNAME
+password = INSTAGRAM_PASSWORD
+
+
 # Logger setup
 logger = logging.getLogger(__name__)
 
@@ -13,7 +17,7 @@ logger = logging.getLogger(__name__)
 L = instaloader.Instaloader()
 
 # Instagram Private API Client
-api = Client(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+api = Client(username, password)
 
 
 def process_instagram(url):
@@ -75,10 +79,3 @@ def get_instagram_user_info(username):
         return None
 
 
-# Example Usage
-if __name__ == "__main__":
-    url = "https://www.instagram.com/p/XYZ123/"  # Replace with an actual post URL
-    print(process_instagram(url))
-
-    username = "instagram"
-    print(get_instagram_user_info(username))
