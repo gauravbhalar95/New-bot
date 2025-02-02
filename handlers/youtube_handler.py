@@ -3,6 +3,10 @@ from utils.sanitize import sanitize_filename
 from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, COOKIES_FILE
 
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def process_youtube(url):
     """
