@@ -8,7 +8,7 @@ from utils.thumb_generator import generate_thumbnail
 
 
 # Initialize bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -72,7 +72,7 @@ def handle_message(message):
 # Flask Webhook
 app = Flask(__name__)
 
-@app.route('/' + API_TOKEN, methods=['POST'])
+@app.route('/' + BOT_TOKEN, methods=['POST'])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "OK", 200
@@ -80,7 +80,7 @@ def webhook():
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
-    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
+    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}", timeout=60)
     return "Webhook set" if success else "Webhook failed", 200
 
 if __name__ == '__main__':
