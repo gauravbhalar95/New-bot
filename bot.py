@@ -15,7 +15,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Supported domains
-SUPPORTED_DOMAINS = ["youtube.com", "youtu.be", "instagram.com", "x.com"]
+SUPPORTED_DOMAINS = [
+    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
+    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com']
 
 def detect_platform(url):
     """Detects if the URL belongs to YouTube, Instagram, or other supported platforms."""
