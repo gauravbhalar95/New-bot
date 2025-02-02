@@ -1,11 +1,11 @@
 from PIL import Image
 import os
 import telebot
-from download.xvideos_download import download_xvideo
+from config import API_TOKEN
 from yt_dlp import YoutubeDL
 from tempfile import NamedTemporaryFile
 
-API_TOKEN = 'your_telegram_bot_api_token'
+
 
 # Create the Telegram bot
 bot = telebot.TeleBot(API_TOKEN)
@@ -88,5 +88,3 @@ def handle_xvideos(message):
     else:
         bot.reply_to(message, "Error downloading from Xvideos.")
 
-# Start the bot
-bot.polling()
