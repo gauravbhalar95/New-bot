@@ -10,4 +10,4 @@ imageio[ffmpeg]
 ffmpeg
 pytube
 instaloader
-instagram_private_api
+pillow
