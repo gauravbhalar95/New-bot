@@ -6,6 +6,8 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from utils.thumb_generator import generate_thumbnail
 from config import API_TOKEN, PORT, WEBHOOK_URL
+from handlers.xvideo_haldler import extract_video_id
+from handlers.comman
 
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
