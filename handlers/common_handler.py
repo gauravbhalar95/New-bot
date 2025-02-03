@@ -71,6 +71,28 @@ def download_xnxx(url):
         print(f"Error downloading from XNXX: {e}")
         return None, None, None
 
+
+def download_xhamster(url):
+    """Download video from Xhamster"""
+    try:
+        video_id = extract_video_id(url, "xhmaster")
+        download_url = f"https://www.xhamster.com/video{video_id}/download"
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+
+        file_path = f"xhamster_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail
+
+    except Exception as e:
+        print(f"Error downloading from Xhamster: {e}")
+        return None, None, None
+
+
 def download_pornhub(url):
     """Download video from Pornhub"""
     try:
