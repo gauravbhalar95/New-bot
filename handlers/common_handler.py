@@ -2,9 +2,12 @@ import os
 import re
 import requests
 from handlers.instagram_handler import process_instagram
+from utils.sanitize import sanitize_filename
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 }
+
+def sanitize_filename(filename, max_length=250):
 
 def process_adult(url):
     domain_handlers = {
