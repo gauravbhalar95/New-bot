@@ -53,7 +53,7 @@ def download_xvideos(url):
         video_id = extract_video_id(url, "xvideos")
         
         # Construct the URL to download the video
-        download_url = f"https://www.xvideos.com/video{video_id}/download"
+        download_url = f"https://www.xvideos.com/{video_id}/download"
         
         # Send a request to the download URL
         response = requests.get(download_url, stream=True)
