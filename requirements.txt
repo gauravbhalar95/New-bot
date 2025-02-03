@@ -11,3 +11,4 @@ ffmpeg
 pytube
 instaloader
 pillow
+cloudscraper
