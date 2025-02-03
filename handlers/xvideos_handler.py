@@ -8,7 +8,7 @@ HEADERS = {
 }
 
 def sanitize_filename(filename, max_length=250):
-
+    return file
 def extract_video_id(url):
     """Extract the video ID from an Xvideos URL."""
     match = re.search(r"xvideos\.com/video[./]([a-zA-Z0-9]+)", url)
