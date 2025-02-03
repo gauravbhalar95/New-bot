@@ -8,6 +8,7 @@ HEADERS = {
 }
 
 def sanitize_filename(filename, max_length=250):
+    return file
 
 def process_adult(url):
     domain_handlers = {
