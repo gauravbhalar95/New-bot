@@ -1,8 +1,7 @@
 import os
 import re
 import requests
-from instagram_handlers.py import process_instagram
-
+from handlers.instagram_handler import process_instagram
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 }
