@@ -21,7 +21,7 @@ if os.path.exists(COOKIES_FILE):
         os.remove(COOKIES_FILE)  # Remove the corrupted session file
         logger.info("Corrupt session file removed. Please log in again.")
 
-def download_instagram(url):
+def process_instagram(url):
     """
     Downloads Instagram videos, images, or stories using yt-dlp.
     Falls back to Instaloader for private content if necessary.
