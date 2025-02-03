@@ -5,13 +5,15 @@ import instaloader
 from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
+username = INSTAGRAM_USERNAME
+
 # Logger setup
 logger = logging.getLogger(__name__)
 
 # Instaloader setup (for private posts & stories)
 L = instaloader.Instaloader()
 if os.path.exists(COOKIES_FILE):
-    L.load_session_from_file("INSTAGRAM_USERNAME", COOKIES_FILE)
+    L.load_session_from_file("username", COOKIES_FILE)
 
 def download_instagram(url):
     """
