@@ -21,6 +21,14 @@ PORT = int(os.getenv("PORT", 8080))
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
+DOWNLOAD_POST = "downloads/post"
+os.makedirs(DOWNLOAD_POST, exist_ok=True)
+
+DOWNLOAD_STORY = "downloads/story"
+os.makedirs(DOWNLOAD_STORY, exist_ok=True)
+
+
 # Cookies file for authenticated downloads
 COOKIES_FILE = "cookies.txt"
 
