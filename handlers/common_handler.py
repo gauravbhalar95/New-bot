@@ -1,148 +1,106 @@
 import os
+import re
 import requests
 
+# Headers to bypass bot detection
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+}
+
 def process_adult(url):
-    """
-    Processes downloading from an adult site. This will vary depending on the domain.
-    This function can be expanded to handle different adult sites.
-    """
-    # Define a dictionary of supported adult sites and their download handling functions
+    """Handles downloading from various adult sites."""
     domain_handlers = {
         'xvideos.com': download_xvideos,
         'xnxx.com': download_xnxx,
         'xhamster.com': download_xhamster,
         'pornhub.com': download_pornhub,
         'redtube.com': download_redtube,
-        # Add more sites and their respective handlers as needed
     }
 
-    # Check for supported domains and call the appropriate handler
     for domain, handler in domain_handlers.items():
         if domain in url:
             return handler(url)
 
-    # If the domain is not supported
-    return None, None, None
-
-
-def download_redtube(url):
-    """Download video from redtube"""
-    try:
-        video_id = extract_video_id(url, "redtube")
-        download_url = f"https://www.redtube.com/video{video_id}/download"
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-
-        file_path = f"redtube_video_{video_id}.mp4"
-        with open(file_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail
-
-    except Exception as e:
-        print(f"Error downloading from redtube: {e}")
-        return None, None, None
-
-
-def download_xvideos(url):
-    """Download video from Xvideos"""
-    try:
-        # Extract video ID or other necessary info from the URL
-        video_id = extract_video_id(url, "xvideos")
-        
-        # Construct the URL to download the video
-        download_url = f"https://www.xvideos.com/{video_id}/download"
-        
-        # Send a request to the download URL
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()  # Raise an exception if the request failed
-        
-        # Save the video file
-        file_path = f"xvideos_video_{video_id}.mp4"
-        with open(file_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        # Return file path and size
-        file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail for now
-
-    except Exception as e:
-        print(f"Error downloading from Xvideos: {e}")
-        return None, None, None
-
-def download_xnxx(url):
-    """Download video from XNXX"""
-    try:
-        video_id = extract_video_id(url, "xnxx")
-        download_url = f"https://www.xnxx.com/video{video_id}/download"
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-        
-        file_path = f"xnxx_video_{video_id}.mp4"
-        with open(file_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail
-
-    except Exception as e:
-        print(f"Error downloading from XNXX: {e}")
-        return None, None, None
-
-
-def download_xhamster(url):
-    """Download video from Xhamster"""
-    try:
-        video_id = extract_video_id(url, "xhmaster")
-        download_url = f"https://www.xhamster.com/video{video_id}/download"
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-
-        file_path = f"xhamster_video_{video_id}.mp4"
-        with open(file_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail
-
-    except Exception as e:
-        print(f"Error downloading from Xhamster: {e}")
-        return None, None, None
-
-
-def download_pornhub(url):
-    """Download video from Pornhub"""
-    try:
-        video_id = extract_video_id(url, "pornhub")
-        download_url = f"https://www.pornhub.com/video{video_id}/download"
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-        
-        file_path = f"pornhub_video_{video_id}.mp4"
-        with open(file_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail
-
-    except Exception as e:
-        print(f"Error downloading from Pornhub: {e}")
-        return None, None, None
+    return None, None, None  # Unsupported site
 
 def extract_video_id(url, site):
-    """Extract video ID from URL based on the site"""
-    # This is a placeholder function. You can implement logic to extract video ID for each site.
-    if site == "xvideos":
-        return url.split('/')[-1]  # Just an example, adjust based on how the URL is structured
-    elif site == "xnxx":
-        return url.split('/')[-1]
-    elif site == "pornhub":
-        return url.split('/')[-1]
-    else:
+    """Extracts the video ID based on the website's URL structure."""
+    patterns = {
+        "xvideos": r"xvideos\.com/video[./]([a-zA-Z0-9]+)",
+        "xnxx": r"xnxx\.com/video-([a-zA-Z0-9]+)",
+        "xhamster": r"xhamster\.com/videos/([a-zA-Z0-9-]+)",
+        "pornhub": r"pornhub\.com/view_video\.php\?viewkey=([a-zA-Z0-9]+)",
+        "redtube": r"redtube\.com/([0-9]+)"
+    }
+    
+    match = re.search(patterns.get(site, ""), url)
+    return match.group(1) if match else None
+
+def get_video_download_link(video_page_url, regex_pattern):
+    """Fetches the direct MP4 download link from the video page."""
+    response = requests.get(video_page_url, headers=HEADERS)
+    if response.status_code != 200:
         return None
+
+    match = re.search(regex_pattern, response.text)
+    return match.group(1) if match else None
+
+def download_video(url, site, regex_pattern):
+    """Downloads video from the specified adult site."""
+    try:
+        video_id = extract_video_id(url, site)
+        if not video_id:
+            print(f"Error: Could not extract video ID from {site}")
+            return None, None, None
+
+        video_page_url = url  # Most sites have direct page URLs
+        download_url = get_video_download_link(video_page_url, regex_pattern)
+
+        if not download_url:
+            print(f"Error: Could not retrieve video link from {site}")
+            return None, None, None
+
+        response = requests.get(download_url, headers=HEADERS, stream=True)
+        response.raise_for_status()
+
+        file_path = f"{site}_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail
+
+    except Exception as e:
+        print(f"Error downloading from {site}: {e}")
+        return None, None, None
+
+def download_xvideos(url):
+    """Handles Xvideos downloads."""
+    return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
+
+def download_xnxx(url):
+    """Handles XNXX downloads."""
+    return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
+
+def download_xhamster(url):
+    """Handles Xhamster downloads."""
+    return download_video(url, "xhamster", r'videoUrl&quot;:&quot;(https://[^&]+)&quot;')
+
+def download_pornhub(url):
+    """Handles Pornhub downloads."""
+    return download_video(url, "pornhub", r'"videoUrl":"(https?://[^"]+)"')
+
+def download_redtube(url):
+    """Handles RedTube downloads."""
+    return download_video(url, "redtube", r'"videoUrl":"(https?://[^"]+)"')
+
+# Example Usage
+if __name__ == "__main__":
+    test_url = "https://www.xvideos.com/video.otuhkkf6b3f/39694211/0/russian_girl_fuck_with_indian_hunter"
+    result = process_adult(test_url)
+
+    if result[0]:
+        print(f"Video saved at {result[0]}")
+    else:
+        print("Failed to download video.")
