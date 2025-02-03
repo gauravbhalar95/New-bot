@@ -21,7 +21,7 @@ def download_xvideos(url):
             return None, None, None
 
         # Construct the download URL (this is an example, adjust if needed)
-        download_url = f"https://www.xvideos.com/video{video_id}/download"
+        download_url = f"https://www.xvideos.com/{video_id}/download"
 
         # Send request to the download URL
         response = requests.get(download_url, stream=True)
