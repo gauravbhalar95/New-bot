@@ -5,15 +5,21 @@ import instaloader
 from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
-username = INSTAGRAM_USERNAME
-
 # Logger setup
 logger = logging.getLogger(__name__)
 
 # Instaloader setup (for private posts & stories)
 L = instaloader.Instaloader()
+
+# Load session from file (Handles session corruption)
 if os.path.exists(COOKIES_FILE):
-    L.load_session_from_file("username", COOKIES_FILE)
+    try:
+        L.load_session_from_file(INSTAGRAM_USERNAME, COOKIES_FILE)
+        logger.info("Instagram session loaded successfully.")
+    except Exception as e:
+        logger.error(f"Error loading Instagram session: {e}")
+        os.remove(COOKIES_FILE)  # Remove the corrupted session file
+        logger.info("Corrupt session file removed. Please log in again.")
 
 def download_instagram(url):
     """
@@ -51,6 +57,8 @@ def download_instagram(url):
             shortcode = url.split("/")[-2]
             post = instaloader.Post.from_shortcode(L.context, shortcode)
             L.download_post(post, target=DOWNLOAD_DIR)
+            logger.info(f"Post {shortcode} downloaded successfully.")
+
             return f"{DOWNLOAD_DIR}/{post.shortcode}", 0  # No size info from Instaloader
 
         except Exception as e:
@@ -68,4 +76,3 @@ def download_instagram_story(username):
     except Exception as e:
         logger.error(f"Error downloading stories: {e}")
         return None
-
