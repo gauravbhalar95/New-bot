@@ -6,7 +6,12 @@ from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
 # Logger setup
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Ensure the download directory exists
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
 
 # Instaloader setup (for private posts & stories)
 L = instaloader.Instaloader()
@@ -15,11 +20,11 @@ L = instaloader.Instaloader()
 if os.path.exists(COOKIES_FILE):
     try:
         L.load_session_from_file(INSTAGRAM_USERNAME, COOKIES_FILE)
-        logger.info("Instagram session loaded successfully.")
+        logger.info("✅ Instagram session loaded successfully.")
     except Exception as e:
-        logger.error(f"Error loading Instagram session: {e}")
+        logger.error(f"❌ Error loading Instagram session: {e}")
         os.remove(COOKIES_FILE)  # Remove the corrupted session file
-        logger.info("Corrupt session file removed. Please log in again.")
+        logger.info("⚠️ Corrupt session file removed. Please log in again.")
 
 def process_instagram(url):
     """
@@ -28,7 +33,7 @@ def process_instagram(url):
     """
     ydl_opts = {
         "format": "best",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+        "outtmpl": f"{DOWNLOAD_DIR}/%(title)s.%(ext)s",
         "retries": 5,
         "socket_timeout": 10,
         "noplaylist": True,
@@ -41,28 +46,32 @@ def process_instagram(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
+            filename = sanitize_filename(info_dict.get("title", "instagram_post"))
+            file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{info_dict.get('ext', 'mp4')}")
             file_size = info_dict.get("filesize", 0)
 
-            logger.info(f"Downloaded metadata: {info_dict}")
-            logger.info(f"File saved to: {file_path}")
-
+            logger.info(f"✅ Download successful: {file_path} ({file_size} bytes)")
             return file_path, file_size
 
     except Exception as e:
-        logger.error(f"Error downloading with yt-dlp: {e}")
+        logger.error(f"❌ Error downloading with yt-dlp: {e}")
 
         # Try using Instaloader for private posts or stories
         try:
-            shortcode = url.split("/")[-2]
+            shortcode = url.rstrip("/").split("/")[-1]
             post = instaloader.Post.from_shortcode(L.context, shortcode)
-            L.download_post(post, target=DOWNLOAD_DIR)
-            logger.info(f"Post {shortcode} downloaded successfully.")
+            
+            user_folder = os.path.join(DOWNLOAD_DIR, post.owner_username)
+            if not os.path.exists(user_folder):
+                os.makedirs(user_folder)
 
-            return f"{DOWNLOAD_DIR}/{post.shortcode}", 0  # No size info from Instaloader
+            L.download_post(post, target=user_folder)
+            logger.info(f"✅ Post {shortcode} downloaded successfully.")
+
+            return os.path.join(user_folder, post.shortcode), 0  # No size info from Instaloader
 
         except Exception as e:
-            logger.error(f"Error downloading with Instaloader: {e}")
+            logger.error(f"❌ Error downloading with Instaloader: {e}")
             return None, 0
 
 def download_instagram_story(username):
@@ -70,9 +79,14 @@ def download_instagram_story(username):
     Downloads Instagram stories for a given username using Instaloader.
     """
     try:
-        L.download_stories(userids=[username], filename_target=f"{DOWNLOAD_DIR}/stories/{username}")
-        logger.info(f"Stories downloaded for {username}")
-        return f"{DOWNLOAD_DIR}/stories/{username}"
+        story_path = os.path.join(DOWNLOAD_DIR, "stories", username)
+        if not os.path.exists(story_path):
+            os.makedirs(story_path)
+
+        L.download_stories(userids=[username], filename_target=story_path)
+        logger.info(f"✅ Stories downloaded for {username}")
+
+        return story_path
     except Exception as e:
-        logger.error(f"Error downloading stories: {e}")
+        logger.error(f"❌ Error downloading stories: {e}")
         return None
