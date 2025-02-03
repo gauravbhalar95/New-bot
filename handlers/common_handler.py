@@ -24,6 +24,28 @@ def process_adult(url):
     # If the domain is not supported
     return None, None, None
 
+
+def download_redtube(url):
+    """Download video from redtube"""
+    try:
+        video_id = extract_video_id(url, "redtube")
+        download_url = f"https://www.redtube.com/video{video_id}/download"
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+
+        file_path = f"redtube_video_{video_id}.mp4"
+        with open(file_path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_path)
+        return file_path, file_size, None  # No thumbnail
+
+    except Exception as e:
+        print(f"Error downloading from redtube: {e}")
+        return None, None, None
+
+
 def download_xvideos(url):
     """Download video from Xvideos"""
     try:
