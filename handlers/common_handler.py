@@ -1,14 +1,13 @@
 import os
 import re
-import requests
-from handlers.instagram_handler import process_instagram
-from utils.sanitize import sanitize_filename
+import cloudscraper
+
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+    "Connection": "keep-alive"
 }
 
-def sanitize_filename(filename, max_length=250):
-    return file
+scraper = cloudscraper.create_scraper()
 
 def process_adult(url):
     domain_handlers = {
@@ -27,18 +26,18 @@ def process_adult(url):
 
 def extract_video_id(url, site):
     patterns = {
-        "xvideos": r"xvideos\.com/video[./]([a-zA-Z0-9]+)",
+        "xvideos": r"xvideos\.com/video[./]?(\d+)",
         "xnxx": r"xnxx\.com/video-([a-zA-Z0-9]+)",
         "xhamster": r"xhamster\.com/videos/([a-zA-Z0-9-]+)",
         "pornhub": r"pornhub\.com/view_video\.php\?viewkey=([a-zA-Z0-9]+)",
         "redtube": r"redtube\.com/([0-9]+)"
     }
-    
+
     match = re.search(patterns.get(site, ""), url)
     return match.group(1) if match else None
 
 def get_video_download_link(video_page_url, regex_pattern):
-    response = requests.get(video_page_url, headers=HEADERS)
+    response = scraper.get(video_page_url, headers=HEADERS)
     if response.status_code != 200:
         return None
 
@@ -51,13 +50,11 @@ def download_video(url, site, regex_pattern):
         if not video_id:
             return None, None, None
 
-        video_page_url = url
-        download_url = get_video_download_link(video_page_url, regex_pattern)
-
+        download_url = get_video_download_link(url, regex_pattern)
         if not download_url:
             return None, None, None
 
-        response = requests.get(download_url, headers=HEADERS, stream=True)
+        response = scraper.get(download_url, headers=HEADERS, stream=True)
         response.raise_for_status()
 
         file_path = f"{site}_{video_id}.mp4"
@@ -68,14 +65,15 @@ def download_video(url, site, regex_pattern):
         file_size = os.path.getsize(file_path)
         return file_path, file_size, None
 
-    except Exception:
+    except Exception as e:
+        print(f"Error: {e}")
         return None, None, None
 
 def download_xvideos(url):
-    return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
+    return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
 
 def download_xnxx(url):
-    return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
+    return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
 
 def download_xhamster(url):
     return download_video(url, "xhamster", r'videoUrl&quot;:&quot;(https://[^&]+)&quot;')
@@ -87,10 +85,10 @@ def download_redtube(url):
     return download_video(url, "redtube", r'"videoUrl":"(https?://[^"]+)"')
 
 if __name__ == "__main__":
-    test_url = "https://www.xvideos.com/video.otuhkkf6b3f/39694211/0/russian_girl_fuck_with_indian_hunter"
+    test_url = "https://www.xvideos.com/video39694211/russian_girl_fuck_with_indian_hunter"
     result = process_adult(test_url)
 
     if result[0]:
-        print(f"Video saved at {result[0]}")
+        print(f"✅ Video saved at {result[0]}")
     else:
-        print("Failed to download video.")
+        print("❌ Failed to download video.")
