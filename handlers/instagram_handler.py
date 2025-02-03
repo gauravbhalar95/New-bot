@@ -1,18 +1,19 @@
 import os
 import logging
 import yt_dlp
-import requests
-from config import DOWNLOAD_DIR, COOKIES_FILE
+import instaloader
+from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
 # Logger setup
 logger = logging.getLogger(__name__)
 
-# Instagram Scraper API endpoint and key from RapidAPI
-RAPIDAPI_HOST = "instagram-scraper-stable-api.p.rapidapi.com"
-RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
+# Instaloader setup (for private posts & stories)
+L = instaloader.Instaloader()
+if os.path.exists(COOKIES_FILE):
+    L.load_session_from_file("INSTAGRAM_USERNAME", COOKIES_FILE)
 
-def process_instagram(url):
+def download_instagram(url):
     """
     Downloads Instagram videos, images, or stories using yt-dlp.
     Falls back to Instaloader for private content if necessary.
@@ -23,7 +24,7 @@ def process_instagram(url):
         "retries": 5,
         "socket_timeout": 10,
         "noplaylist": True,
-        "cookiefile": COOKIES_FILE,  # Use Instagram cookies
+        "cookiefile": COOKIES_FILE,  # Use Instagram cookies for authentication
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
         },
@@ -45,38 +46,24 @@ def process_instagram(url):
 
         # Try using Instaloader for private posts or stories
         try:
-            post = instaloader.Post.from_shortcode(L.context, url.split("/")[-2])
+            shortcode = url.split("/")[-2]
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
             L.download_post(post, target=DOWNLOAD_DIR)
-            return f"{DOWNLOAD_DIR}/{post.shortcode}", 0  # No size info in Instaloader
+            return f"{DOWNLOAD_DIR}/{post.shortcode}", 0  # No size info from Instaloader
 
         except Exception as e:
             logger.error(f"Error downloading with Instaloader: {e}")
             return None, 0
 
-def get_instagram_user_info(username):
+def download_instagram_story(username):
     """
-    Fetches Instagram user information using RapidAPI's Instagram Scraper API.
+    Downloads Instagram stories for a given username using Instaloader.
     """
-    url = f"https://{RAPIDAPI_HOST}/profile/{username}"
-
-    headers = {
-        "X-RapidAPI-Host": RAPIDAPI_HOST,
-        "X-RapidAPI-Key": RAPIDAPI_KEY
-    }
-
     try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            user_data = response.json()
-            return {
-                "full_name": user_data["full_name"],
-                "followers": user_data["followers_count"],
-                "following": user_data["following_count"],
-                "profile_pic_url": user_data["profile_pic_url"],
-            }
-        else:
-            logger.error(f"Error fetching user info from RapidAPI: {response.status_code}")
-            return None
+        L.download_stories(userids=[username], filename_target=f"{DOWNLOAD_DIR}/stories/{username}")
+        logger.info(f"Stories downloaded for {username}")
+        return f"{DOWNLOAD_DIR}/stories/{username}"
     except Exception as e:
-        logger.error(f"Error fetching user info: {e}")
+        logger.error(f"Error downloading stories: {e}")
         return None
+
