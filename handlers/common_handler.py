@@ -2,13 +2,11 @@ import os
 import re
 import requests
 
-# Headers to bypass bot detection
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 }
 
 def process_adult(url):
-    """Handles downloading from various adult sites."""
     domain_handlers = {
         'xvideos.com': download_xvideos,
         'xnxx.com': download_xnxx,
@@ -21,10 +19,9 @@ def process_adult(url):
         if domain in url:
             return handler(url)
 
-    return None, None, None  # Unsupported site
+    return None, None, None
 
 def extract_video_id(url, site):
-    """Extracts the video ID based on the website's URL structure."""
     patterns = {
         "xvideos": r"xvideos\.com/video[./]([a-zA-Z0-9]+)",
         "xnxx": r"xnxx\.com/video-([a-zA-Z0-9]+)",
@@ -37,7 +34,6 @@ def extract_video_id(url, site):
     return match.group(1) if match else None
 
 def get_video_download_link(video_page_url, regex_pattern):
-    """Fetches the direct MP4 download link from the video page."""
     response = requests.get(video_page_url, headers=HEADERS)
     if response.status_code != 200:
         return None
@@ -46,18 +42,15 @@ def get_video_download_link(video_page_url, regex_pattern):
     return match.group(1) if match else None
 
 def download_video(url, site, regex_pattern):
-    """Downloads video from the specified adult site."""
     try:
         video_id = extract_video_id(url, site)
         if not video_id:
-            print(f"Error: Could not extract video ID from {site}")
             return None, None, None
 
-        video_page_url = url  # Most sites have direct page URLs
+        video_page_url = url
         download_url = get_video_download_link(video_page_url, regex_pattern)
 
         if not download_url:
-            print(f"Error: Could not retrieve video link from {site}")
             return None, None, None
 
         response = requests.get(download_url, headers=HEADERS, stream=True)
@@ -69,33 +62,26 @@ def download_video(url, site, regex_pattern):
                 file.write(chunk)
 
         file_size = os.path.getsize(file_path)
-        return file_path, file_size, None  # No thumbnail
+        return file_path, file_size, None
 
-    except Exception as e:
-        print(f"Error downloading from {site}: {e}")
+    except Exception:
         return None, None, None
 
 def download_xvideos(url):
-    """Handles Xvideos downloads."""
     return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
 
 def download_xnxx(url):
-    """Handles XNXX downloads."""
     return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];')
 
 def download_xhamster(url):
-    """Handles Xhamster downloads."""
     return download_video(url, "xhamster", r'videoUrl&quot;:&quot;(https://[^&]+)&quot;')
 
 def download_pornhub(url):
-    """Handles Pornhub downloads."""
     return download_video(url, "pornhub", r'"videoUrl":"(https?://[^"]+)"')
 
 def download_redtube(url):
-    """Handles RedTube downloads."""
     return download_video(url, "redtube", r'"videoUrl":"(https?://[^"]+)"')
 
-# Example Usage
 if __name__ == "__main__":
     test_url = "https://www.xvideos.com/video.otuhkkf6b3f/39694211/0/russian_girl_fuck_with_indian_hunter"
     result = process_adult(test_url)
