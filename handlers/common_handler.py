@@ -50,30 +50,37 @@ def download_video(url, site, regex_pattern):
         if not video_id:
             return None, None, None
 
-        download_url = get_video_download_link(url, regex_pattern)
-        if not download_url:
+        video_url = get_video_download_link(url, regex_pattern)
+        if not video_url:
             return None, None, None
 
-        response = scraper.get(download_url, headers=HEADERS, stream=True)
+        # Return the streaming link if direct download is not possible
+        response = scraper.get(video_url, headers=HEADERS, stream=True)
         response.raise_for_status()
 
+        file_size = int(response.headers.get('content-length', 0))  # Get file size
+        if file_size > 100 * 1024 * 1024:  # If video size > 100MB, return streaming link
+            print(f"📺 Large file detected. Providing streaming link: {video_url}")
+            return None, file_size, video_url
+
+        # Otherwise, proceed with download
         file_path = f"{site}_{video_id}.mp4"
         with open(file_path, "wb") as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
 
         file_size = os.path.getsize(file_path)
-        return file_path, file_size, None
+        return file_path, file_size, video_url
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error: {e}")
         return None, None, None
 
 def download_xvideos(url):
-    return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
+    return download_video(url, "xvideos", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
 
 def download_xnxx(url):
-    return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
+    return download_video(url, "xnxx", r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']')
 
 def download_xhamster(url):
     return download_video(url, "xhamster", r'videoUrl&quot;:&quot;(https://[^&]+)&quot;')
@@ -86,9 +93,11 @@ def download_redtube(url):
 
 if __name__ == "__main__":
     test_url = "https://www.xvideos.com/video39694211/russian_girl_fuck_with_indian_hunter"
-    result = process_adult(test_url)
+    file_path, file_size, stream_link = process_adult(test_url)
 
-    if result[0]:
-        print(f"✅ Video saved at {result[0]}")
+    if file_path:
+        print(f"✅ Video saved at {file_path} (Size: {file_size / (1024 * 1024):.2f} MB)")
+    elif stream_link:
+        print(f"📺 Streaming Link Available: {stream_link}")
     else:
-        print("❌ Failed to download video.")
+        print("❌ Failed to download or retrieve video link.")
