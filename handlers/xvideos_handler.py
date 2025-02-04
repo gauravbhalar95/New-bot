@@ -1,14 +1,12 @@
 import os
 import re
 import requests
-from utils.sanitize import sanitize_filename
+import yt_dlp
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 }
 
-def sanitize_filename(filename, max_length=250):
-    return file
 def extract_video_id(url):
     """Extract the video ID from an Xvideos URL."""
     match = re.search(r"xvideos\.com/video[./]([a-zA-Z0-9]+)", url)
@@ -21,28 +19,38 @@ def get_xvideos_download_link(video_id):
 
     if response.status_code != 200:
         print(f"Error fetching video page: {response.status_code}")
-        return None
+        return None, None
 
-    # Extract MP4 URL from page source
-    match = re.search(r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\'];', response.text)
-    return match.group(1) if match else None
+    # Extract MP4 URL (High Quality)
+    mp4_match = re.search(r'html5player\.setVideoUrlHigh["\'](https?://[^"\']+)["\']', response.text)
+    if mp4_match:
+        return mp4_match.group(1), "mp4"
+
+    # Extract M3U8 Streaming Link (if available)
+    m3u8_match = re.search(r'html5player\.setVideoHLS["\'](https?://[^"\']+)["\']', response.text)
+    if m3u8_match:
+        return m3u8_match.group(1), "m3u8"
+
+    return None, None
 
 def download_xvideos(url):
     """Download video from Xvideos using the extracted video ID."""
     try:
-        # Extract video ID
         video_id = extract_video_id(url)
         if not video_id:
             print(f"Error: Could not extract video ID from URL: {url}")
             return None, None, None
 
-        # Get the direct MP4 download link
-        download_url = get_xvideos_download_link(video_id)
+        download_url, format_type = get_xvideos_download_link(video_id)
         if not download_url:
             print("Error: Could not retrieve the video download link.")
             return None, None, None
 
-        # Download video
+        if format_type == "m3u8":
+            print(f"✅ Streaming link found: {download_url}")
+            return None, None, download_url  # Return streaming link instead of a file
+
+        # Download MP4 Video
         response = requests.get(download_url, headers=HEADERS, stream=True)
         response.raise_for_status()
 
@@ -58,27 +66,53 @@ def download_xvideos(url):
         print(f"Error downloading from Xvideos: {e}")
         return None, None, None
 
+def download_using_ytdlp(url):
+    """Fallback downloader using yt-dlp."""
+    ydl_opts = {
+        "format": "best",
+        "outtmpl": "xvideos_%(id)s.%(ext)s",
+        "retries": 5,
+        "socket_timeout": 10,
+        "noplaylist": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = f"xvideos_{info_dict['id']}.{info_dict['ext']}"
+            file_size = os.path.getsize(file_path)
+            return file_path, file_size, None
+        except Exception as e:
+            print(f"yt-dlp failed: {e}")
+            return None, None, None
+
 def handle_xvideos(url):
     """Handles video download for Xvideos."""
     if "xvideos.com" in url:
         print(f"Processing Xvideos URL: {url}")
-        file_path, file_size, thumb_path = download_xvideos(url)
+        file_path, file_size, streaming_url = download_xvideos(url)
 
         if file_path:
-            print(f"Download successful! File saved as {file_path}. Size: {file_size / (1024 * 1024):.2f} MB")
-            return file_path, file_size, thumb_path
+            print(f"✅ Download successful! File saved as {file_path}. Size: {file_size / (1024 * 1024):.2f} MB")
+            return file_path, file_size, None
+        elif streaming_url:
+            print(f"🎥 Streaming available at: {streaming_url}")
+            return None, None, streaming_url
         else:
-            print("Download failed.")
-            return None, None, None
+            print("⚠️ Falling back to yt-dlp...")
+            return download_using_ytdlp(url)
     else:
-        print("Error: Invalid Xvideos URL.")
+        print("❌ Error: Invalid Xvideos URL.")
         return None, None, None
 
 # Example Usage
 if __name__ == "__main__":
-    test_url = "https://www.xvideos.com/video.otuhkkf6b3f/39694211/0/russian_girl_fuck_with_indian_hunter"
+    test_url = "https://www.xvideos.com/video39694211/russian_girl_fuck_with_indian_hunter"
     result = handle_xvideos(test_url)
+
     if result[0]:
-        print(f"Video saved at {result[0]}")
+        print(f"✅ Video saved at {result[0]}")
+    elif result[2]:
+        print(f"🎥 Watch using this link: {result[2]}")
     else:
-        print("Failed to download video.")
+        print("❌ Failed to download video.")
