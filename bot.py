@@ -1,7 +1,13 @@
 import os 
 import logging 
 from flask import Flask, request 
-import telebot from handlers.youtube_handler import process_youtube from handlers.instagram_handler import process_instagram from utils.thumb_generator import generate_thumbnail from config import API_TOKEN, PORT, WEBHOOK_URL from handlers.xvideos_handler import extract_video_id from handlers.common_handler import process_adult
+import telebot 
+from handlers.youtube_handler import process_youtube 
+from handlers.instagram_handler import process_instagram 
+from utils.thumb_generator import generate_thumbnail 
+from config import API_TOKEN, PORT, WEBHOOK_URL 
+from handlers.xvideos_handler import extract_video_id 
+from handlers.common_handler import process_adult
 
 Initialize bot
 
