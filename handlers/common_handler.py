@@ -30,13 +30,21 @@ def extract_video_id(url, site):
         "xvideos": r"xvideos\.com/video(?:/|\.php\?v=)?(\d+)",
         "xnxx": r"xnxx\.com/video-([a-zA-Z0-9]+)",
         "xhamster": r"xhamster\.com/videos/([a-zA-Z0-9-]+)",
-        "pornhub": r"pornhub\.com/view_video\.php\?viewkey=([a-zA-Z0-9]+)",
+        "pornhub": r"(?:viewkey=|embed/)([a-zA-Z0-9_-]+)",
         "redtube": r"redtube\.com/([0-9]+)"
     }
 
-    match = re.search(patterns.get(site, ""), url)
-    return match.group(1) if match else None
+    pattern = patterns.get(site)
+    if not pattern:
+        print(f"❌ No regex pattern found for {site}")
+        return None
 
+    match = re.search(pattern, url)
+    if match:
+        return match.group(1)
+    
+    print(f"❌ Regex failed to extract video ID for {site}: {url}")
+    return None
 def get_video_download_link(video_page_url, regex_patterns):
     response = scraper.get(video_page_url, headers=HEADERS)
     if response.status_code != 200:
