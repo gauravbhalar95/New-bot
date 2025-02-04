@@ -1,10 +1,13 @@
 import os
-import re
-import cloudscraper
-import yt_dlp
 import telebot
+import yt_dlp
+import cloudscraper
+import imageio_ffmpeg
 from moviepy import VideoFileClip
 from config import API_TOKEN  # ✅ Import API Token from config
+
+# ✅ Set FFmpeg path manually if needed
+os.environ["IMAGEIO_FFMPEG_EXE"] = imageio_ffmpeg.get_ffmpeg_exe()
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -93,3 +96,6 @@ def handle_message(message):
     else:
         bot.reply_to(message, "❌ Failed to download video. Please try another link.")
 
+# ✅ Start the bot
+print("🚀 Bot is running...")
+bot.polling(none_stop=True)
