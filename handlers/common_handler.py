@@ -1,6 +1,7 @@
 import os
 import re
 import cloudscraper
+import yt_dlp
 import telebot
 from moviepy import VideoFileClip
 from config import API_TOKEN  # ✅ Import API Token from config
@@ -27,106 +28,30 @@ def generate_thumbnail(video_path):
         print(f"❌ Thumbnail Error: {e}")
         return None
 
-# ✅ Function to process adult video downloads
+# ✅ Function to process adult video downloads using yt-dlp
 def process_adult(url):
-    domain_handlers = {
-        'xvideos.com': download_xvideos,
-        'xnxx.com': download_xnxx,
-        'xhamster.com': download_xhamster,
-        'pornhub.com': download_pornhub,
-        'redtube.com': download_redtube,
-    }
-
-    for domain, handler in domain_handlers.items():
-        if domain in url:
-            return handler(url)
-
-    return None, None, None  # Return three values
-
-# ✅ Extract Video ID
-def extract_video_id(url, site):
-    patterns = {
-        "xvideos": r"xvideos\.com/video(?:/|\.php\?v=)?(\d+)",
-        "xnxx": r"xnxx\.com/video-([a-zA-Z0-9]+)",
-        "xhamster": r"xhamster\.com/videos/([a-zA-Z0-9-]+)",
-        "pornhub": r"(?:viewkey=|embed/)([a-zA-Z0-9_-]+)",
-        "redtube": r"redtube\.com/([0-9]+)"
-    }
-
-    pattern = patterns.get(site)
-    if not pattern:
-        return None
-
-    match = re.search(pattern, url)
-    return match.group(1) if match else None
-
-# ✅ Get Video Download Link
-def get_video_download_link(video_page_url, regex_patterns):
-    response = scraper.get(video_page_url, headers=HEADERS)
-    if response.status_code != 200:
-        return None
-
-    for pattern in regex_patterns:
-        match = re.search(pattern, response.text)
-        if match:
-            return match.group(1)
-
-    return None
-
-# ✅ Download Video
-def download_video(url, site, regex_patterns):
     try:
-        video_id = extract_video_id(url, site)
-        if not video_id:
+        output_template = "downloaded_video.%(ext)s"
+        ydl_opts = {
+            'outtmpl': output_template,
+            'format': 'best',
+            'quiet': True
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info)  # Get downloaded file name
+
+        if not os.path.exists(file_path):
             return None, None, None
 
-        video_url = get_video_download_link(url, regex_patterns)
-        if not video_url:
-            return None, None, None
-
-        temp_path = f"{site}_{video_id}_temp.mp4"
-        final_path = f"{site}_{video_id}.mp4"
-
-        # ✅ Download video
-        response = scraper.get(video_url, headers=HEADERS, stream=True)
-        response.raise_for_status()
-
-        with open(temp_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-
-        # ✅ Convert video with MoviePy
-        try:
-            clip = VideoFileClip(temp_path)
-            clip.write_videofile(final_path, codec="libx264")
-            clip.close()
-            os.remove(temp_path)  # Delete temp file
-
-        except Exception as e:
-            return None, None, None
-
-        file_size = os.path.getsize(final_path)
-        thumb_path = generate_thumbnail(final_path)  # ✅ Generate thumbnail
-        return final_path, file_size, thumb_path
+        file_size = os.path.getsize(file_path)
+        thumb_path = generate_thumbnail(file_path)  # ✅ Generate thumbnail
+        return file_path, file_size, thumb_path
 
     except Exception as e:
+        print(f"❌ Download Error: {e}")
         return None, None, None
-
-# ✅ Site-specific download functions
-def download_xvideos(url):
-    return download_video(url, "xvideos", [r'"videoUrl":"(https?://[^"]+)"'])
-
-def download_xnxx(url):
-    return download_video(url, "xnxx", [r'"videoUrl":"(https?://[^"]+)"'])
-
-def download_xhamster(url):
-    return download_video(url, "xhamster", [r'"videoUrl":"(https?://[^"]+)"'])
-
-def download_pornhub(url):
-    return download_video(url, "pornhub", [r'"videoUrl":"(https?://[^"]+)"'])
-
-def download_redtube(url):
-    return download_video(url, "redtube", [r'"videoUrl":"(https?://[^"]+)"'])
 
 # ✅ Telegram Bot Handlers
 @bot.message_handler(commands=['start'])
@@ -154,7 +79,7 @@ def handle_message(message):
                     bot.send_video(
                         message.chat.id,
                         video_file,
-                        caption=f"✅ Downloaded: {file_path} ({file_size / (1024 * 1024):.2f} MB)",
+                        caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)",
                         thumb=thumb
                     )
                 os.remove(thumb_path)  # Delete thumbnail
@@ -162,7 +87,7 @@ def handle_message(message):
                 bot.send_video(
                     message.chat.id,
                     video_file,
-                    caption=f"✅ Downloaded: {file_path} ({file_size / (1024 * 1024):.2f} MB)"
+                    caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)"
                 )
         os.remove(file_path)  # Delete after sending
     else:
