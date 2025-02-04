@@ -2,7 +2,7 @@ import os
 import re
 import cloudscraper
 import telebot
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from config import API_TOKEN  # ✅ Import API Token from config
 
 bot = telebot.TeleBot(API_TOKEN)
