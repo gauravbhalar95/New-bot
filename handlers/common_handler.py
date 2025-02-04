@@ -1,5 +1,6 @@
 import os
 import re
+import moviepy
 import cloudscraper
 from moviepy.editor import VideoFileClip
 
