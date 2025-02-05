@@ -38,7 +38,7 @@ def generate_thumbnail(video_path):
         return None
 
 # ✅ Download video using yt-dlp
-def download_video(url):
+def process_adult(url):
     """Download video and return file path, size, and thumbnail."""
     try:
         output_template = "downloaded_video.%(ext)s"
