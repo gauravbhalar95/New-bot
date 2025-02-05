@@ -5,6 +5,7 @@ import telebot
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
+from handlers.x_handler import download_twitter_media
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # ✅ Initialize bot in webhook mode (no polling)
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 # ✅ Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'xvideos.com', 'xnxx.com',
-    'xhamster.com', 'pornhub.com', 'redtube.com', 'tube8.com', 'spankbang.com'
+    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'tube8.com', 'spankbang.com'
 ]
 
 def detect_platform(url):
@@ -55,6 +56,8 @@ def handle_message(message):
             result = process_adult(url)
         elif platform == "instaloader":
             result = extract_shortcode(url)
+        elif platform == "twitter":
+            result = download_twitter_media(url)
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
