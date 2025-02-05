@@ -1,7 +1,7 @@
 import os
 import logging
 import yt_dlp
-from instalooter import instalooter
+import instaloader  # ✅ Replace InstaLooter with Instaloader
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
 
@@ -25,7 +25,7 @@ def extract_shortcode(url):
 
 def process_instagram(url):
     """
-    Downloads Instagram videos using yt-dlp or images using InstaLooter.
+    Downloads Instagram videos using yt-dlp or images using Instaloader.
     """
     try:
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -53,12 +53,12 @@ def process_instagram(url):
                 logger.info(f"✅ Video downloaded successfully: {file_path}")
                 return file_path, os.path.getsize(file_path)
 
-            logger.warning("⚠️ yt-dlp did not create the expected file. Retrying with InstaLooter...")
+            logger.warning("⚠️ yt-dlp did not create the expected file. Retrying with Instaloader...")
 
     except Exception as e:
-        logger.warning(f"⚠️ yt-dlp failed: {e}. Retrying with InstaLooter...")
+        logger.warning(f"⚠️ yt-dlp failed: {e}. Retrying with Instaloader...")
 
-    # ✅ Use InstaLooter as fallback (for images & private posts)
+    # ✅ Use Instaloader as fallback (for images & private posts)
     try:
         shortcode = extract_shortcode(url)
         if not shortcode:
@@ -70,8 +70,9 @@ def process_instagram(url):
         post_dir = os.path.join(DOWNLOAD_DIR, shortcode)
         os.makedirs(post_dir, exist_ok=True)
 
-        looter = InstaLooter("post", shortcode)
-        looter.download(post_dir)
+        L = instaloader.Instaloader(download_videos=False)  # ✅ Disable video download
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        L.download_post(post, target=post_dir)
 
         # ✅ Verify downloaded files
         post_files = os.listdir(post_dir)
@@ -80,9 +81,9 @@ def process_instagram(url):
             logger.info(f"✅ Post downloaded successfully: {post_path}")
             return post_path, os.path.getsize(post_path)
 
-        logger.error("❌ InstaLooter did not create any files. Possible reasons: Private post, login issue, or rate limit.")
+        logger.error("❌ Instaloader did not create any files. Possible reasons: Private post, login issue, or rate limit.")
         return None, 0
 
     except Exception as e:
-        logger.error(f"❌ InstaLooter error: {e}")
+        logger.error(f"❌ Instaloader error: {e}")
         return None, 0
