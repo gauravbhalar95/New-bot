@@ -6,8 +6,9 @@ import imageio_ffmpeg
 from moviepy import VideoFileClip
 from config import API_TOKEN  # ✅ Import API Token from config
 
-# ✅ Set FFmpeg path manually if needed
-os.environ["IMAGEIO_FFMPEG_EXE"] = imageio_ffmpeg.get_ffmpeg_exe()
+# ✅ Ensure FFmpeg is set correctly
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+os.environ["IMAGEIO_FFMPEG_EXE"] = FFMPEG_PATH
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -22,6 +23,11 @@ scraper = cloudscraper.create_scraper()
 # ✅ Function to generate a thumbnail from the video
 def generate_thumbnail(video_path):
     try:
+        if not os.path.exists(video_path):
+            print(f"❌ Video file not found: {video_path}")
+            return None
+
+        print(f"🔄 Generating thumbnail for {video_path}...")
         clip = VideoFileClip(video_path)
         thumbnail_path = video_path.replace(".mp4", ".jpg")
         clip.save_frame(thumbnail_path, t=clip.duration / 2)  # Take a frame from the middle
@@ -38,7 +44,7 @@ def process_adult(url):
         ydl_opts = {
             'outtmpl': output_template,
             'format': 'best',
-            'quiet': True
+            'quiet': False  # ✅ Set to False to debug errors
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -46,6 +52,7 @@ def process_adult(url):
             file_path = ydl.prepare_filename(info)  # Get downloaded file name
 
         if not os.path.exists(file_path):
+            print(f"❌ Downloaded file not found: {file_path}")
             return None, None, None
 
         file_size = os.path.getsize(file_path)
@@ -77,22 +84,26 @@ def handle_message(message):
 
     if file_path:
         with open(file_path, 'rb') as video_file:
-            if thumb_path:
-                with open(thumb_path, 'rb') as thumb:
+            try:
+                if thumb_path:
+                    with open(thumb_path, 'rb') as thumb:
+                        bot.send_video(
+                            message.chat.id,
+                            video_file,
+                            caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)",
+                            thumb=thumb
+                        )
+                    os.remove(thumb_path)  # ✅ Delete thumbnail after sending
+                else:
                     bot.send_video(
                         message.chat.id,
                         video_file,
-                        caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)",
-                        thumb=thumb
+                        caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)"
                     )
-                os.remove(thumb_path)  # Delete thumbnail
-            else:
-                bot.send_video(
-                    message.chat.id,
-                    video_file,
-                    caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)"
-                )
-        os.remove(file_path)  # Delete after sending
+            except Exception as send_error:
+                print(f"⚠️ Error sending video: {send_error}")
+
+        os.remove(file_path)  # ✅ Delete after sending
     else:
         bot.reply_to(message, "❌ Failed to download video. Please try another link.")
 
