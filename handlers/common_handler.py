@@ -29,9 +29,10 @@ def process_adult(url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = info.get('url')  # ✅ Get direct streaming URL
-            file_size = info.get('filesize', 0)  # ✅ Get file size if available
+            file_size = info.get('filesize') or 0  # ✅ Handle None case
             file_name = info.get('title', 'video.mp4')
 
         return video_url, file_size, file_name
-    except Exception:
+    except Exception as e:
+        print(f"Error processing URL: {url} - {e}")
         return None, None, None
