@@ -2,8 +2,12 @@ import os
 import logging
 import yt_dlp
 import instaloader
-from config import DOWNLOAD_DIR, COOKIES_FILE
+from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
+
+username = INSTAGRAM_USERNAME
+password = INSTAGRAM_PASSWORD
+
 
 # Logger setup
 logging.basicConfig(level=logging.INFO)
