@@ -1,7 +1,7 @@
 import os
 import logging
 import yt_dlp
-import instaloader  # ✅ Replace InstaLooter with Instaloader
+import instaloader
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
 
@@ -23,7 +23,22 @@ def extract_shortcode(url):
         logger.error("❌ Failed to extract shortcode from URL.")
         return None
 
-def process_instagram(url):
+def login_instaloader(username, password):
+    """Log in to Instagram using Instaloader."""
+    L = instaloader.Instaloader()
+    try:
+        L.context.log("🔑 Logging in to Instagram...")
+        L.load_session_from_file(username)
+        if not L.context.is_logged_in:
+            L.login(username, password)
+            L.save_session_to_file()
+        logger.info(f"✅ Logged in as {username}.")
+        return L
+    except Exception as e:
+        logger.error(f"❌ Login failed: {e}")
+        return None
+
+def process_instagram(url, username=None, password=None):
     """
     Downloads Instagram videos using yt-dlp or images using Instaloader.
     """
@@ -70,7 +85,12 @@ def process_instagram(url):
         post_dir = os.path.join(DOWNLOAD_DIR, shortcode)
         os.makedirs(post_dir, exist_ok=True)
 
-        L = instaloader.Instaloader(download_videos=False)  # ✅ Disable video download
+        # Login to Instagram (if username/password provided)
+        if username and password:
+            L = login_instaloader(username, password)
+        else:
+            L = instaloader.Instaloader(download_videos=False)  # Disable video download if no login
+
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         L.download_post(post, target=post_dir)
 
