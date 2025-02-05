@@ -53,6 +53,8 @@ def handle_message(message):
             result = process_instagram(url)
         elif platform == "adult":
             result = process_adult(url)
+        elif platform == "instaloader":
+            result = extract_shortcode(url)
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
