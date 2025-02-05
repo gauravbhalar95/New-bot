@@ -12,17 +12,17 @@ logger = logging.getLogger(__name__)
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Instaloader setup (for private posts & images)
+# Instaloader setup
 L = instaloader.Instaloader()
 
-# Load Instagram session from cookies
+# Load Instagram session
 if os.path.exists(COOKIES_FILE):
     try:
         L.load_session_from_file(INSTAGRAM_USERNAME, COOKIES_FILE)
         logger.info("✅ Instagram session loaded successfully.")
     except Exception as e:
         logger.error(f"❌ Error loading Instagram session: {e}")
-        os.remove(COOKIES_FILE)  # Remove the corrupted session file
+        os.remove(COOKIES_FILE)
         logger.info("⚠️ Corrupt session file removed. Please log in again.")
 
 def extract_shortcode(url):
@@ -30,8 +30,10 @@ def extract_shortcode(url):
     try:
         parts = url.rstrip("/").split("/")
         shortcode = parts[-2] if "?" in parts[-1] else parts[-1]
+        logger.info(f"🔍 Extracted shortcode: {shortcode}")
         return shortcode
     except Exception:
+        logger.error("❌ Failed to extract shortcode from URL.")
         return None
 
 def process_instagram(url):
@@ -41,7 +43,7 @@ def process_instagram(url):
     try:
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-        # ✅ Try downloading with yt-dlp (preferred for videos)
+        # ✅ Attempt with yt-dlp first (for videos)
         ydl_opts = {
             "format": "best",
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
@@ -76,22 +78,30 @@ def process_instagram(url):
             logger.error("❌ Failed to extract shortcode from URL.")
             return None, 0
 
+        logger.info(f"📥 Attempting to download post with shortcode: {shortcode}")
+
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         user_folder = os.path.join(DOWNLOAD_DIR, post.owner_username)
         os.makedirs(user_folder, exist_ok=True)
 
+        # Download the post
         L.download_post(post, target=user_folder)
 
-        # ✅ Find the downloaded file
+        # ✅ Verify downloaded files
         post_files = os.listdir(user_folder)
         if post_files:
             post_path = os.path.join(user_folder, post_files[0])
             logger.info(f"✅ Post downloaded successfully: {post_path}")
             return post_path, os.path.getsize(post_path)
 
-        logger.error("❌ Instaloader did not create any files.")
+        logger.error("❌ Instaloader did not create any files. Possible reasons: Private post, login issue, or rate limit.")
         return None, 0
 
-    except Exception as e:
-        logger.error(f"❌ Error downloading with Instaloader: {e}")
-        return None, 0
+    except instaloader.exceptions.PrivateProfileNotFollowedException:
+        logger.error("❌ This is a private post, and you are not following the user.")
+    except instaloader.exceptions.LoginRequiredException:
+        logger.error("❌ Instagram login required. Check your session cookies.")
+    except instaloader.exceptions.InstaloaderException as e:
+        logger.error(f"❌ Instaloader error: {e}")
+
+    return None, 0
