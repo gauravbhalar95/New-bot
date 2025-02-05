@@ -96,6 +96,3 @@ def handle_message(message):
     else:
         bot.reply_to(message, "❌ Failed to download video. Please try another link.")
 
-# ✅ Start the bot
-print("🚀 Bot is running...")
-bot.polling(none_stop=True)
