@@ -4,31 +4,24 @@ from flask import Flask, request
 import telebot
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
-from utils.thumb_generator import generate_thumbnail
-from config import API_TOKEN, PORT, WEBHOOK_URL
-from handlers.xvideos_handler import extract_video_id
 from handlers.common_handler import process_adult
+from config import API_TOKEN, WEBHOOK_URL, PORT
 
-# Initialize bot
+# ✅ Initialize bot in webhook mode (no polling)
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# Logging setup
+# ✅ Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Supported domains, now including more adult sites
+# ✅ Supported domains
 SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be', 'instagram.com', 'x.com', 'facebook.com',
-    'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com', 'redtube.com',
-    'tube8.com', 'spankbang.com', 'youjizz.com', 'tnaflix.com', 'youporn.com',
-    'brazzers.com', 'mofos.com', 'vivid.com', 'bangbros.com', 'clips4sale.com',
-    'chaturbate.com', 'livejasmin.com', 'bongacams.com', 'myfreecams.com',
-    'cam4.com', 'stripchat.com', 'femdomempire.com', 'naughtyamerica.com',
-    'hustler.com', 'evolvedfights.com', 'fuckbook.com', 'xlovecam.com'
+    'youtube.com', 'youtu.be', 'instagram.com', 'xvideos.com', 'xnxx.com',
+    'xhamster.com', 'pornhub.com', 'redtube.com', 'tube8.com', 'spankbang.com'
 ]
 
 def detect_platform(url):
-    """Detects if the URL belongs to YouTube, Instagram, or other supported platforms."""
+    """Detects if the URL is from YouTube, Instagram, or other supported sites."""
     if any(domain in url for domain in ["youtube.com", "youtu.be"]):
         return "youtube"
     elif "instagram.com" in url:
@@ -40,7 +33,7 @@ def detect_platform(url):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, or Adult site link to download.")
+    bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, or adult site link to download.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
@@ -59,20 +52,15 @@ def handle_message(message):
         elif platform == "instagram":
             result = process_instagram(url)
         elif platform == "adult":
-            result = process_adult(url)  # Placeholder for processing adult content
+            result = process_adult(url)
 
-        # Ensure result always contains 3 values
-        if len(result) == 2:
-            file_path, file_size = result
-            thumb_path = None  # No thumbnail available
-        else:
-            file_path, file_size, thumb_path = result
-
-        if not file_path:
+        if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
             return
 
-        # Send video with a thumbnail if available
+        file_path, file_size, thumb_path = result if len(result) == 3 else (*result, None)
+
+        # ✅ Send video with thumbnail if available
         with open(file_path, 'rb') as video:
             thumb = open(thumb_path, 'rb') if thumb_path else None
             bot.send_video(
@@ -90,7 +78,7 @@ def handle_message(message):
         logger.error(f"⚠️ Error sending video: {e}")
         bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
 
-# Flask Webhook
+# ✅ Flask Webhook Setup
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
