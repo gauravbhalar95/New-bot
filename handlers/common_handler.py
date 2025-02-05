@@ -4,83 +4,76 @@ import yt_dlp
 import cloudscraper
 import imageio_ffmpeg
 from moviepy import VideoFileClip
-from config import API_TOKEN  # ✅ Import API Token from config
+from config import API_TOKEN  # ✅ Import API Token
 
-# ✅ Ensure FFmpeg is set correctly
+# ✅ Set up FFmpeg path
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 os.environ["IMAGEIO_FFMPEG_EXE"] = FFMPEG_PATH
 
-bot = telebot.TeleBot(API_TOKEN)
+# ✅ Initialize bot
+bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
-# ✅ Headers for requests
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    "Connection": "keep-alive"
-}
-
+# ✅ CloudScraper settings
 scraper = cloudscraper.create_scraper()
 
-# ✅ Function to generate a thumbnail from the video
+# ✅ Supported adult sites
+SUPPORTED_SITES = [
+    "xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com",
+    "redtube.com", "tube8.com", "spankbang.com"
+]
+
+# ✅ Generate a thumbnail from the video
 def generate_thumbnail(video_path):
+    """Generate a thumbnail from the middle of the video."""
     try:
         if not os.path.exists(video_path):
-            print(f"❌ Video file not found: {video_path}")
             return None
 
-        print(f"🔄 Generating thumbnail for {video_path}...")
         clip = VideoFileClip(video_path)
         thumbnail_path = video_path.replace(".mp4", ".jpg")
         clip.save_frame(thumbnail_path, t=clip.duration / 2)  # Take a frame from the middle
         clip.close()
         return thumbnail_path
-    except Exception as e:
-        print(f"❌ Thumbnail Error: {e}")
+    except Exception:
         return None
 
-# ✅ Function to process adult video downloads using yt-dlp
-def process_adult(url):
+# ✅ Download video using yt-dlp
+def download_video(url):
+    """Download video and return file path, size, and thumbnail."""
     try:
         output_template = "downloaded_video.%(ext)s"
-        ydl_opts = {
-            'outtmpl': output_template,
-            'format': 'best',
-            'quiet': False  # ✅ Set to False to debug errors
-        }
+        ydl_opts = {'outtmpl': output_template, 'format': 'best'}
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)  # Get downloaded file name
+            file_path = ydl.prepare_filename(info)
 
         if not os.path.exists(file_path):
-            print(f"❌ Downloaded file not found: {file_path}")
             return None, None, None
 
         file_size = os.path.getsize(file_path)
-        thumb_path = generate_thumbnail(file_path)  # ✅ Generate thumbnail
+        thumb_path = generate_thumbnail(file_path)
         return file_path, file_size, thumb_path
-
-    except Exception as e:
-        print(f"❌ Download Error: {e}")
+    except Exception:
         return None, None, None
 
-# ✅ Telegram Bot Handlers
+# ✅ Handle /start command
 @bot.message_handler(commands=['start'])
 def start_command(message):
-    bot.reply_to(message, "🔹 Send me a video link from **XVideos, XNXX, XHamster, Pornhub, RedTube**, and I'll download it for you!")
+    bot.send_message(message.chat.id, "🔹 Send me a **video link** from supported sites.")
 
-@bot.message_handler(func=lambda message: True)
+# ✅ Handle video download request
+@bot.message_handler(func=lambda msg: True)
 def handle_message(message):
     url = message.text.strip()
 
-    # ✅ Check if URL is valid
-    if not any(site in url for site in ["xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com", "redtube.com"]):
-        bot.reply_to(message, "❌ Invalid URL. Please send a valid video link from **XVideos, XNXX, XHamster, Pornhub, or RedTube**.")
+    if not any(site in url for site in SUPPORTED_SITES):
+        bot.reply_to(message, "❌ Invalid URL. Please send a valid **video link**.")
         return
 
     bot.reply_to(message, "🔄 Downloading... Please wait.")
 
-    # ✅ Process the video
-    file_path, file_size, thumb_path = process_adult(url)
+    file_path, file_size, thumb_path = download_video(url)
 
     if file_path:
         with open(file_path, 'rb') as video_file:
@@ -88,22 +81,21 @@ def handle_message(message):
                 if thumb_path:
                     with open(thumb_path, 'rb') as thumb:
                         bot.send_video(
-                            message.chat.id,
-                            video_file,
+                            message.chat.id, video_file,
                             caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)",
                             thumb=thumb
                         )
-                    os.remove(thumb_path)  # ✅ Delete thumbnail after sending
+                    os.remove(thumb_path)  # ✅ Delete thumbnail
                 else:
                     bot.send_video(
-                        message.chat.id,
-                        video_file,
+                        message.chat.id, video_file,
                         caption=f"✅ Downloaded: {os.path.basename(file_path)} ({file_size / (1024 * 1024):.2f} MB)"
                     )
-            except Exception as send_error:
-                print(f"⚠️ Error sending video: {send_error}")
+            except Exception:
+                bot.reply_to(message, "⚠️ Error sending video.")
 
         os.remove(file_path)  # ✅ Delete after sending
     else:
         bot.reply_to(message, "❌ Failed to download video. Please try another link.")
 
+# ✅ Run the bot
