@@ -25,13 +25,20 @@ if os.path.exists(COOKIES_FILE):
         os.remove(COOKIES_FILE)  # Remove the corrupted session file
         logger.info("⚠️ Corrupt session file removed. Please log in again.")
 
+def extract_shortcode(url):
+    """Extracts shortcode from Instagram URL."""
+    try:
+        parts = url.rstrip("/").split("/")
+        shortcode = parts[-2] if "?" in parts[-1] else parts[-1]
+        return shortcode
+    except Exception:
+        return None
+
 def process_instagram(url):
     """
     Downloads Instagram videos using yt-dlp or images using Instaloader.
-    If the file path does not exist, it automatically retries with Instaloader.
     """
     try:
-        # Ensure the download directory exists
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
         # ✅ Try downloading with yt-dlp (preferred for videos)
@@ -53,21 +60,23 @@ def process_instagram(url):
             file_ext = info_dict.get("ext", "mp4")
             file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{file_ext}")
 
-            # ✅ If file exists, return it
             if os.path.exists(file_path):
                 logger.info(f"✅ Video downloaded successfully: {file_path}")
                 return file_path, os.path.getsize(file_path)
 
-            logger.warning(f"⚠️ yt-dlp did not create the expected file. Retrying with Instaloader...")
+            logger.warning("⚠️ yt-dlp did not create the expected file. Retrying with Instaloader...")
 
     except Exception as e:
         logger.warning(f"⚠️ yt-dlp failed: {e}. Retrying with Instaloader...")
 
-    # ✅ Use Instaloader as fallback (for images and private content)
+    # ✅ Use Instaloader as fallback (for images & private posts)
     try:
-        shortcode = url.rstrip("/").split("/")[-1]
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        shortcode = extract_shortcode(url)
+        if not shortcode:
+            logger.error("❌ Failed to extract shortcode from URL.")
+            return None, 0
 
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
         user_folder = os.path.join(DOWNLOAD_DIR, post.owner_username)
         os.makedirs(user_folder, exist_ok=True)
 
@@ -86,22 +95,3 @@ def process_instagram(url):
     except Exception as e:
         logger.error(f"❌ Error downloading with Instaloader: {e}")
         return None, 0
-
-def download_instagram_story(username):
-    """
-    Downloads Instagram stories for a given username using Instaloader.
-    """
-    try:
-        profile = instaloader.Profile.from_username(L.context, username)
-        user_id = profile.userid  # ✅ Get user ID
-
-        story_path = os.path.join(DOWNLOAD_DIR, "stories", username)
-        os.makedirs(story_path, exist_ok=True)
-
-        L.download_stories(userids=[user_id], filename_target=story_path)
-        logger.info(f"✅ Stories downloaded for {username}")
-
-        return story_path
-    except Exception as e:
-        logger.error(f"❌ Error downloading stories: {e}")
-        return None
