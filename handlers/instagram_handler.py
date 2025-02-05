@@ -1,7 +1,7 @@
 import os
 import logging
 import yt_dlp
-from instalooter import InstaLooter
+from instalooter import instalooter
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
 
