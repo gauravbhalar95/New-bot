@@ -33,7 +33,7 @@ def process_adult(url):
             file_name = info.get('title', 'video.mp4')
             thumbnail_url = info.get('thumbnail')  # ✅ Get large thumbnail URL
 
-        return video_url, file_size, file_name, thumbnail_url
+        return video_url, file_size, file_name, thumbnail_url  # ✅ Return 4 values
     except Exception as e:
         print(f"Error processing URL: {url} - {e}")
         return None, None, None, None
@@ -41,7 +41,7 @@ def process_adult(url):
 # ✅ Example usage
 if __name__ == "__main__":
     test_url = "https://www.xvideos.com/video123456/test-video"
-    video_url, file_size, file_name, thumbnail = process_adult(test_url)
+    video_url, file_size, file_name, thumbnail = process_adult(test_url)  # ✅ Expect 4 values
     
     if video_url:
         print(f"🎥 Video URL: {video_url}")
