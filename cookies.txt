@@ -38,17 +38,19 @@
 .youtube.com	TRUE	/	TRUE	1770036294	__Secure-3PSIDCC	AKEyXzUviPXjysdE5PBIE5lrBTH39wiFOpCBpQvgqQxPyE9np7Nvfyixl9XxfpNAHV9HZJKumQ
 
 
-.x.com        TRUE        /        TRUE        1760692330        kdt        ngabJlDul5WKlYZOhDfr529mt50kILvxjp9jkN1c
-.x.com        TRUE        /        TRUE        1757668332        night_mode        2
-x.com        FALSE        /        TRUE        1741684328        g_state        {"i_l":0}
-.x.com        TRUE        /        TRUE        1760670144        dnt        1
-.x.com        TRUE        /        TRUE        1760670144        guest_id        v1%3A172611014479023409
-.x.com        TRUE        /        TRUE        1760692344        guest_id_marketing        v1%3A172611014479023409
-.x.com        TRUE        /        TRUE        1760692344        guest_id_ads        v1%3A172611014479023409
-.x.com        TRUE        /        TRUE        1726141320        gt        1834158009599263143
-.x.com        TRUE        /        TRUE        1760692330        auth_token        f23dac4796afef0323421669fd8c7f8d79ac2266
-.x.com        TRUE        /        TRUE        1760692331        ct0        155acb7e6a88beda629ec6c3c7c942fc073bed15cc4253f71b3de85b7e634551015941aea5fa16f5ae49c91ed9a32624736a857c29e2bf4528ec99cd70fc2e53db5303b837836cd87453ae384eec3288
-x.com        FALSE        /        FALSE        0        lang        en
-.x.com        TRUE        /        TRUE        1757668344        twid        u%3D1666375496257650688
-.x.com        TRUE        /        TRUE        1726218731        att        1-h7SyVcS0KvaAnOXIF281P6JzBO2G2oBAP3Tpulkg
-.x.com        TRUE        /        TRUE        1760692344        personalization_id        "v1_Nz8LZ5j5u96OhfR6ufxL9w=="
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.x.com	TRUE	/	TRUE	1770368431	guest_id	173883243110988172
+.x.com	TRUE	/	TRUE	1770368473	night_mode	2
+.x.com	TRUE	/	TRUE	1773392475	guest_id_marketing	v1%3A173883243110988172
+.x.com	TRUE	/	TRUE	1773392475	guest_id_ads	v1%3A173883243110988172
+.x.com	TRUE	/	TRUE	1738841432	gt	1887426134679429624
+.x.com	TRUE	/	TRUE	1773392469	kdt	pTGbK7HNSktWMxv4EA2HaGr6FvTDwryJq1Ve9hlc
+.x.com	TRUE	/	TRUE	1773392469	auth_token	64242affee441a997f8d713cd133c4b4b27a698e
+.x.com	TRUE	/	TRUE	1773392469	ct0	32a3e6e2bf88418dc167a2004b94258b4559075114ca8eed124847967f16496de0be5938dc0e29dbadf9ae4488b4b6581454856a61041a277537124794415a154f023b6a5792c809af52da630e3156e8
+.x.com	TRUE	/	TRUE	1738918870	att	1-gIvIYNIVD28pRZ1wbBPn1CZuOhEfiKUp1eoKPBGp
+x.com	FALSE	/	FALSE	0	lang	en
+.x.com	TRUE	/	TRUE	1770368476	twid	u%3D1666375496257650688
+.x.com	TRUE	/	TRUE	1770368474	personalization_id	"v1_reuLb3fejqLjZhyc0eoUuw=="
