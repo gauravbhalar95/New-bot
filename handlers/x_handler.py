@@ -2,6 +2,8 @@ import yt_dlp
 import os
 import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
+# Import the generate_thumbnail function from code.py
+from utils.generate_thumbnail import generate_thumbnail  # Assuming generate_thumbnail is in code.py
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +46,10 @@ def download_twitter_media(url):
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
+            # Call generate_thumbnail after video is downloaded
+            thumbnail_path = generate_thumbnail(file_path)
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            
             return file_path, file_size
 
     except yt_dlp.DownloadError as e:
