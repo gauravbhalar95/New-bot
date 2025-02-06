@@ -58,7 +58,7 @@ def handle_message(message):
         elif platform == "adult":
             result = process_adult(url)
         elif platform == "twitter":
-            result = download_twitter_media(url)
+            result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
         else:
             result = None
 
