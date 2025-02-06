@@ -94,7 +94,7 @@ def handle_message(message):
         logger.error(f"⚠️ Error sending video: {e}")
         bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
 
-# ✅ Flask Webhook Setup
+# Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
@@ -104,24 +104,9 @@ def webhook():
 
 @app.route('/')
 def set_webhook():
-    """Check if the webhook is already set before updating it."""
-    webhook_info = bot.get_webhook_info()
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
 
-    if webhook_info.url == f"{WEBHOOK_URL}/{API_TOKEN}":
-        logger.info("✅ Webhook is already set correctly.")
-        return "Webhook is already set", 200
-
-    # Remove the existing webhook only if it's incorrect
-    if webhook_info.url:
-        bot.remove_webhook()
-        logger.info("🔄 Webhook removed.")
-
-    # Set the new webhook
-    success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-
-    if success:
-        logger.info(f"✅ Webhook set to {WEBHOOK_URL}/{API_TOKEN}")
-        return "Webhook set successfully", 200
-    else:
-        logger.error("❌ Failed to set webhook.")
-        return "Webhook failed", 500
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=PORT)
