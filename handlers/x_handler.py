@@ -1,5 +1,6 @@
 import yt_dlp
 import os
+import telebot
 import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
