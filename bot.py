@@ -67,18 +67,27 @@ def handle_message(message):
             return
 
         # ✅ Handle different return values properly
-        if len(result) == 3:
-            file_path, file_size, thumb_path = result
-        elif len(result) == 2:
-            file_path, file_size = result
-            thumb_path = None
+        if isinstance(result, tuple):
+            if len(result) == 3:
+                file_path, file_size, thumb_path = result
+            elif len(result) == 2:
+                file_path, file_size = result
+                thumb_path = None
+            else:
+                bot.reply_to(message, "❌ Unexpected response from the downloader.")
+                return
         else:
-            bot.reply_to(message, "❌ Unexpected response from the downloader.")
+            bot.reply_to(message, "❌ Invalid response format.")
+            return
+
+        # ✅ Ensure file exists before sending
+        if not os.path.exists(file_path):
+            bot.reply_to(message, "❌ Error: File not found.")
             return
 
         # ✅ Send video with optional thumbnail
         with open(file_path, 'rb') as video:
-            thumb = open(thumb_path, 'rb') if thumb_path else None
+            thumb = open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
             bot.send_video(
                 message.chat.id,
                 video,
@@ -99,14 +108,22 @@ app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    try:
+        bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"⚠️ Webhook error: {e}")
+        return "ERROR", 500
 
 @app.route('/')
 def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "Webhook set", 200
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+        return "Webhook set", 200
+    except Exception as e:
+        logger.error(f"⚠️ Webhook setup error: {e}")
+        return "ERROR", 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT)
