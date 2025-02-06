@@ -24,10 +24,18 @@ def process_adult(url):
     """Download video if it's small; otherwise, return streaming link."""
     try:
         ydl_opts = {
-            'format': 'best',
-            'noplaylist': True,
-            'quiet': True,
+        'outtmpl': output_path,
+        'format': 'mp4/best',
+        'noplaylist': True,
+        'socket_timeout': 10,
+        'retries': 5,
+        'quiet': False,
+        'nocheckcertificate': True,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            
         }
+    }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
