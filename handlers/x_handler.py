@@ -4,6 +4,10 @@ import telebot
 import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
+from config import API_TOKEN
+
+# ✅ Initialize bot in webhook mode (no polling)
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
