@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Max download size in bytes
 MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100MB limit
 
-def process_adult(url, chat_id):
+def process_adult(video_path, chat_id):
     """Download video if it's small; otherwise, return streaming link, and send thumbnail."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
