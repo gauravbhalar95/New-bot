@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_DIR = "thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
-def generate_thumbnail(video_path, size=(2160, 1080)):
+def generate_thumbnail(video_path, size=(3840, 2160)):
     """
-    Generate a thumbnail for the given video and save it as an image.
+    Generate a high-definition thumbnail for the given video and save it as an image.
     :param video_path: Path to the video file.
-    :param size: Thumbnail size (width, height).
+    :param size: Thumbnail size (width, height). Default is 4K resolution (3840x2160).
     :return: Path to the generated thumbnail.
     """
     try:
@@ -29,12 +29,14 @@ def generate_thumbnail(video_path, size=(2160, 1080)):
         # ✅ Convert frame to image
         thumb_path = os.path.join(THUMBNAIL_DIR, os.path.basename(video_path) + ".jpg")
         img = Image.fromarray(frame)
-        img.thumbnail(size)
-        img.save(thumb_path, "JPEG")
 
-        logger.info(f"✅ Thumbnail saved: {thumb_path}")
+        # ✅ Resize the image to HD resolution and save with high quality
+        img = img.resize(size, Image.ANTIALIAS)  # Ensure it gets resized to the HD resolution
+        img.save(thumb_path, "JPEG", quality=95)  # Save with high quality
+
+        logger.info(f"✅ HD Thumbnail saved at: {thumb_path}")
         return thumb_path
 
     except Exception as e:
-        logger.error(f"❌ Failed to generate thumbnail: {e}")
+        logger.error(f"⚠️ Failed to generate thumbnail: {e}")
         return None
