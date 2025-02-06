@@ -13,20 +13,23 @@ def download_twitter_media(url):
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
-    # yt-dlp options
     ydl_opts = {
-        'outtmpl': output_path,
-        'format': 'best',
-        'merge_output_format': 'mp4',
-        'quiet': False,
-        'noplaylist': True,
-        'socket_timeout': 10,
-        'retries': 5,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
-        }
-    }
+    'outtmpl': output_path,
+    'format': 'best',
+    'merge_output_format': 'mp4',
+    'quiet': False,
+    'noplaylist': True,
+    'socket_timeout': 10,
+    'retries': 5,
+    'headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Referer': 'https://x.com/'
+    },
+    'postprocessors': [
+        {'key': 'ModifyChaptersPP', 'remove_sponsor_segments': ['all']},  # Remove sponsor segments if any
+        {'key': 'MetadataParser', 'remove': ['thumbnails']}  # Prevent embedding thumbnails
+    ]
+}
 
     # Add cookies if available
     if os.path.exists(COOKIES_FILE):
