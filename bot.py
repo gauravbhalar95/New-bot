@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 # ✅ Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'xvideos.com', 'xnxx.com',
-    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'twitter.com', 'tube8.com', 'spankbang.com'
+    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'twitter.com', 
+    'tube8.com', 'spankbang.com'
 ]
 
 def detect_platform(url):
@@ -31,15 +32,16 @@ def detect_platform(url):
         return "twitter"
     elif any(domain in url for domain in SUPPORTED_DOMAINS):
         return "adult"
-    else:
-        return None
+    return None
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    """Start command handler."""
     bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, Twitter (X), or adult site link to download.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
+    """Handles incoming messages and processes the URLs."""
     url = message.text.strip()
     platform = detect_platform(url)
 
@@ -51,16 +53,16 @@ def handle_message(message):
 
     try:
         # ✅ Process based on platform type
-if platform == "youtube":
-    result = process_youtube(url)
-elif platform == "instagram":
-    result = process_instagram(url)
-elif platform == "adult":
-    result = process_adult(url, message.chat.id)  # Pass chat_id here
-elif platform == "twitter":
-    result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
-else:
-    result = None
+        if platform == "youtube":
+            result = process_youtube(url)
+        elif platform == "instagram":
+            result = process_instagram(url)
+        elif platform == "adult":
+            result = process_adult(url, message.chat.id)  # Pass chat_id here
+        elif platform == "twitter":
+            result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
+        else:
+            result = None
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
@@ -103,12 +105,12 @@ else:
         logger.error(f"⚠️ Error sending video: {e}")
         bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
 
-
 # Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
+    """Webhook to process new updates."""
     try:
         bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
         return "OK", 200
@@ -118,6 +120,7 @@ def webhook():
 
 @app.route('/')
 def set_webhook():
+    """Set the webhook for Telegram."""
     try:
         bot.remove_webhook()
         bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
@@ -127,4 +130,5 @@ def set_webhook():
         return "ERROR", 500
 
 if __name__ == '__main__':
+    # Run the Flask app
     app.run(host='0.0.0.0', port=PORT)
