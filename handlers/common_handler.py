@@ -16,9 +16,12 @@ SUPPORTED_SITES = [
     "redtube.com", "tube8.com", "spankbang.com"
 ]
 
+# ✅ Define max download size (in bytes)
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100MB limit
+
 # ✅ Download or get streaming link
 def process_adult(url):
-    """Download video or return streaming link with thumbnail."""
+    """Download video if it's small; otherwise, return streaming link."""
     try:
         ydl_opts = {
             'format': 'best',
@@ -31,20 +34,17 @@ def process_adult(url):
             video_url = info.get('url')  # ✅ Get direct streaming URL
             file_size = info.get('filesize') or 0  # ✅ Handle None case
             file_name = info.get('title', 'video.mp4')
-            thumbnail_url = info.get('thumbnail')  # ✅ Get large thumbnail URL
+            thumbnail = info.get('thumbnail')  # ✅ Get video thumbnail
 
-        return video_url, file_size, file_name, thumbnail_url  # ✅ Return 4 values
+        if file_size and file_size <= MAX_DOWNLOAD_SIZE:
+            # ✅ Download the video
+            ydl_opts['outtmpl'] = file_name
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            return file_name, file_size, thumbnail, True  # ✅ Downloaded
+
+        return video_url, file_size, thumbnail, False  # ✅ Streaming link
+
     except Exception as e:
         print(f"Error processing URL: {url} - {e}")
         return None, None, None, None
-
-# ✅ Example usage
-if __name__ == "__main__":
-    test_url = "https://www.xvideos.com/video123456/test-video"
-    video_url, file_size, file_name, thumbnail = process_adult(test_url)  # ✅ Expect 4 values
-    
-    if video_url:
-        print(f"🎥 Video URL: {video_url}")
-        print(f"📂 File Name: {file_name}")
-        print(f"📦 File Size: {file_size} bytes")
-        print(f"🖼️ Thumbnail: {thumbnail}")  # ✅ Large Thumbnail URL
