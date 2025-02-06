@@ -12,7 +12,7 @@ def download_twitter_media(url):
     # Base options
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'best',
         'merge_output_format': 'mp4',
         'quiet': False  # Set to False for debugging
     }
