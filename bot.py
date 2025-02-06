@@ -51,16 +51,16 @@ def handle_message(message):
 
     try:
         # ✅ Process based on platform type
-        if platform == "youtube":
-            result = process_youtube(url)
-        elif platform == "instagram":
-            result = process_instagram(url)
-        elif platform == "adult":
-            result = process_adult(url)
-        elif platform == "twitter":
-            result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
-        else:
-            result = None
+if platform == "youtube":
+    result = process_youtube(url)
+elif platform == "instagram":
+    result = process_instagram(url)
+elif platform == "adult":
+    result = process_adult(url, message.chat.id)  # Pass chat_id here
+elif platform == "twitter":
+    result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
+else:
+    result = None
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
