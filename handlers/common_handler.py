@@ -1,65 +1,74 @@
 import os
 import telebot
 import yt_dlp
-import cloudscraper
-from config import API_TOKEN  # Import API Token
+import logging
+from config import API_TOKEN, DOWNLOAD_DIR
+from utils.thumb_generator import generate_thumbnail
 
-# Initialize bot with API Token
+# Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
-# CloudScraper settings (for scraping content if needed)
-scraper = cloudscraper.create_scraper()
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Supported adult sites
-SUPPORTED_SITES = [
-    "xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com",
-    "redtube.com", "tube8.com", "spankbang.com"
-]
-
-# Maximum file size for download (in bytes)
+# Max download size in bytes
 MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100MB limit
 
-def process_adult(url):
-    """
-    Process adult video URL: 
-    - If the video is under the size limit, download it.
-    - Otherwise, return the streaming URL.
-    """
-    try:
-        # YouTube-DL options for fetching and downloading the video
-        ydl_opts = {
-            'outtmpl': 'output_path',  # Template for output file path
-            'format': 'mp4/best',      # Download the best quality mp4
-            'noplaylist': True,        # Ignore playlists (download one video)
-            'socket_timeout': 10,      # Timeout for sockets
-            'retries': 5,              # Retry 5 times on failure
-            'quiet': False,            # Show process output
-            'nocheckcertificate': True, # Disable certificate check
-            'headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'  # User agent string for scraping
-            },
-            'verbose': True  # Verbose output for debugging
-        }
+def process_adult(url, chat_id):
+    """Download video if it's small; otherwise, return streaming link, and send thumbnail."""
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-        # Extract video info (without downloading it)
+    # Output path for downloading videos
+    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+
+    ydl_opts = {
+        'outtmpl': output_path,
+        'format': 'mp4/best',  # Best quality in mp4 format
+        'noplaylist': True,    # Don't download playlists
+        'socket_timeout': 10,
+        'retries': 5,
+        'quiet': False,
+        'nocheckcertificate': True,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        'verbose': True
+    }
+
+    try:
+        # Extract video information without downloading
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            video_url = info.get('url')  # Direct streaming URL
-            file_size = info.get('filesize') or 0  # Handle None case
-            file_name = info.get('title', 'video.mp4')  # Default to 'video.mp4' if no title
-            thumbnail = info.get('thumbnail')  # Get video thumbnail
+            video_url = info.get('url')  # Streaming URL
+            file_size = info.get('filesize') or 0  # File size
+            file_name = info.get('title', 'video.mp4')  # Default title if none provided
+            thumbnail = info.get('thumbnail')  # Thumbnail
 
-        # If the file size is under the limit, download it
+        # If video size is within limit, download the video
         if file_size and file_size <= MAX_DOWNLOAD_SIZE:
-            ydl_opts['outtmpl'] = file_name  # Set the output file name
+            ydl_opts['outtmpl'] = file_name  # Update output filename
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])  # Download the video
-            return file_name, file_size, thumbnail, True  # Download successful
+                ydl.download([url])
 
-        # If the video is too large, return the streaming URL
-        return video_url, file_size, thumbnail, False  # Streaming link
+            # Generate thumbnail after video download
+            file_path = os.path.join(DOWNLOAD_DIR, file_name)
+            thumbnail_path = generate_thumbnail(file_path)
+            logger.info(f"Thumbnail generated: {thumbnail_path}")
 
+            # Send thumbnail before sending the video
+            if os.path.exists(thumbnail_path):
+                with open(thumbnail_path, 'rb') as thumb:
+                    bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
+
+            return file_path, file_size, thumbnail_path, True  # Return success
+
+        # Return streaming link if video is too large
+        return video_url, file_size, thumbnail, False
+
+    except yt_dlp.DownloadError as e:
+        logger.error(f"Download failed: {e}")
     except Exception as e:
-        # Print any error that occurs during the process
-        print(f"Error processing URL: {url} - {e}")
-        return None, None, None, None  # Return None in case of error
+        logger.error(f"Unexpected error: {e}")
+
+    return None, None, None, None  # Return None in case of failure
