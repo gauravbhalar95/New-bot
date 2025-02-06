@@ -14,14 +14,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def download_twitter_media(url, chat_id):
-    """Downloads a Twitter/X video, sends thumbnail first, and then returns (file_path, file_size)."""
+    """Downloads a Twitter/X video in HD, sends thumbnail first, and then returns (file_path, file_size)."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
+    # Ensure that the video downloaded is in the highest quality available (HD)
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'mp4/best',
+        'format': 'bestvideo[height<=1080]+bestaudio/best',  # HD quality, max 1080p video
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
@@ -66,4 +67,4 @@ def download_twitter_media(url, chat_id):
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
 
-    return None"
+    return None
