@@ -2,15 +2,13 @@ import yt_dlp
 import os
 import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
-# Import the generate_thumbnail function from code.py
-from utils.thumb_generator import generate_thumbnail  # Assuming generate_thumbnail is in code.py
-
+from utils.thumb_generator import generate_thumbnail
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def download_twitter_media(url, chat_id):
+def download_twitter_media(url, chat_id, bot):
     """Downloads a Twitter/X video, sends thumbnail first, and then returns (file_path, file_size)."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
