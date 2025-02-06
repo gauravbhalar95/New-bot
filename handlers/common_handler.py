@@ -23,19 +23,18 @@ MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100MB limit
 def process_adult(url):
     """Download video if it's small; otherwise, return streaming link."""
     try:
-    ydl_opts = {
-        'outtmpl': output_path,
-        'format': 'mp4/best',
-        'noplaylist': True,
-        'socket_timeout': 10,
-        'retries': 5,
-        'quiet': False,
-        'nocheckcertificate': True,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            
+        ydl_opts = {
+            'outtmpl': 'output_path',  # Specify the correct output path
+            'format': 'mp4/best',
+            'noplaylist': True,
+            'socket_timeout': 10,
+            'retries': 5,
+            'quiet': False,
+            'nocheckcertificate': True,
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            }
         }
-    }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
