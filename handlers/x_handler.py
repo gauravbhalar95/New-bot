@@ -3,7 +3,7 @@ import os
 import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
 # Import the generate_thumbnail function from code.py
-from utils.generate_thumbnail import generate_thumbnail  # Assuming generate_thumbnail is in code.py
+from utils.thumb_generator import generate_thumbnail  # Assuming generate_thumbnail is in code.py
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
