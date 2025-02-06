@@ -48,40 +48,46 @@ def handle_message(message):
     bot.reply_to(message, f"⏳ Downloading from {platform.capitalize()}... Please wait.")
 
     try:
-        if platform == "youtube":
-            result = process_youtube(url)
-        elif platform == "instagram":
-            result = process_instagram(url)
-        elif platform == "adult":
-            result = process_adult(url)
-        elif platform == "instaloader":
-            result = extract_shortcode(url)
-        elif platform == "twitter":
-            result = download_twitter_media(url)
+    if platform == "youtube":
+        result = process_youtube(url)
+    elif platform == "instagram":
+        result = process_instagram(url)
+    elif platform == "adult":
+        result = process_adult(url)
+    elif platform == "twitter":
+        result = download_twitter_media(url)
 
-        if not result:
-            bot.reply_to(message, "❌ Download failed. Please try again later.")
-            return
+    if not result:
+        bot.reply_to(message, "❌ Download failed. Please try again later.")
+        return
 
-        file_path, file_size, thumb_path = result if len(result) == 3 else (*result, None)
+    # ✅ Handle different return values properly
+    if len(result) == 3:
+        file_path, file_size, thumb_path = result
+    elif len(result) == 2:
+        file_path, file_size = result
+        thumb_path = None
+    else:
+        bot.reply_to(message, "❌ Unexpected response from the downloader.")
+        return
 
-        # ✅ Send video with thumbnail if available
-        with open(file_path, 'rb') as video:
-            thumb = open(thumb_path, 'rb') if thumb_path else None
-            bot.send_video(
-                message.chat.id,
-                video,
-                thumb=thumb,
-                caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
-            )
-            if thumb:
-                thumb.close()
+    # ✅ Send video with optional thumbnail
+    with open(file_path, 'rb') as video:
+        thumb = open(thumb_path, 'rb') if thumb_path else None
+        bot.send_video(
+            message.chat.id,
+            video,
+            thumb=thumb,
+            caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
+        )
+        if thumb:
+            thumb.close()
 
-        logger.info(f"✔ Video sent: {file_path}")
+    logger.info(f"✔ Video sent: {file_path}")
 
-    except Exception as e:
-        logger.error(f"⚠️ Error sending video: {e}")
-        bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
+except Exception as e:
+    logger.error(f"⚠️ Error sending video: {e}")
+    bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
 
 # ✅ Flask Webhook Setup
 app = Flask(__name__)
