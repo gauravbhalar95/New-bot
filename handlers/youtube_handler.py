@@ -12,20 +12,25 @@ from config import DOWNLOAD_DIR, COOKIES_FILE
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 def process_youtube(url):
     """
-    Downloads YouTube video using yt-dlp.
-    Falls back to pytube if yt-dlp fails.
+    Downloads a YouTube video using yt-dlp. Falls back to pytube if yt-dlp fails.
     """
+    output_path = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"{url.split('v=')[1]}.mp4"))
+
     ydl_opts = {
-        "format": "best[ext=mp4]/best",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-        "socket_timeout": 10,
-        "retries": 5,
+        'outtmpl': output_path,
+        'format': 'bestvideo[height<=1080]+bestaudio/best',  # HD quality, max 1080p video
+        'noplaylist': True,
+        'socket_timeout': 10,
+        'retries': 5,
+        'quiet': False,
+        'nocheckcertificate': True,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        }
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -107,7 +112,7 @@ if __name__ == "__main__":
     youtube_url = "https://www.youtube.com/watch?v=XYZ123"  # Replace with actual URL
 
     # Download video
-    video_path, size = download_video(youtube_url)
+    video_path, size = process_youtube(youtube_url)
     print(f"Downloaded: {video_path} (Size: {size} bytes)")
 
     # Convert to audio
