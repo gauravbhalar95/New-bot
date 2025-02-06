@@ -1,6 +1,6 @@
 import yt_dlp
 import os
-from config import DOWNLOAD_DIR
+from config import DOWNLOAD_DIR, COOKIES_FILE
 
 def download_twitter_media(url):
     """Downloads a Twitter/X video and returns (file_path, file_size)."""
@@ -12,6 +12,7 @@ def download_twitter_media(url):
 
     ydl_opts = {
         'outtmpl': output_path,
+        "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'quiet': False  # Set to False for debugging
