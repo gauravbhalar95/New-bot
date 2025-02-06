@@ -8,10 +8,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def download_twitter_media(url):
-    """Downloads a Twitter/X video and returns (file_path, file_size)."""
+    """Downloads a Twitter/X video and its best-quality thumbnail."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    thumbnail_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': output_path,
@@ -21,6 +22,8 @@ def download_twitter_media(url):
         'retries': 5,
         'quiet': False,
         'nocheckcertificate': True,
+        'write_thumbnail': True,  # Download the thumbnail
+        'skip_download': False,  # Ensure the video gets downloaded
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://x.com/'
@@ -44,7 +47,11 @@ def download_twitter_media(url):
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-            return file_path, file_size
+            # Extract the best thumbnail URL
+            best_thumbnail = info_dict.get("thumbnails", [])[-1] if info_dict.get("thumbnails") else None
+            thumbnail_url = best_thumbnail["url"] if best_thumbnail else None
+
+            return file_path, file_size, thumbnail_url
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
