@@ -1,55 +1,43 @@
-import os
-import logging
 import yt_dlp
-import requests
-from config import DOWNLOAD_DIR  # Make sure you have this or set the directory
-from utils.sanitize import sanitize_filename
-
-# Logger setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Ensure the download directory exists
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+import os
+from config import DOWNLOAD_DIR
 
 def download_twitter_media(url):
-    """
-    Downloads media (videos or images) from a Twitter URL using yt-dlp.
-    """
+    """Downloads a Twitter/X video and returns (file_path, file_size)."""
+    output_dir = "downloads"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Define the output filename
+    output_path = os.path.join(output_dir, "twitter_video.%(ext)s")
+
+    ydl_opts = {
+        'outtmpl': output_path,
+        'format': 'bestvideo+bestaudio/best',
+        'merge_output_format': 'mp4',
+        'quiet': False  # Set to False for debugging
+    }
+
     try:
-        # Set options for yt-dlp to download the best quality video or image
-        ydl_opts = {
-            "format": "best",
-            "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-            "retries": 5,
-            "socket_timeout": 10,
-            "noplaylist": True,
-            "quiet": False,  # Show download progress
-            "extract_audio": False,
-            "cookiefile": None,  # You can set a cookie file if required for private media
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
-            },
-        }
-
-        # Using yt-dlp to download the content
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            filename = sanitize_filename(info_dict.get("title", "twitter_post"))
-            file_ext = info_dict.get("ext", "mp4")
-            file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{file_ext}")
+            info = ydl.extract_info(url, download=True)
 
-            if os.path.exists(file_path):
-                logger.info(f"✅ Media downloaded successfully: {file_path}")
-                return file_path, os.path.getsize(file_path)
-            else:
-                logger.error("❌ yt-dlp failed to download media.")
-                return None, 0
+            # Ensure we got a valid file path
+            if not info:
+                print("❌ Error: No video information found.")
+                return None
+            
+            # Get the final downloaded file path
+            downloaded_files = ydl.prepare_filename(info)
+            file_path = downloaded_files.replace("%(ext)s", "mp4")
+
+            # Check if the file exists
+            if not os.path.exists(file_path):
+                print(f"❌ Error: File not found - {file_path}")
+                return None
+
+            file_size = os.path.getsize(file_path)
+            return file_path, file_size
 
     except Exception as e:
-        logger.error(f"❌ Error downloading media from Twitter: {e}")
-        return None, 0
-
-# Test with a Twitter URL
-url = "https://x.com/Annupriya997134/status/1885711437986971650?t=0f5kriI0_9dntqWw5dnkGg&s=09"  # Replace with an actual URL
-download_twitter_media(url)
+        print(f"⚠️ Twitter Download Error: {e}")
+        return None
