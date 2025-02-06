@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_DIR = "thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
 
-def generate_thumbnail(video_path, size=(320, 180)):
+def generate_thumbnail(video_path, size=(2160, 1080)):
     """
     Generate a thumbnail for the given video and save it as an image.
     :param video_path: Path to the video file.
