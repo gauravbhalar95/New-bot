@@ -38,12 +38,6 @@ def detect_platform(url):
 def start(message):
     bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, Twitter (X), or adult site link to download.")
 
-@bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    chat_id = message.chat.id  # Get chat ID from the message
-    # Call process_adult with chat_id
-    process_adult(video_path, chat_id)
-
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -108,6 +102,12 @@ def handle_message(message):
     except Exception as e:
         logger.error(f"⚠️ Error sending video: {e}")
         bot.reply_to(message, f"❌ Error processing your request. {str(e)}")
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    chat_id = message.chat.id  # Get chat ID from the message
+    # Call process_adult with chat_id
+    process_adult(video_path, chat_id)
 
 # Flask app for webhook
 app = Flask(__name__)
