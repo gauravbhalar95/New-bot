@@ -8,7 +8,6 @@ from utils.sanitize import sanitize_filename
 username = INSTAGRAM_USERNAME
 password = INSTAGRAM_PASSWORD
 
-
 # Logger setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +50,7 @@ def process_instagram(url, username=None, password=None):
 
         # ✅ Attempt with yt-dlp first (for videos)
         ydl_opts = {
-            "format": "best",
+            "format": "bestvideo[height<=1080]+bestaudio/best",  # Ensure HD video download
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
             "retries": 5,
             "socket_timeout": 10,
