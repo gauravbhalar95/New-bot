@@ -104,10 +104,19 @@ def webhook():
 
 @app.route('/')
 def set_webhook():
-    """First remove the webhook, then set a new one."""
-    bot.remove_webhook()
-    logger.info("🔄 Webhook removed.")
+    """Check if the webhook is already set before updating it."""
+    webhook_info = bot.get_webhook_info()
 
+    if webhook_info.url == f"{WEBHOOK_URL}/{API_TOKEN}":
+        logger.info("✅ Webhook is already set correctly.")
+        return "Webhook is already set", 200
+
+    # Remove the existing webhook only if it's incorrect
+    if webhook_info.url:
+        bot.remove_webhook()
+        logger.info("🔄 Webhook removed.")
+
+    # Set the new webhook
     success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
 
     if success:
@@ -116,7 +125,3 @@ def set_webhook():
     else:
         logger.error("❌ Failed to set webhook.")
         return "Webhook failed", 500
-
-if __name__ == '__main__':
-    logger.info(f"🚀 Starting bot on port {PORT}...")
-    app.run(host='0.0.0.0', port=PORT)
