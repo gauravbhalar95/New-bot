@@ -4,34 +4,37 @@ from config import DOWNLOAD_DIR, COOKIES_FILE
 
 def download_twitter_media(url):
     """Downloads a Twitter/X video and returns (file_path, file_size)."""
-    output_dir = "downloads"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Define the output filename
-    output_path = os.path.join(output_dir, "twitter_video.%(ext)s")
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+    # Define the output filename
+    output_path = os.path.join(DOWNLOAD_DIR, "twitter_video.%(ext)s")
+
+    # Base options
     ydl_opts = {
         'outtmpl': output_path,
-        "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'quiet': False  # Set to False for debugging
     }
 
+    # Add cookies only if the file exists
+    if os.path.exists(COOKIES_FILE):
+        ydl_opts["cookiefile"] = COOKIES_FILE
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-            # Ensure we got a valid file path
+            # Ensure valid response
             if not info:
                 print("❌ Error: No video information found.")
                 return None
-            
-            # Get the final downloaded file path
+
+            # Get downloaded file path
             downloaded_files = ydl.prepare_filename(info)
             file_path = downloaded_files.replace("%(ext)s", "mp4")
 
-            # Check if the file exists
+            # Validate file existence
             if not os.path.exists(file_path):
                 print(f"❌ Error: File not found - {file_path}")
                 return None
