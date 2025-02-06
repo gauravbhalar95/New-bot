@@ -9,8 +9,8 @@ from utils.thumb_generator import generate_thumbnail  # Assuming generate_thumbn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def download_twitter_media(url):
-    """Downloads a Twitter/X video and returns (file_path, file_size)."""
+def download_twitter_media(url, chat_id):
+    """Downloads a Twitter/X video, sends thumbnail first, and then returns (file_path, file_size)."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
@@ -49,8 +49,13 @@ def download_twitter_media(url):
             # Call generate_thumbnail after video is downloaded
             thumbnail_path = generate_thumbnail(file_path)
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-            
-            return file_path, file_size
+
+            # Send the thumbnail before the video
+            if os.path.exists(thumbnail_path):
+                with open(thumbnail_path, 'rb') as thumb:
+                    bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
+
+            return file_path, file_size, thumbnail_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
