@@ -51,5 +51,5 @@ def download_twitter_media(url):
         return None, 0
 
 # Test with a Twitter URL
-url = "https://twitter.com/username/status/1234567890123456789"  # Replace with an actual URL
+url = "https://x.com/Annupriya997134/status/1885711437986971650?t=0f5kriI0_9dntqWw5dnkGg&s=09"  # Replace with an actual URL
 download_twitter_media(url)
