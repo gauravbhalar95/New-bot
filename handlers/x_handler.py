@@ -1,47 +1,52 @@
 import yt_dlp
 import os
+import logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def download_twitter_media(url):
     """Downloads a Twitter/X video and returns (file_path, file_size)."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    # Define the output filename
-    output_path = os.path.join(DOWNLOAD_DIR, "twitter_video.%(ext)s")
+    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
-    # Base options
+    # yt-dlp options
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'best',
         'merge_output_format': 'mp4',
-        'quiet': False  # Set to False for debugging
+        'quiet': False,
+        'noplaylist': True,
+        'socket_timeout': 10,
+        'retries': 5,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://x.com/'
+        }
     }
 
-    # Add cookies only if the file exists
+    # Add cookies if available
     if os.path.exists(COOKIES_FILE):
         ydl_opts["cookiefile"] = COOKIES_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info_dict = ydl.extract_info(url, download=True)
 
             # Ensure valid response
-            if not info:
-                print("❌ Error: No video information found.")
+            if not info_dict or "requested_downloads" not in info_dict:
+                logger.error("❌ No video found.")
                 return None
 
-            # Get downloaded file path
-            downloaded_files = ydl.prepare_filename(info)
-            file_path = downloaded_files.replace("%(ext)s", "mp4")
+            # Get actual downloaded file path
+            file_path = info_dict["requested_downloads"][0]["filepath"]
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-            # Validate file existence
-            if not os.path.exists(file_path):
-                print(f"❌ Error: File not found - {file_path}")
-                return None
-
-            file_size = os.path.getsize(file_path)
             return file_path, file_size
 
     except Exception as e:
-        print(f"⚠️ Twitter Download Error: {e}")
+        logger.error(f"⚠️ Twitter Download Error: {e}")
         return None
