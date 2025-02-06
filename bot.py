@@ -5,7 +5,7 @@ import telebot
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media
+from handlers.x_handler import download_twitter_media  # Ensure this function works
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # ✅ Initialize bot in webhook mode (no polling)
@@ -18,15 +18,17 @@ logger = logging.getLogger(__name__)
 # ✅ Supported domains
 SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'xvideos.com', 'xnxx.com',
-    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'tube8.com', 'spankbang.com'
+    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'twitter.com', 'tube8.com', 'spankbang.com'
 ]
 
 def detect_platform(url):
-    """Detects if the URL is from YouTube, Instagram, or other supported sites."""
+    """Detects if the URL is from YouTube, Instagram, Twitter, or other supported sites."""
     if any(domain in url for domain in ["youtube.com", "youtu.be"]):
         return "youtube"
     elif "instagram.com" in url:
         return "instagram"
+    elif any(domain in url for domain in ["x.com", "twitter.com"]):
+        return "twitter"
     elif any(domain in url for domain in SUPPORTED_DOMAINS):
         return "adult"
     else:
@@ -34,7 +36,7 @@ def detect_platform(url):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, or adult site link to download.")
+    bot.reply_to(message, "👋 Welcome! Send me a YouTube, Instagram, Twitter (X), or adult site link to download.")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
@@ -42,7 +44,7 @@ def handle_message(message):
     platform = detect_platform(url)
 
     if not platform:
-        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube, Instagram, or supported adult site link.")
+        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube, Instagram, Twitter (X), or supported adult site link.")
         return
 
     bot.reply_to(message, f"⏳ Downloading from {platform.capitalize()}... Please wait.")
