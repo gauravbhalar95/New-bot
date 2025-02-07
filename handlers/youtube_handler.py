@@ -23,7 +23,7 @@ def get_video_id(url):
         return "unknown_video"
 
 def process_youtube(url):
-    """ Downloads a YouTube video using yt-dlp with authentication cookies. """
+    """Downloads a YouTube video using yt-dlp with authentication cookies."""
     video_id = get_video_id(url)
     output_path = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"{video_id}.mp4"))
 
@@ -35,7 +35,7 @@ def process_youtube(url):
         'retries': 5,
         'quiet': False,
         'nocheckcertificate': True,
-        'cookies': COOKIES_FILE,  # Use authentication cookies
+        'cookies': COOKIES_FILE,  # Ensure cookies file exists
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         }
@@ -44,17 +44,27 @@ def process_youtube(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get("filesize", 0)
-            return file_path, file_size
+
+            # Log what yt-dlp returns
+            logger.info(f"yt-dlp info_dict: {info_dict}")
+
+            file_path = ydl.prepare_filename(info_dict) if info_dict else None
+            file_size = info_dict.get("filesize", 0) if info_dict else 0
+
+            if file_path and os.path.exists(file_path):
+                logger.info(f"Download successful: {file_path}")
+                return file_path, file_size
+            else:
+                logger.error("yt-dlp did not return a valid file path.")
+                return None, 0
+
     except Exception as e:
         logger.error(f"yt-dlp failed: {e}")
         return None, 0
 
 # Example Usage
 if __name__ == "__main__":
-    youtube_url = "https://youtube.com/shorts/yWzKm1WkEyI?si=FT7Zd5vLqFKnewJs"
-
+    
     # Download video with cookies authentication
     video_path, size = process_youtube(youtube_url)
     if video_path:
