@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  
 
 def process_adult(url, chat_id):
-    """Downloads an adult video in HD, generates a thumbnail, and sends it before sending the video."""
+    """Downloads an adult video, generates a thumbnail, and sends a streaming link if too large."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_template = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
@@ -46,14 +46,20 @@ def process_adult(url, chat_id):
                 logger.error("❌ No video found.")
                 return None, None, None, None
 
-            # ✅ Get correct file path
-            file_path = ydl.prepare_filename(info_dict)
-            
-            if not os.path.exists(file_path):
-                logger.error(f"⚠️ File not found: {file_path}")
-                return None, None, None, None
+            # ✅ Extract streaming link if available
+            video_url = info_dict.get("url")
+            file_path = info_dict.get("requested_downloads", [{}])[0].get("filepath")
+
+            if not file_path or not os.path.exists(file_path):
+                logger.warning(f"⚠️ Download failed. Returning streaming link: {video_url}")
+                return None, None, None, video_url  # Return streamable link
 
             file_size = os.path.getsize(file_path)
+
+            # ✅ If file size exceeds limit, return stream link instead
+            if file_size > MAX_DOWNLOAD_SIZE:
+                logger.warning(f"⚠️ File too large ({file_size} bytes). Sending streaming link instead.")
+                return None, file_size, None, video_url  
 
             # ✅ Generate and send thumbnail
             thumbnail_path = generate_thumbnail(file_path)
@@ -61,7 +67,7 @@ def process_adult(url, chat_id):
                 with open(thumbnail_path, 'rb') as thumb:
                     bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
 
-            return file_path, file_size, thumbnail_path
+            return file_path, file_size, thumbnail_path, None  # Return downloaded file
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
