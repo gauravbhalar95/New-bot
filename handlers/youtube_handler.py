@@ -16,7 +16,7 @@ def is_valid_url(url):
     return any(domain in url for domain in SUPPORTED_DOMAINS)
 
 # Download Video from YouTube with Cookies
-def download_youtube_video(url):
+def process_youtube(url):
     if not is_valid_url(url):
         return None, "Invalid URL"
 
