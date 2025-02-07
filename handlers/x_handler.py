@@ -22,7 +22,7 @@ def download_twitter_media(url, chat_id):
     # Ensure that the video downloaded is in the highest quality available (HD)
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bestvideo[height<=1080]/best',  # HD quality, max 1080p video
+        'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
