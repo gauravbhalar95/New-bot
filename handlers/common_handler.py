@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # ✅ Define proxy URL (Change this to your actual proxy)
 PROXY_URL = "socks5://219.100.37.53:443"
 
-def download_video(url, chat_id):
+def process_adult(url, chat_id):
     """Downloads a video using yt-dlp with a proxy."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
