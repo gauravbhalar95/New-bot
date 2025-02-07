@@ -54,7 +54,7 @@ def handle_message(message):
     try:
         # ✅ Process based on platform type
         if platform == "youtube":
-            result = process_youtube(url)
+            result = get_video_id(url)
         elif platform == "instagram":
             result = process_instagram(url)
         elif platform == "adult":
