@@ -15,7 +15,7 @@ def sanitize_filename(filename, max_length=250):
 def is_valid_url(url):
     return any(domain in url for domain in SUPPORTED_DOMAINS)
 
-# Download Video from YouTube
+# Download Video from YouTube with Cookies
 def download_youtube_video(url):
     if not is_valid_url(url):
         return None, "Invalid URL"
@@ -26,6 +26,7 @@ def download_youtube_video(url):
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 3,
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,  # Use cookies.txt for authentication
     }
 
     try:
