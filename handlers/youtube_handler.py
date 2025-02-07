@@ -6,8 +6,8 @@ import ffmpeg
 from pytube import YouTube
 from PIL import Image
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR   # Ensure COOKIES_FILE is defined in config.py
-from youtube_cookies import youtube_cookies
+from config import DOWNLOAD_DIR, YOUTUBE_FILE  # Ensure COOKIES_FILE is defined in config.py
+
 
 
 # Logging configuration
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def get_video_id(url):
     """ Extracts the video ID using yt-dlp to avoid 'list index out of range' errors. """
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "cookies": youtube_cookies}) as ydl:
+        with yt_dlp.YoutubeDL({"quiet": True, "cookies": YOUTUBE_FILE}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             return info_dict.get("id", "unknown_video")
     except Exception as e:
@@ -28,7 +28,7 @@ def process_youtube(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': youtube_cookies if os.path.exists(COOKIES_FILE) else None,
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
         'logger': logger,  # Logging enabled
