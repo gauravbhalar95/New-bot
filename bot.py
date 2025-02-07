@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, request
 import telebot
-from handlers.youtube_handler import get_video_id
+from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media  # Ensure this function works
@@ -54,7 +54,7 @@ def handle_message(message):
     try:
         # ✅ Process based on platform type
         if platform == "youtube":
-            result = get_video_id(url)
+            result = process_youtube(url)
         elif platform == "instagram":
             result = process_instagram(url)
         elif platform == "adult":
