@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ✅ Maximum file size limit (100MB)
-MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  
+MAX_DOWNLOAD_SIZE = 1000 * 1024 * 1024  
 
 def process_adult(url, chat_id):
     """Downloads an adult video, generates a thumbnail, and sends a streaming link if too large."""
