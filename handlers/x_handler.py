@@ -2,7 +2,7 @@ import yt_dlp
 import os
 import telebot
 import logging
-from config import DOWNLOAD_DIR, COOKIES_FILE
+from config import DOWNLOAD_DIR, X_FILE
 from utils.thumb_generator import generate_thumbnail
 from config import API_TOKEN
 
@@ -35,8 +35,8 @@ def download_twitter_media(url, chat_id):
     }
 
     # Add cookies if available
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts["cookiefile"] = COOKIES_FILE
+    if os.path.exists(X_FILE):
+        ydl_opts["cookiefile"] = X_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
