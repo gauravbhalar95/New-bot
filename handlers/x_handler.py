@@ -18,13 +18,16 @@ def download_twitter_media(url, chat_id):
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
-    # Ensure that the video downloaded is in the highest quality available (HD)
+    # ✅ Improved yt-dlp options for faster & more stable downloads
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
         'noplaylist': True,
-        'socket_timeout': 10,
-        'retries': 5,
+        'socket_timeout': 30,  # ⏳ Increased timeout from 10s → 30s
+        'retries': 10,  # 🔁 Increased retries from 5 → 10
+        'fragment_retries': 10,  # 🔄 Retry failed fragments
+        'continuedl': True,  # ⏯️ Allows resuming partial downloads
+        'http_chunk_size': 1048576,  # 📦 Download in 1MB chunks for better speed
         'quiet': False,
         'nocheckcertificate': True,
         'headers': {
