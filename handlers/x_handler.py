@@ -2,9 +2,8 @@ import yt_dlp
 import os
 import telebot
 import logging
-from config import DOWNLOAD_DIR, X_FILE
+from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
-from config import API_TOKEN
 
 # ✅ Initialize bot in webhook mode (no polling)
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -23,7 +22,6 @@ def download_twitter_media(url, chat_id):
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
-        'cookiefile': X_FILE if os.path.exists(X_FILE) else None,
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
@@ -37,7 +35,7 @@ def download_twitter_media(url, chat_id):
 
     # Add cookies if available
     if os.path.exists(X_FILE):
-    ydl_opts["cookiefile"] = X_FILE
+        ydl_opts["cookiefile"] = X_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
