@@ -50,7 +50,7 @@ def process_instagram(url, username=None, password=None):
 
         # ✅ Attempt with yt-dlp first (for videos)
         ydl_opts = {
-            "format": "bestvideo[height<=1080]/best",  # Ensure HD video download
+            'format': 'best[ext=mp4]/best',  # Ensure HD video download
             "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
             "retries": 5,
             "socket_timeout": 10,
