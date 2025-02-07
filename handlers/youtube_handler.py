@@ -20,7 +20,7 @@ def process_youtube(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bestvideo[height<=1080]/best',  # HD quality, max 1080p video
+        'format': 'best[ext=mp4]/best',
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
