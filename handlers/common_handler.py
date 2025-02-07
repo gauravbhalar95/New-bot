@@ -41,13 +41,18 @@ def process_adult(url, chat_id):
 
             # ✅ Debugging: Print response from yt-dlp
             print("INFO DICT:", info_dict)  
-            
+
             if not info_dict:
                 logger.error("❌ No video found.")
                 return None, None, None, None
 
-            # ✅ Extract streaming link if available
-            video_url = info_dict.get("url")
+            # ✅ Extract streaming link correctly
+            video_url = None
+            if "url" in info_dict:
+                video_url = info_dict["url"]
+            elif "entries" in info_dict and len(info_dict["entries"]) > 0:
+                video_url = info_dict["entries"][0].get("url")
+
             file_path = info_dict.get("requested_downloads", [{}])[0].get("filepath")
 
             if not file_path or not os.path.exists(file_path):
