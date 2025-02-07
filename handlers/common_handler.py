@@ -3,7 +3,6 @@ import telebot
 import yt_dlp
 import logging
 from config import API_TOKEN, DOWNLOAD_DIR
-from utils.thumb_generator import generate_thumbnail
 
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
@@ -12,63 +11,45 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Max download size in bytes
-MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  # 100MB limit
+# ✅ Define proxy URL (Change this to your actual proxy)
+PROXY_URL = "socks5://219.100.37.53:443"
 
-def process_adult(video_path, chat_id):
-    """Download video if it's small; otherwise, return streaming link, and send thumbnail."""
+def download_video(url, chat_id):
+    """Downloads a video using yt-dlp with a proxy."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    # Output path for downloading videos
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'best[ext=mp4]/best',  # Best quality in mp4 format
-        'noplaylist': True,    # Don't download playlists
+        'format': 'best[ext=mp4]/best',  # Best available quality in MP4
+        'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
         'quiet': False,
         'nocheckcertificate': True,
+        'proxy': PROXY_URL,  # ✅ Add proxy support
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
-        'verbose': True
     }
 
     try:
-        # Extract video information without downloading
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_url = info.get('url')  # Streaming URL
-            file_size = info.get('filesize') or 0  # File size
-            file_name = info.get('title', 'video.mp4')  # Default title if none provided
-            thumbnail = info.get('thumbnail')  # Thumbnail
+            info_dict = ydl.extract_info(url, download=True)
 
-        # If video size is within limit, download the video
-        if file_size and file_size <= MAX_DOWNLOAD_SIZE:
-            ydl_opts['outtmpl'] = file_name  # Update output filename
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+            if not info_dict or "requested_downloads" not in info_dict:
+                logger.error("❌ No video found.")
+                return None
 
-            # Generate thumbnail after video download
-            file_path = os.path.join(DOWNLOAD_DIR, file_name)
-            thumbnail_path = generate_thumbnail(file_path)
-            logger.info(f"Thumbnail generated: {thumbnail_path}")
+            file_path = info_dict["requested_downloads"][0]["filepath"]
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-            # Send thumbnail before sending the video
-            if os.path.exists(thumbnail_path):
-                with open(thumbnail_path, 'rb') as thumb:
-                    bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
-
-            return file_path, file_size, thumbnail_path, True  # Return success
-
-        # Return streaming link if video is too large
-        return video_url, file_size, thumbnail, False
+            return file_path, file_size
 
     except yt_dlp.DownloadError as e:
-        logger.error(f"Download failed: {e}")
+        logger.error(f"⚠️ Download failed: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"⚠️ Unexpected error: {e}")
 
-    return None, None, None, None  # Return None in case of failure
+    return None
