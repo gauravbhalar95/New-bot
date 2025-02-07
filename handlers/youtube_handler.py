@@ -4,19 +4,28 @@ import logging
 import requests
 import ffmpeg
 from pytube import YouTube
+from PIL import Image
 from utils.sanitize import sanitize_filename
-from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, COOKIES_FILE
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_video_id(url):
+    """ Extracts the video ID using yt-dlp to avoid 'list index out of range' errors. """
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get("id", "unknown_video")
+    except Exception as e:
+        logger.error(f"Error extracting video ID: {e}")
+        return "unknown_video"
+
 def process_youtube(url):
-    """
-    Downloads a YouTube video using yt-dlp. Falls back to pytube if yt-dlp fails.
-    """
-    output_path = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"{url.split('v=')[1]}.mp4"))
+    """ Downloads a YouTube video using yt-dlp. Falls back to pytube if yt-dlp fails. """
+    video_id = get_video_id(url)
+    output_path = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"{video_id}.mp4"))
 
     ydl_opts = {
         'outtmpl': output_path,
@@ -41,11 +50,8 @@ def process_youtube(url):
         logger.error(f"yt-dlp failed: {e}")
         return download_video_pytube(url)
 
-
 def download_video_pytube(url):
-    """
-    Alternative download method using pytube.
-    """
+    """ Alternative download method using pytube. """
     try:
         yt = YouTube(url)
         stream = yt.streams.get_highest_resolution()
@@ -56,11 +62,8 @@ def download_video_pytube(url):
         logger.error(f"Pytube failed: {e}")
         return None, 0
 
-
 def convert_video_to_audio(video_path):
-    """
-    Converts a downloaded video to an MP3 file using ffmpeg.
-    """
+    """ Converts a downloaded video to an MP3 file using ffmpeg. """
     try:
         audio_path = video_path.replace(".mp4", ".mp3")
         ffmpeg.input(video_path).output(audio_path, format="mp3").run()
@@ -69,11 +72,8 @@ def convert_video_to_audio(video_path):
         logger.error(f"Error converting video to MP3: {e}")
         return None
 
-
 def fetch_video_metadata(url):
-    """
-    Fetches video title, duration, and thumbnail using yt-dlp.
-    """
+    """ Fetches video title, duration, and thumbnail using yt-dlp. """
     try:
         ydl_opts = {"quiet": True, "extract_flat": True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -87,11 +87,8 @@ def fetch_video_metadata(url):
         logger.error(f"Error fetching metadata: {e}")
         return None
 
-
 def download_video_thumbnail(url):
-    """
-    Downloads the video thumbnail using requests.
-    """
+    """ Downloads the video thumbnail using requests. """
     metadata = fetch_video_metadata(url)
     if metadata and metadata.get("thumbnail"):
         try:
@@ -106,6 +103,17 @@ def download_video_thumbnail(url):
             logger.error(f"Error downloading thumbnail: {e}")
     return None
 
+def generate_thumbnail(image_path, width=320, height=180):
+    """ Generates a resized thumbnail using PIL. """
+    try:
+        image = Image.open(image_path)
+        image = image.resize((width, height), Image.LANCZOS)  # FIX: Using LANCZOS instead of ANTIALIAS
+        resized_path = image_path.replace(".jpg", "_resized.jpg")
+        image.save(resized_path, "JPEG")
+        return resized_path
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail: {e}")
+        return None
 
 # Example Usage
 if __name__ == "__main__":
@@ -113,19 +121,22 @@ if __name__ == "__main__":
 
     # Download video
     video_path, size = process_youtube(youtube_url)
-    print(f"Downloaded: {video_path} (Size: {size} bytes)")
+    if video_path:
+        print(f"Downloaded: {video_path} (Size: {size} bytes)")
 
-    # Convert to audio
-    audio_path = convert_video_to_audio(video_path)
-    if audio_path:
-        print(f"Audio saved at: {audio_path}")
+        # Convert to audio
+        audio_path = convert_video_to_audio(video_path)
+        if audio_path:
+            print(f"Audio saved at: {audio_path}")
 
-    # Fetch metadata
-    metadata = fetch_video_metadata(youtube_url)
-    if metadata:
-        print(f"Title: {metadata['title']}, Duration: {metadata['duration']}s")
+        # Fetch metadata
+        metadata = fetch_video_metadata(youtube_url)
+        if metadata:
+            print(f"Title: {metadata['title']}, Duration: {metadata['duration']}s")
 
-    # Download thumbnail
-    thumbnail_path = download_video_thumbnail(youtube_url)
-    if thumbnail_path:
-        print(f"Thumbnail saved at: {thumbnail_path}")
+        # Download and resize thumbnail
+        thumbnail_path = download_video_thumbnail(youtube_url)
+        if thumbnail_path:
+            resized_thumb = generate_thumbnail(thumbnail_path)
+            if resized_thumb:
+                print(f"Resized thumbnail saved at: {resized_thumb}")
