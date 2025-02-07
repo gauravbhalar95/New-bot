@@ -31,7 +31,7 @@ def generate_thumbnail(video_path, size=(3840, 2160)):
         img = Image.fromarray(frame)
 
         # ✅ Resize the image to HD resolution and save with high quality
-        img = img.resize(size, Image.ANTIALIAS)  # Ensure it gets resized to the HD resolution
+        img = img.resize(size, Image.LANCZOS)  # Ensure it gets resized to the HD resolution
         img.save(thumb_path, "JPEG", quality=95)  # Save with high quality
 
         logger.info(f"✅ HD Thumbnail saved at: {thumb_path}")
