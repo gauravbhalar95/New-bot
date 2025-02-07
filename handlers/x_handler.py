@@ -36,8 +36,8 @@ def download_twitter_media(url, chat_id):
     }
 
     # Add cookies if available
-    if os.path.exists("x.txt"):
-    ydl_opts["cookiefile"] = "x.txt"
+    if os.path.exists(X_FILE):
+    ydl_opts["cookiefile"] = X_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
