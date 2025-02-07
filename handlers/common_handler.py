@@ -24,7 +24,7 @@ def process_adult(video_path, chat_id):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'best[ext=mp4]/best',,  # Best quality in mp4 format
+        'format': 'best[ext=mp4]/best',  # Best quality in mp4 format
         'noplaylist': True,    # Don't download playlists
         'socket_timeout': 10,
         'retries': 5,
