@@ -1,60 +1,51 @@
 import os
 import yt_dlp
 import logging
-import requests
-import ffmpeg
-from pytube import YouTube
-from PIL import Image
+from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR, YOUTUBE_FILE  # Ensure COOKIES_FILE is defined in config.py
-
-
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_video_id(url):
-    """ Extracts the video ID using yt-dlp to avoid 'list index out of range' errors. """
-    try:
-        with yt_dlp.YoutubeDL({"quiet": True, "cookies": YOUTUBE_FILE}) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get("id", "unknown_video")
-    except Exception as e:
-        logger.error(f"Error extracting video ID: {e}")
-        return "unknown_video"
-
 def process_youtube(url):
+    """Downloads a YouTube video using yt-dlp and returns its file path and size."""
+    if not os.path.exists(DOWNLOAD_DIR):
+        os.makedirs(DOWNLOAD_DIR)
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),  # ✅ Ensure valid filename
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'logger': logger,  # Logging enabled
-        'verbose': True,  # Detailed logs
+        'logger': logger,
+        'verbose': True,
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
 
-            # Check if info_dict is None
-            if info_dict is None:
-                logger.error("yt-dlp returned None. The URL may be invalid.")
+            # ✅ Ensure the info_dict is valid
+            if not info_dict or 'title' not in info_dict:
+                logger.error("❌ yt-dlp failed to extract video metadata.")
                 return None, 0
 
-            file_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get('filesize', 0)
+            # ✅ Generate a valid filename
+            sanitized_title = sanitize_filename(info_dict['title'])
+            file_ext = info_dict.get('ext', 'mp4')
+            file_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.{file_ext}")
 
+            # ✅ Ensure the file exists
             if not os.path.exists(file_path):
-                logger.error(f"Download failed. File not found: {file_path}")
+                logger.error(f"❌ Download failed. File not found: {file_path}")
                 return None, 0
 
-            logger.info(f"Downloaded video: {file_path} (Size: {file_size} bytes)")
+            file_size = os.path.getsize(file_path)  # ✅ Get actual file size
+            logger.info(f"✅ Downloaded video: {file_path} (Size: {file_size} bytes)")
             return file_path, file_size
 
     except Exception as e:
-        logger.error(f"Error downloading video: {e}")
+        logger.error(f"❌ Error downloading video: {e}")
         return None, 0
-
