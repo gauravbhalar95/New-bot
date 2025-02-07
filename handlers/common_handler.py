@@ -3,7 +3,7 @@ import telebot
 import yt_dlp
 import logging
 from config import API_TOKEN, DOWNLOAD_DIR
-from thumb import generate_thumbnail  # ✅ Import thumbnail function
+from utils.thumb_generator import generate_thumbnail  # ✅ Import thumbnail function
 
 # Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
