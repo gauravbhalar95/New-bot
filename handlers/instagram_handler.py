@@ -2,7 +2,7 @@ import os
 import logging
 import yt_dlp
 import instaloader
-from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
+from config import DOWNLOAD_DIR, INSTAGRAM_FILE, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
 username = INSTAGRAM_USERNAME
@@ -55,7 +55,7 @@ def process_instagram(url, username=None, password=None):
             "retries": 5,
             "socket_timeout": 10,
             "noplaylist": True,
-            "cookiefile": COOKIES_FILE,
+            "cookiefile": INSTAGRAM_FILE,
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
             },
