@@ -22,50 +22,37 @@ def get_video_id(url):
         logger.error(f"Error extracting video ID: {e}")
         return "unknown_video"
 
-def process_youtube(url):
-    """Downloads a YouTube video using yt-dlp with authentication cookies."""
-    video_id = get_video_id(url)
-    output_path = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"{video_id}.mp4"))
-
+def download_video(url):
     ydl_opts = {
-        'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',
-        'noplaylist': True,
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'quiet': False,
-        'nocheckcertificate': True,
-        'cookies': COOKIES_FILE,  # Ensure cookies file exists
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        }
+        'logger': logger,  # Logging enabled
+        'verbose': True,  # Detailed logs
     }
-
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
 
-            # Log what yt-dlp returns
-            logger.info(f"yt-dlp info_dict: {info_dict}")
-
-            file_path = ydl.prepare_filename(info_dict) if info_dict else None
-            file_size = info_dict.get("filesize", 0) if info_dict else 0
-
-            if file_path and os.path.exists(file_path):
-                logger.info(f"Download successful: {file_path}")
-                return file_path, file_size
-            else:
-                logger.error("yt-dlp did not return a valid file path.")
+            # Check if info_dict is None
+            if info_dict is None:
+                logger.error("yt-dlp returned None. The URL may be invalid.")
                 return None, 0
 
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get('filesize', 0)
+
+            if not os.path.exists(file_path):
+                logger.error(f"Download failed. File not found: {file_path}")
+                return None, 0
+
+            logger.info(f"Downloaded video: {file_path} (Size: {file_size} bytes)")
+            return file_path, file_size
+
     except Exception as e:
-        logger.error(f"yt-dlp failed: {e}")
+        logger.error(f"Error downloading video: {e}")
         return None, 0
 
-# Example Usage
-if __name__ == "__main__":
-    
-    # Download video with cookies authentication
-    video_path, size = process_youtube(youtube_url)
-    if video_path:
-        print(f"Downloaded: {video_path} (Size: {size} bytes)")
