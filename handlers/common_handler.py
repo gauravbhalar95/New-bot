@@ -5,28 +5,32 @@ import logging
 from config import API_TOKEN, DOWNLOAD_DIR
 from utils.thumb_generator import generate_thumbnail  # ✅ Import thumbnail function
 
-# Initialize bot
+# ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
-# Logging setup
+# ✅ Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ Maximum download size limit (100MB)
-MAX_DOWNLOAD_SIZE = 1000 * 1024 * 1024  
+# ✅ Maximum file size limit (100MB)
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024  
 
 def process_adult(url, chat_id):
-    """Downloads a video, then generates a thumbnail. Returns file if small; otherwise, a streaming link."""
+    """Downloads an adult video in HD, generates a thumbnail, and sends it before sending the video."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_template = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
+    # ✅ Optimized yt-dlp options
     ydl_opts = {
         'outtmpl': output_template,
-        'format': 'best[ext=mp4]/best',
+        'format': 'best[ext=mp4]/best',  # HD quality (max 1080p)
         'noplaylist': True,
-        'socket_timeout': 10,
-        'retries': 5,
+        'socket_timeout': 30,  # ⏳ Increased timeout
+        'retries': 10,  # 🔁 Increased retries
+        'fragment_retries': 10,  # 🔄 Retry failed fragments
+        'continuedl': True,  # ⏯️ Allows resuming partial downloads
+        'http_chunk_size': 1048576,  # 📦 Download in 1MB chunks
         'quiet': False,
         'nocheckcertificate': True,
         'headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
@@ -34,22 +38,31 @@ def process_adult(url, chat_id):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)  # ✅ Download video
-            filename = ydl.prepare_filename(info_dict)  # ✅ Get correct filename
-            title = info_dict.get('title', 'video')
+            info_dict = ydl.extract_info(url, download=True)
 
-        if not os.path.exists(filename):
-            logger.error(f"⚠️ File not found after download: {filename}")
-            return None, None, None, None
+            # ✅ Ensure valid response
+            if not info_dict or "requested_downloads" not in info_dict:
+                logger.error("❌ No video found.")
+                return None, None, None, None
 
-        file_size = os.path.getsize(filename)  # ✅ Ensure file size is obtained
+            # ✅ Get actual downloaded file path
+            file_path = info_dict["requested_downloads"][0]["filepath"]
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-        if file_size <= MAX_DOWNLOAD_SIZE:
+            if not os.path.exists(file_path):
+                logger.error(f"⚠️ File not found: {file_path}")
+                return None, None, None, None
+
             # ✅ Generate thumbnail after downloading
-            thumbnail_path = generate_thumbnail(filename)
-            return filename, file_size, thumbnail_path, None  
+            thumbnail_path = generate_thumbnail(file_path)
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
 
-        return None, file_size, None, url  # ✅ If too large, return streaming link
+            # ✅ Send thumbnail before video
+            if os.path.exists(thumbnail_path):
+                with open(thumbnail_path, 'rb') as thumb:
+                    bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
+
+            return file_path, file_size, thumbnail_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
