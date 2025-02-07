@@ -117,7 +117,7 @@ def generate_thumbnail(image_path, width=320, height=180):
 
 # Example Usage
 if __name__ == "__main__":
-    youtube_url = "https://www.youtube.com/watch?v=XYZ123"  # Replace with actual URL
+    youtube_url = "https://youtube.com/shorts/yWzKm1WkEyI?si=FT7Zd5vLqFKnewJs"  # Replace with actual URL
 
     # Download video
     video_path, size = process_youtube(youtube_url)
