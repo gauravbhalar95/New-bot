@@ -6,7 +6,7 @@ import ffmpeg
 from pytube import YouTube
 from PIL import Image
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR,   # Ensure COOKIES_FILE is defined in config.py
+from config import DOWNLOAD_DIR   # Ensure COOKIES_FILE is defined in config.py
 from youtube_cookies import youtube_cookies
 
 
