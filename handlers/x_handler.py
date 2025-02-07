@@ -23,6 +23,7 @@ def download_twitter_media(url, chat_id):
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
+        'cookiefile': X_FILE if os.path.exists(X_FILE) else None,
         'noplaylist': True,
         'socket_timeout': 10,
         'retries': 5,
