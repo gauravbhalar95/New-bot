@@ -12,3 +12,4 @@ pytube
 instaloader
 pillow
 cloudscraper
+nest_asyncio
