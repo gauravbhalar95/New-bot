@@ -16,10 +16,6 @@ nest_asyncio.apply()
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# Logging configuration
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 # Supported domains
 SUPPORTED_DOMAINS = [
