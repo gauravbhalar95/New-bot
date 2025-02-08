@@ -2,13 +2,14 @@
 # http://curl.haxx.se/rfc/cookie_spec.html
 # This is a generated file!  Do not edit.
 
-.instagram.com        TRUE        /        TRUE        1771146692        mid        Z4I1wgABAAHroTQX-QXPPiMeLLKA
-.instagram.com        TRUE        /        TRUE        1771146693        datr        wjWCZ0dhvWLBrvNRo1NsH8pU
-.instagram.com        TRUE        /        TRUE        1768122738        ig_did        081F8369-1D9F-4D2C-B499-B8FAB9359079
-.instagram.com        TRUE        /        TRUE        1771347319        ps_l        1
-.instagram.com        TRUE        /        TRUE        1771347319        ps_n        1
-.instagram.com        TRUE        /        TRUE        1769880808        csrftoken        1B5yCihVwMIM1bN0j2nn2WUUPy9OjzfA
-.instagram.com        TRUE        /        TRUE        1746207191        ds_user_id        67842185883
-.instagram.com        TRUE        /        TRUE        1739035982        wd        891x1692
-.instagram.com        TRUE        /        TRUE        1739035982        dpr        3.0921943187713623
-.instagram.com        TRUE        /        TRUE        0        rur        "CCO\05467842185883\0541769967191:01f7dcb0c3dcd57a5a6994c96cd19892c061f5e77962977374ff37099c88abdc76fba102"
+.instagram.com	TRUE	/	TRUE	1771146692	mid	Z4I1wgABAAHroTQX-QXPPiMeLLKA
+.instagram.com	TRUE	/	TRUE	1771146693	datr	wjWCZ0dhvWLBrvNRo1NsH8pU
+.instagram.com	TRUE	/	TRUE	1768122738	ig_did	081F8369-1D9F-4D2C-B499-B8FAB9359079
+.instagram.com	TRUE	/	TRUE	1771347319	ps_l	1
+.instagram.com	TRUE	/	TRUE	1771347319	ps_n	1
+.instagram.com	TRUE	/	TRUE	1770457966	csrftoken	1B5yCihVwMIM1bN0j2nn2WUUPy9OjzfA
+.instagram.com	TRUE	/	TRUE	1746784366	ds_user_id	67842185883
+.instagram.com	TRUE	/	TRUE	1739613138	dpr	3.0921943187713623
+.instagram.com	TRUE	/	TRUE	1739613138	wd	891x1692
+.instagram.com	TRUE	/	TRUE	1770544339	sessionid	67842185883%3AI10MAl710uUThC%3A8%3AAYefbrPMq_boW4cYLWispIwjQtM0KStTIYIWQvWDfg
+.instagram.com	TRUE	/	TRUE	0	rur	"CLN\05467842185883\0541770544366:01f79e64be6aa419e10fa39088bad33c58827b0cb65d09e59f08e5ce13290c3a5fe5657d"
