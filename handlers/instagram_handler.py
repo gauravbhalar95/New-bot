@@ -27,7 +27,7 @@ def memory_cleaner():
 threading.Thread(target=memory_cleaner, daemon=True).start()
 
 # Download Instagram video using yt-dlp
-def download_instagram_video(url):
+def process_instagram(url):
     def download():
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
