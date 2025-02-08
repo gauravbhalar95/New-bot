@@ -8,6 +8,7 @@ import time
 import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, API_TOKEN, INSTAGRAM_FILE
+from utils.sanitize import sanitize_filename  # Import the sanitization function
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
@@ -24,11 +25,6 @@ SUPPORTED_DOMAINS = [
     'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
     'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
 ]
-
-# Utility to sanitize filenames
-def sanitize_filename(filename, max_length=250):
-    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-    return filename.strip()[:max_length]
 
 # Validate URLs
 def is_valid_url(url):
@@ -53,7 +49,6 @@ def get_streaming_url(url):
         return None
 
 # Download video using yt-dlp
-# Download video using yt-dlp
 def process_instagram(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -61,8 +56,8 @@ def process_instagram(url):
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'logger': logger,  # Add logger to yt-dlp options
-        'verbose': True,  # Enable verbose logging
+        'logger': logger,
+        'verbose': True,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -71,5 +66,3 @@ def process_instagram(url):
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
-
-
