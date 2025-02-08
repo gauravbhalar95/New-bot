@@ -1,24 +1,23 @@
 import os
+import logging
 import telebot
 import yt_dlp
-import logging
 import re
 from urllib.parse import urlparse
 import time
 import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
-from config import DOWNLOAD_DIR, API_TOKEN, YOUTUBE_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
-from utils.sanitize import sanitize_filename
+from config import DOWNLOAD_DIR, API_TOKEN
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
 
-# Logger setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Supported domains
 SUPPORTED_DOMAINS = [
@@ -53,13 +52,12 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-# Download Instagram video using yt-dlp
-def process_instagram(url):
+# Download video using yt-dlp
+# Download video using yt-dlp
+def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'username': INSTAGRAM_USERNAME,
-        'password': INSTAGRAM_PASSWORD,
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -73,3 +71,5 @@ def process_instagram(url):
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
+
+
