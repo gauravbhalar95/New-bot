@@ -1,64 +1,78 @@
 import os
 import logging
+from flask import Flask, request
+import telebot
 import yt_dlp
-import gc
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from config import DOWNLOAD_DIR, INSTAGRAM_FILE
-from utils.sanitize import sanitize_filename
+import re
+from urllib.parse import urlparse
+import time
+import nest_asyncio
+import gc  # Import garbage collection for memory cleanup
+from config import DOWNLOAD_DIR,API_TOKEN, YOUTUBE_FILE
 
-# Logger setup
+# Apply the patch for nested event loops
+nest_asyncio.apply()
+
+
+# Initialize the bot
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
+
+# Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ensure the download directory exists
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Thread pool for concurrent downloads
-executor = ThreadPoolExecutor(max_workers=4)
+# Supported domains
+SUPPORTED_DOMAINS = [
+    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
+    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
+]
 
-# Start background memory cleanup
-def memory_cleaner():
-    while True:
-        gc.collect()
-        logger.info("🧹 Memory cleaned up")
-        threading.Event().wait(180)  # Runs every 60 seconds
+# Utility to sanitize filenames
+def sanitize_filename(filename, max_length=250):
+    filename = re.sub(r'[\\/*?:"<>|]', "", filename)
+    return filename.strip()[:max_length]
 
-threading.Thread(target=memory_cleaner, daemon=True).start()
+# Validate URLs
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
+    except ValueError:
+        return False
 
-# Download Instagram video using yt-dlp
-def process_instagram(url):
-    def download():
-        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# Get streaming URL using yt-dlp
+def get_streaming_url(url):
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
 
-        # ✅ yt-dlp options
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-            "retries": 5,
-            "socket_timeout": 10,
-            "noplaylist": True,
-            "cookiefile": INSTAGRAM_FILE,
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36",
-            },
-        }
+# Download video using yt-dlp
+# Download video using yt-dlp
+def download_video(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+        'logger': logger,  # Add logger to yt-dlp options
+        'verbose': True,  # Enable verbose logging
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=True)
-                filename = sanitize_filename(info_dict.get("title", "instagram_post"))
-                file_ext = info_dict.get("ext", "mp4")
-                file_path = os.path.join(DOWNLOAD_DIR, f"{filename}.{file_ext}")
 
-                if os.path.exists(file_path):
-                    logger.info(f"✅ Video downloaded successfully: {file_path}")
-                    return file_path, os.path.getsize(file_path)
-                else:
-                    logger.error("❌ Download failed.")
-                    return None, 0
-        except Exception as e:
-            logger.error(f"❌ yt-dlp error: {e}")
-            return None, 0
-
-    return executor.submit(download)
