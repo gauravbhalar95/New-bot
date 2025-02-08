@@ -5,6 +5,9 @@ import logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
 
+# ✅ Ensure the download directory exists
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 # ✅ Initialize bot in webhook mode (no polling)
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
@@ -14,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 def download_twitter_media(url, chat_id):
     """Downloads a Twitter/X video in HD, sends thumbnail first, and then returns (file_path, file_size)."""
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -23,11 +25,11 @@ def download_twitter_media(url, chat_id):
         'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
         'noplaylist': True,
-        'socket_timeout': 30,  # ⏳ Increased timeout from 10s → 30s
-        'retries': 10,  # 🔁 Increased retries from 5 → 10
+        'socket_timeout': 30,  # ⏳ Increased timeout
+        'retries': 10,  # 🔁 More retries for stability
         'fragment_retries': 10,  # 🔄 Retry failed fragments
-        'continuedl': True,  # ⏯️ Allows resuming partial downloads
-        'http_chunk_size': 1048576,  # 📦 Download in 1MB chunks for better speed
+        'continuedl': True,  # ⏯️ Allows resuming downloads
+        'http_chunk_size': 1048576,  # 📦 1MB chunks for better speed
         'quiet': False,
         'nocheckcertificate': True,
         'headers': {
