@@ -2,6 +2,7 @@ import os
 import telebot
 import yt_dlp
 import logging
+import re
 from urllib.parse import urlparse
 import time
 import nest_asyncio
