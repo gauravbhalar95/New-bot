@@ -1,15 +1,16 @@
 import re
 
+# Utility to sanitize filenames
 def sanitize_filename(filename, max_length=250):
     """
-    Sanitizes a filename by removing invalid characters and limiting its length.
+    Removes special characters from the filename and trims it to a maximum length.
+    
+    Args:
+        filename (str): The original filename.
+        max_length (int): Maximum allowed length for the filename.
 
-    :param filename: The original filename.
-    :param max_length: The maximum allowed length for the filename.
-    :return: A sanitized and trimmed filename.
+    Returns:
+        str: The sanitized filename.
     """
-    # Remove invalid characters
     filename = re.sub(r'[\\/*?:"<>|]', "", filename)
-
-    # Trim whitespace and enforce max length
     return filename.strip()[:max_length]
