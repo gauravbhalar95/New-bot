@@ -5,7 +5,7 @@ import telebot
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media  # Ensure this function works
+from handlers.x_handler import download_twitter_media
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # ✅ Initialize bot in webhook mode (no polling)
@@ -16,22 +16,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ✅ Supported domains
-SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be', 'instagram.com', 'xvideos.com', 'xnxx.com',
-    'xhamster.com', 'pornhub.com', 'redtube.com', 'x.com', 'twitter.com', 
-    'tube8.com', 'spankbang.com'
-]
+SUPPORTED_DOMAINS = {
+    "youtube": ["youtube.com", "youtu.be"],
+    "instagram": ["instagram.com"],
+    "twitter": ["x.com", "twitter.com"],
+    "adult": ["xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com", "redtube.com", 
+              "tube8.com", "spankbang.com"]
+}
 
 def detect_platform(url):
-    """Detects if the URL is from YouTube, Instagram, Twitter, or other supported sites."""
-    if any(domain in url for domain in ["youtube.com", "youtu.be"]):
-        return "youtube"
-    elif "instagram.com" in url:
-        return "instagram"
-    elif any(domain in url for domain in ["x.com", "twitter.com"]):
-        return "twitter"
-    elif any(domain in url for domain in SUPPORTED_DOMAINS):
-        return "adult"
+    """Detects the platform from the URL."""
+    for platform, domains in SUPPORTED_DOMAINS.items():
+        if any(domain in url for domain in domains):
+            return platform
     return None
 
 @bot.message_handler(commands=['start'])
@@ -46,40 +43,31 @@ def handle_message(message):
     platform = detect_platform(url)
 
     if not platform:
-        bot.reply_to(message, "❌ Unsupported URL. Please send a valid YouTube, Instagram, Twitter (X), or supported adult site link.")
+        bot.reply_to(message, "❌ Unsupported URL. Please send a valid link.")
         return
 
     bot.reply_to(message, f"⏳ Downloading from {platform.capitalize()}... Please wait.")
 
     try:
         # ✅ Process based on platform type
-        if platform == "youtube":
-            result = process_youtube(url)
-        elif platform == "instagram":
-            result = process_instagram(url)
-        elif platform == "adult":
-            result = process_adult(url, message.chat.id)  # Pass chat_id here
-        elif platform == "twitter":
-            result = download_twitter_media(url, message.chat.id)  # Pass chat_id for sending thumbnail/video
-        else:
-            result = None
+        process_funcs = {
+            "youtube": process_youtube,
+            "instagram": process_instagram,
+            "adult": lambda url: process_adult(url, message.chat.id),
+            "twitter": lambda url: download_twitter_media(url, message.chat.id)
+        }
+        result = process_funcs.get(platform, lambda _: None)(url)
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
             return
 
         # ✅ Handle different return values properly
-        if isinstance(result, tuple):
-            if len(result) == 3:
-                file_path, file_size, thumb_path = result
-            elif len(result) == 2:
-                file_path, file_size = result
-                thumb_path = None
-            else:
-                bot.reply_to(message, "❌ Unexpected response from the downloader.")
-                return
+        if isinstance(result, tuple) and len(result) in [2, 3]:
+            file_path, file_size = result[:2]
+            thumb_path = result[2] if len(result) == 3 else None
         else:
-            bot.reply_to(message, "❌ Invalid response format.")
+            bot.reply_to(message, "❌ Unexpected response from the downloader.")
             return
 
         # ✅ Ensure file exists before sending
