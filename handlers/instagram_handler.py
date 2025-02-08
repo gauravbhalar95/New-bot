@@ -8,9 +8,6 @@ from concurrent.futures import ThreadPoolExecutor
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
-username = INSTAGRAM_USERNAME
-password = INSTAGRAM_PASSWORD
-
 # Logger setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,7 +54,7 @@ def login_instaloader(username, password):
         return None
 
 # Download Instagram video (yt-dlp) or images (Instaloader)
-def process_instagram(url, username=None, password=None):
+def download_instagram(url, username=None, password=None):
     def download():
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
