@@ -13,3 +13,4 @@ instaloader
 pillow
 cloudscraper
 nest_asyncio
+mega.py
