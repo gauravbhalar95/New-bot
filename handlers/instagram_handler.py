@@ -7,7 +7,7 @@ import time
 import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
 from config import DOWNLOAD_DIR,API_TOKEN, YOUTUBE_FILE
-from utils.sanitaize import sanitize_filename
+from utils.sanitize import sanitize_filename
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
