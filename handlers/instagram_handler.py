@@ -22,7 +22,7 @@ def memory_cleaner():
     while True:
         gc.collect()
         logger.info("🧹 Memory cleaned up")
-        threading.Event().wait(60)  # Runs every 60 seconds
+        threading.Event().wait(180)  # Runs every 60 seconds
 
 threading.Thread(target=memory_cleaner, daemon=True).start()
 
