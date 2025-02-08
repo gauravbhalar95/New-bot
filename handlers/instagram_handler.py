@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import time
 import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
-from config import DOWNLOAD_DIR,API_TOKEN, YOUTUBE_FILE
+from config import DOWNLOAD_DIR,API_TOKEN, YOUTUBE_FILE, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 
 # Apply the patch for nested event loops
@@ -60,6 +60,8 @@ def process_instagram(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'username': 'INSTAGRAM_USERNAME'
+        'password': 'INSTAGRAM_PASSWORD'
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
