@@ -6,7 +6,7 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.mega_handler import mega_login, upload_to_mega, download_from_mega
+from function.meganz import mega_login, upload_to_mega, download_from_mega
 
 # ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
