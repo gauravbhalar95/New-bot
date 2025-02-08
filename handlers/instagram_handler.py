@@ -1,6 +1,4 @@
 import os
-import logging
-from flask import Flask, request
 import telebot
 import yt_dlp
 import re
@@ -9,6 +7,7 @@ import time
 import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
 from config import DOWNLOAD_DIR,API_TOKEN, YOUTUBE_FILE
+from utils.logger import logging
 
 # Apply the patch for nested event loops
 nest_asyncio.apply()
