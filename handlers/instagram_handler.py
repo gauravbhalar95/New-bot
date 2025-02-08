@@ -55,7 +55,7 @@ def get_streaming_url(url):
 
 # Download video using yt-dlp
 # Download video using yt-dlp
-def download_video(url):
+def process_instagram(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
