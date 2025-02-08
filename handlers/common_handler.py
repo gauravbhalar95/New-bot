@@ -2,9 +2,8 @@ import yt_dlp
 import os
 import telebot
 import logging
-from config import DOWNLOAD_DIR,API_TOKEN
+from config import DOWNLOAD_DIR, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
-
 
 # ✅ Initialize bot in webhook mode (no polling)
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -14,11 +13,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def process_adult(url, chat_id):
-    """Downloads a Twitter/X video in HD, sends thumbnail first, and then returns (file_path, file_size)."""
+    """Downloads an adult video in HD, sends thumbnail first, and then returns (file_path, file_size)."""
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
-    # ✅ Improved yt-dlp options for faster & more stable downloads
+    # ✅ yt-dlp options for fast & stable downloads (No Cookies)
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
@@ -35,10 +34,6 @@ def process_adult(url, chat_id):
             'Referer': 'https://x.com/'
         }
     }
-
-    # Add cookies if available
-    if os.path.exists(X_FILE):
-        ydl_opts["cookiefile"] = X_FILE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
