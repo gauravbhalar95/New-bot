@@ -5,7 +5,7 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from mega import Mega
+from function.meganz import Mega
 from config import API_TOKEN
 
 # ✅ Initialize bot
