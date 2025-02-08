@@ -57,7 +57,7 @@ def login_instaloader(username, password):
         return None
 
 # Download Instagram video (yt-dlp) or images (Instaloader)
-def download_instagram(url, username=None, password=None):
+def process_instagram(url, username=None, password=None):
     def download():
         os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
