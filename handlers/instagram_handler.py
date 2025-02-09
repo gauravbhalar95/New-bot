@@ -5,13 +5,9 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 import time
-import nest_asyncio
 import gc  # Import garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, API_TOKEN, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename  # Import the sanitization function
-
-# Apply the patch for nested event loops
-nest_asyncio.apply()
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
