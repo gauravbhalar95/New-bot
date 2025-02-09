@@ -31,4 +31,10 @@ jobs:
           tags: sexbhabhinew/new-bot:latest  # Change to your Docker Hub repo
 
       - name: Verify Docker Image
-        run: docker images | grep my-bot
+  run: |
+    if docker images | grep new-bot; then
+      echo "Docker image found."
+    else
+      echo "No matching Docker image found. Check if the build succeeded."
+      exit 1
+    fi
