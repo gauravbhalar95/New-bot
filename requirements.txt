@@ -14,5 +14,5 @@ pillow
 cloudscraper
 nest_asyncio
 mega.py
-asyncio
+nest_asyncio
 tenacity
