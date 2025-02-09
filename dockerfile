@@ -11,15 +11,22 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the project files into the container
-COPY . .
+# Copy the rest of the application code into the container
+COPY . /app
 
-# Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
 
-# Set environment variables (if needed)
-ENV PYTHONUNBUFFERED=1
+# Install necessary Python dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Ensure yt-dlp is always up-to-date
+RUN pip install --no-cache-dir --upgrade yt-dlp
+
+
+
+# Set environment variables (you can also use a .env file instead)
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production
+
 
 # Set permissions for execution (if needed)
 RUN chmod +x bot.py
@@ -29,3 +36,6 @@ EXPOSE 8080
 
 # Start the bot
 CMD python bot.py
+
+
+
