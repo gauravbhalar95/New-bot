@@ -18,4 +18,3 @@ tenacity
 asyncio
 gunicorn
 psutil
-python==3.11
