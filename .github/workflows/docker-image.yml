@@ -23,14 +23,14 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t my-bot .
+          docker build -t new-bot .
 
       - name: List All Docker Images (Debugging)
         run: docker images
 
       - name: Verify Docker Image
         run: |
-          if docker images | grep "my-bot"; then
+          if docker images | grep "new-bot"; then
             echo "✅ Docker image found."
           else
             echo "⚠️ No matching Docker image found!"
