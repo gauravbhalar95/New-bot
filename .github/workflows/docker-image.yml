@@ -28,7 +28,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: your-dockerhub-username/my-bot:latest  # Change to your Docker Hub repo
+          tags: gauravbhalara95@gmail.com/new-bot:latest  # Change to your Docker Hub repo
 
       - name: Verify Docker Image
         run: docker images | grep my-bot
