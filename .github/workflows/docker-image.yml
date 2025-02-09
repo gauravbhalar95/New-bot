@@ -1,40 +1,47 @@
-name: Build and Push Docker Image
+name: Docker Image CI
 
 on:
   push:
     branches:
-      - main  # Change to your branch name if needed
-  workflow_dispatch:  # Allows manual triggering
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Set Up Docker
+        run: |
+          docker --version
+          echo "Docker is ready."
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: sexbhabhinew
-          password: sexbhabhinew
+      - name: Build Docker Image
+        run: |
+          docker build -t my-bot .
 
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: sexbhabhinew/new-bot:latest  # Change to your Docker Hub repo
+      - name: List All Docker Images (Debugging)
+        run: docker images
 
       - name: Verify Docker Image
-  run: |
-    if docker images | grep new-bot; then
-      echo "Docker image found."
-    else
-      echo "No matching Docker image found. Check if the build succeeded."
-      exit 1
-    fi
+        run: |
+          if docker images | grep "my-bot"; then
+            echo "✅ Docker image found."
+          else
+            echo "⚠️ No matching Docker image found!"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Tag Docker Image
+        run: docker tag new-bot my-dockerhub-username/my-bot:latest
+
+      - name: Push Docker Image to Docker Hub
+        run: docker push sexbhabhinew/new-bot:latest
