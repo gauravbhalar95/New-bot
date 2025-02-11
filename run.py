@@ -2,6 +2,7 @@ import logging
 from flask import Flask, request
 from bot import bot  # Import the bot instance
 from config import API_TOKEN, WEBHOOK_URL, PORT
+import telebot
 
 # ✅ Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
