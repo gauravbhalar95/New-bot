@@ -14,3 +14,4 @@ cloudscraper
 mega.py
 psutil
 watchdog
+python-3.10
