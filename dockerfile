@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application code into the container
-COPY . /app
+COPY start.sh /app/start.sh
 
 
 # Install necessary Python dependencies
@@ -29,13 +29,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 
 # Set permissions for execution (if needed)
-RUN chmod +x bot.py
+RUN chmod +x /app/start.sh
 
 # Expose ports if using a web server (optional)
 EXPOSE 8080
 
 # Start the bot
-CMD python bot.py & python run.py & python keep_alive.py & python config.py
-
+CMD ["/bin/bash", "/app/start.sh"]
 
 
