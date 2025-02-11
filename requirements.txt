@@ -15,3 +15,4 @@ mega.py
 psutil
 watchdog
 gunicorn
+telebot
