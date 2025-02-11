@@ -6,7 +6,6 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from function.meganz import mega_login, upload_to_mega, download_from_mega
 
 # ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -24,7 +23,6 @@ SUPPORTED_DOMAINS = {
         ["xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com", "redtube.com", "tube8.com", "spankbang.com"],
         lambda url, chat_id: process_adult(url, chat_id),
     ),
-    "mega": (["mega.nz"], download_from_mega),
 }
 
 def detect_platform(url):
@@ -33,19 +31,6 @@ def detect_platform(url):
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
-
-# ✅ MEGA Login Command
-@bot.message_handler(commands=['meganz'])
-def handle_mega_login(message):
-    """Handles MEGA login using email & password."""
-    args = message.text.split()
-    if len(args) != 3:
-        bot.reply_to(message, "Usage: /meganz <email> <password>")
-        return
-
-    email, password = args[1], args[2]
-    response = mega_login(email, password)
-    bot.reply_to(message, response)
 
 # ✅ Handle Incoming Messages
 @bot.message_handler(func=lambda message: True, content_types=['text'])
@@ -61,41 +46,35 @@ def handle_message(message):
     bot.reply_to(message, f"⏳ Processing {platform.capitalize()}... Please wait.")
 
     try:
-        if platform == "mega":
-            handler(url, message)  # Calls `download_from_mega`
+        result = handler(url, message.chat.id)  # Calls relevant platform handler
+
+        if not result:
+            bot.reply_to(message, "❌ Download failed. Please try again later.")
+            return
+
+        if isinstance(result, tuple) and len(result) in [2, 3]:
+            file_path, file_size = result[:2]
+            thumb_path = result[2] if len(result) == 3 else None
         else:
-            result = handler(url, message.chat.id)  # Calls relevant platform handler
+            bot.reply_to(message, "❌ Unexpected response from the downloader.")
+            return
 
-            if not result:
-                bot.reply_to(message, "❌ Download failed. Please try again later.")
-                return
+        if not os.path.exists(file_path):
+            bot.reply_to(message, "❌ Error: File not found.")
+            return
 
-            if isinstance(result, tuple) and len(result) in [2, 3]:
-                file_path, file_size = result[:2]
-                thumb_path = result[2] if len(result) == 3 else None
-            else:
-                bot.reply_to(message, "❌ Unexpected response from the downloader.")
-                return
+        with open(file_path, 'rb') as video:
+            thumb = open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
+            bot.send_video(
+                message.chat.id,
+                video,
+                thumb=thumb,
+                caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
+            )
+            if thumb:
+                thumb.close()
 
-            if not os.path.exists(file_path):
-                bot.reply_to(message, "❌ Error: File not found.")
-                return
-
-            with open(file_path, 'rb') as video:
-                thumb = open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
-                bot.send_video(
-                    message.chat.id,
-                    video,
-                    thumb=thumb,
-                    caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
-                )
-                if thumb:
-                    thumb.close()
-
-            logger.info(f"✔ Video sent: {file_path}")
-
-            # ✅ Upload downloaded file to MEGA
-            upload_to_mega(file_path, message)
+        logger.info(f"✔ Video sent: {file_path}")
 
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
