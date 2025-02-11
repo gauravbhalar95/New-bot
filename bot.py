@@ -101,7 +101,3 @@ def handle_message(message):
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
 
-# ✅ Start the bot
-if __name__ == "__main__":
-    logger.info("🚀 Bot is running...")
-    bot.polling(none_stop=True)
