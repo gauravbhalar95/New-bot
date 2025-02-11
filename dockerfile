@@ -35,7 +35,7 @@ RUN chmod +x bot.py
 EXPOSE 8080
 
 # Start the bot
-CMD python bot.py & python run.py
+CMD python bot.py & python run.py & python keep_alive.py
 
 
 
