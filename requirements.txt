@@ -12,6 +12,5 @@ pytube
 pillow
 cloudscraper
 mega.py
-gunicorn
 psutil
 watchdog
