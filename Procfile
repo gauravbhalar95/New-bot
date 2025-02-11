@@ -1,2 +1,2 @@
-web: python bot.py 
-web: gunicorn app:bot
+web: python bot.py & python auto_fix.py
+
