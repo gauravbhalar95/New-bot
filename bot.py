@@ -1,7 +1,8 @@
 import os
 import logging
 import telebot
-from config import API_TOKEN
+from flask import Flask, request
+from config import API_TOKEN, WEBHOOK_URL, PORT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
@@ -21,7 +22,7 @@ SUPPORTED_DOMAINS = {
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (
         ["xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com", "redtube.com", "tube8.com", "spankbang.com"],
-        lambda url, chat_id: process_adult(url, chat_id),
+        process_adult,
     ),
 }
 
@@ -46,7 +47,7 @@ def handle_message(message):
     bot.reply_to(message, f"⏳ Processing {platform.capitalize()}... Please wait.")
 
     try:
-        result = handler(url, message.chat.id)  # Calls relevant platform handler
+        result = handler(url, message.chat.id)
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
@@ -76,6 +77,11 @@ def handle_message(message):
 
         logger.info(f"✔ Video sent: {file_path}")
 
+        # ✅ Cleanup after sending
+        os.remove(file_path)
+        if thumb_path and os.path.exists(thumb_path):
+            os.remove(thumb_path)
+
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
@@ -98,7 +104,7 @@ def set_webhook():
     """Set the webhook for Telegram."""
     try:
         bot.remove_webhook()
-        bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+        bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
         return "Webhook set", 200
     except Exception as e:
         logger.error(f"⚠️ Webhook setup error: {e}")
@@ -106,4 +112,4 @@ def set_webhook():
 
 if __name__ == '__main__':
     # Run the Flask app
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=int(PORT), debug=True)
