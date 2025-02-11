@@ -16,3 +16,4 @@ psutil
 watchdog
 gunicorn
 telebot
+pylint
