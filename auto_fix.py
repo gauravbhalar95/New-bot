@@ -1,6 +1,7 @@
 import ast
 import os
 import logging
+import subprocess
 
 # Logging setup
 logging.basicConfig(filename="fixer.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -46,15 +47,24 @@ def fix_missing_files():
 def auto_fix_project():
     """Run all checks and fixes on all Python files in the project."""
     logging.info("🔍 Scanning project for issues...")
-    
+
+    all_files_valid = True  # Track if any syntax errors were found
+
     # Scan all Python files
     for root, _, files in os.walk("."):
         for file in files:
             if file.endswith(".py"):
-                check_syntax(os.path.join(root, file))
-    
+                if not check_syntax(os.path.join(root, file)):
+                    all_files_valid = False  # Found a syntax error
+
     fix_missing_files()
+
     print("✅ Auto-fix complete. Check fixer.log for details.")
+
+    if all_files_valid:
+        logging.info("🚀 Running bot.py...")
+        print("🚀 Running bot.py...")
+        subprocess.run(["python", "bot.py"])  # Run bot.py if no errors were found
 
 # Run the fixer
 if __name__ == "__main__":
