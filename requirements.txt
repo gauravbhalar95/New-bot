@@ -9,13 +9,9 @@ moviepy
 imageio[ffmpeg]
 ffmpeg
 pytube
-instaloader
 pillow
 cloudscraper
-nest_asyncio
 mega.py
-tenacity
-asyncio
 gunicorn
 psutil
 watchdog
