@@ -71,9 +71,9 @@ def auto_fix_project():
     print("✅ Auto-fix complete. Check fixer.log for details.")
 
     # Run bot.py automatically
-    if os.path.exists("bot.py"):
-        logging.info("🚀 Running bot.py...")
-        subprocess.run(["python", "bot.py"])
+    if os.path.exists("webhook.py"):
+        logging.info("🚀 Running webhook.py...")
+        subprocess.run(["python", "webhook.py"])
 
 # Run the fixer
 if __name__ == "__main__":
