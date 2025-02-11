@@ -21,6 +21,17 @@ def check_syntax(filename):
         logging.error(f"❌ Error reading {filename}: {e}")
         return False
 
+def check_static_errors(filename):
+    """Check for function call errors using pylint."""
+    try:
+        result = subprocess.run(["pylint", "--disable=all", "--enable=E1120", filename], capture_output=True, text=True)
+        if result.returncode != 0:
+            logging.error(f"❌ Static error in {filename}:\n{result.stdout}")
+        else:
+            logging.info(f"✅ No function call errors in {filename}")
+    except Exception as e:
+        logging.error(f"❌ Error running static analysis on {filename}: {e}")
+
 def fix_missing_files():
     """Check for missing files mentioned in the code and create them if necessary."""
     missing_files = []
@@ -48,23 +59,21 @@ def auto_fix_project():
     """Run all checks and fixes on all Python files in the project."""
     logging.info("🔍 Scanning project for issues...")
 
-    all_files_valid = True  # Track if any syntax errors were found
-
     # Scan all Python files
     for root, _, files in os.walk("."):
         for file in files:
             if file.endswith(".py"):
-                if not check_syntax(os.path.join(root, file)):
-                    all_files_valid = False  # Found a syntax error
+                filepath = os.path.join(root, file)
+                check_syntax(filepath)
+                check_static_errors(filepath)  # NEW: Check for function call errors
 
     fix_missing_files()
-
     print("✅ Auto-fix complete. Check fixer.log for details.")
 
-    if all_files_valid:
+    # Run bot.py automatically
+    if os.path.exists("bot.py"):
         logging.info("🚀 Running bot.py...")
-        print("🚀 Running bot.py...")
-        subprocess.run(["python", "bot.py"])  # Run bot.py if no errors were found
+        subprocess.run(["python", "bot.py"])
 
 # Run the fixer
 if __name__ == "__main__":
