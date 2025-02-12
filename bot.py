@@ -1,12 +1,15 @@
 import os
 import logging
+from flask import Flask, request
 import telebot
-from config import API_TOKEN
+from config import API_TOKEN, WEBHOOK_URL
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 
+# ✅ Load port from environment or use default
+PORT = int(os.getenv("PORT", 8080))
 
 # ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -14,6 +17,9 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 # ✅ Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# ✅ Flask app
+app = Flask(__name__)
 
 # ✅ Supported domains and their handlers
 SUPPORTED_DOMAINS = {
@@ -86,6 +92,33 @@ def handle_message(message):
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
 
+# ✅ Webhook route for Telegram updates
+@app.route('/' + API_TOKEN, methods=['POST'])
+def webhook():
+    """Handles Telegram webhook updates."""
+    try:
+        bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"⚠️ Webhook error: {e}")
+        return "ERROR", 500
+
+@app.route('/set_webhook')
+def set_webhook():
+    """Sets the webhook for Telegram."""
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
+        return "✅ Webhook set successfully", 200
+    except Exception as e:
+        logger.error(f"⚠️ Webhook setup error: {e}")
+        return "ERROR", 500
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint to prevent Koyeb from stopping the service."""
+    return "✅ Health Check OK", 200
 
 if __name__ == "__main__":
     print("🤖 Bot initialized! Waiting for updates via webhook...")
+    app.run(host='0.0.0.0', port=PORT, debug=True)
