@@ -18,8 +18,6 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ✅ Flask app
-app = Flask(__name__)
 
 # ✅ Supported domains and their handlers
 SUPPORTED_DOMAINS = {
@@ -92,33 +90,19 @@ def handle_message(message):
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
 
-# ✅ Webhook route for Telegram updates
+# Flask app for webhook
+app = Flask(__name__)
+
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    """Handles Telegram webhook updates."""
-    try:
-        bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"⚠️ Webhook error: {e}")
-        return "ERROR", 500
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
 
-@app.route('/set_webhook')
+@app.route('/')
 def set_webhook():
-    """Sets the webhook for Telegram."""
-    try:
-        bot.remove_webhook()
-        bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-        return "✅ Webhook set successfully", 200
-    except Exception as e:
-        logger.error(f"⚠️ Webhook setup error: {e}")
-        return "ERROR", 500
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
 
-@app.route('/health')
-def health_check():
-    """Health check endpoint to prevent Koyeb from stopping the service."""
-    return "✅ Health Check OK", 200
-
-if __name__ == "__main__":
-    print("🤖 Bot initialized! Waiting for updates via webhook...")
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=PORT)
