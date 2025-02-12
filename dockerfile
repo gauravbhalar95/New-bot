@@ -1,34 +1,28 @@
-# Use a minimal Python image as the base
+# ✅ Use lightweight Python image
 FROM python:3.10-slim
 
-# Set the working directory inside the container
+# ✅ Set the working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    wget \
-    ffmpeg \
+# ✅ Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl wget ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the application files into the container
+# ✅ Copy application files
 COPY . .
 
-# Install Python dependencies
+# ✅ Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Ensure yt-dlp is always up-to-date
+# ✅ Ensure yt-dlp is always updated
 RUN pip install --no-cache-dir --upgrade yt-dlp
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    FLASK_ENV=production
+# ✅ Set environment variables
+ENV PYTHONUNBUFFERED=1 FLASK_ENV=production PORT=8080
 
-# Ensure bot script is executable
-RUN chmod +x bot.py
-
-# Expose the port (if using Flask or any web service)
+# ✅ Expose port for Flask
 EXPOSE 8080
 
-# Start the bot
-CMD ["python", "-u", "bot.py"]
+# ✅ Start the Flask webhook server
+CMD ["python", "webhook.py"]
