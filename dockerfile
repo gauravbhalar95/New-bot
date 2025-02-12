@@ -1,40 +1,34 @@
-# Use an official lightweight Python image as the base
+# Use a minimal Python image as the base
 FROM python:3.10-slim
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies (if needed)
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application code into the container
-COPY /app
+# Copy the application files into the container
+COPY . .
 
-
-# Install necessary Python dependencies
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Ensure yt-dlp is always up-to-date
 RUN pip install --no-cache-dir --upgrade yt-dlp
 
-
-
-# Set environment variables (you can also use a .env file instead)
+# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
-
-# Set permissions for execution (if needed)
+# Ensure bot script is executable
 RUN chmod +x bot.py
 
-# Expose ports if using a web server (optional)
+# Expose the port (if using Flask or any web service)
 EXPOSE 8080
 
 # Start the bot
 CMD ["python", "bot.py"]
-
-
