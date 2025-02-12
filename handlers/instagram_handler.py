@@ -44,23 +44,20 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-# Download video using yt-dlp
-def process_instagram(url, chat_id):  # Added chat_id
+def download_video(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'logger': logger,
-        'verbose': True,
+        'logger': logger,  # Add logger to yt-dlp options
+        'verbose': True,  # Enable verbose logging
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get('filesize', 0)
-            return file_path, file_size
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
