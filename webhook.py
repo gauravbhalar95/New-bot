@@ -1,7 +1,11 @@
+import os
 import logging
 from flask import Flask, request
 import telebot
-from config import API_TOKEN, WEBHOOK_URL, PORT
+from config import API_TOKEN, WEBHOOK_URL
+
+# ✅ Load port from environment or use default
+PORT = int(os.getenv("PORT", 8080))
 
 # ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -41,4 +45,4 @@ def health_check():
 
 if __name__ == '__main__':
     # Run the Flask app
-    app.run(host='0.0.0.0', port=int(PORT), debug=True)
+    app.run(host='0.0.0.0', port=PORT, debug=True)
