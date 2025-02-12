@@ -7,6 +7,7 @@ from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 
+
 # ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
@@ -84,3 +85,7 @@ def handle_message(message):
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
+
+
+if __name__ == "__main__":
+    print("🤖 Bot initialized! Waiting for updates via webhook...")
