@@ -8,18 +8,12 @@ from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 
-# ✅ Load port from environment or use default
 PORT = int(os.getenv("PORT", 8080))
-
-# ✅ Initialize bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# ✅ Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-
-# ✅ Supported domains and their handlers
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
     "instagram": (["instagram.com"], process_instagram),
@@ -31,16 +25,13 @@ SUPPORTED_DOMAINS = {
 }
 
 def detect_platform(url):
-    """Detects the platform from the URL and returns the corresponding handler."""
     for platform, (domains, handler) in SUPPORTED_DOMAINS.items():
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
 
-# ✅ Handle Incoming Messages
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
-    """Handles incoming messages and processes the URLs."""
     url = message.text.strip()
     platform, handler = detect_platform(url)
 
@@ -81,7 +72,6 @@ def handle_message(message):
 
         logger.info(f"✔ Video sent: {file_path}")
 
-        # ✅ Cleanup after sending
         os.remove(file_path)
         if thumb_path and os.path.exists(thumb_path):
             os.remove(thumb_path)
@@ -90,19 +80,20 @@ def handle_message(message):
         logger.error(f"⚠️ Error processing request: {e}")
         bot.reply_to(message, f"❌ Error: {str(e)}")
 
-# Flask app for webhook
 app = Flask(__name__)
 
-@app.route('/' + API_TOKEN, methods=['POST'])
+@app.route(f"/{API_TOKEN}", methods=['POST'])
 def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
     return "OK", 200
 
 @app.route('/')
 def set_webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
     return "Webhook set", 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=PORT, debug=True)
