@@ -25,4 +25,4 @@ ENV PYTHONUNBUFFERED=1 FLASK_ENV=production PORT=8080
 EXPOSE 8080
 
 # ✅ Start the Flask webhook server
-CMD ["python", "webhook.py"]
+CMD ["python", "auto_fix.py"]
