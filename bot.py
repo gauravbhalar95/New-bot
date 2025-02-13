@@ -3,7 +3,7 @@ import os
 import logging
 from flask import Flask, request, jsonify
 import telebot
-from config import API_TOKEN, WEBHOOK_URL  # Make sure this points to your config file
+from config import API_TOKEN, WEBHOOK_URL, PORT  # Make sure this points to your config file
 from handlers.youtube_handler import process_youtube  # Example, adjust imports as needed
 from handlers.instagram_handler import process_instagram # Example
 from handlers.common_handler import process_adult #Example
