@@ -4,10 +4,9 @@ import telebot
 import yt_dlp
 import re
 from urllib.parse import urlparse
-import time
-import gc  # Import garbage collection for memory cleanup
+import gc  # Garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, API_TOKEN, INSTAGRAM_FILE
-from utils.sanitize import sanitize_filename  # Import the sanitization function
+from utils.sanitize import sanitize_filename  # Sanitization utility
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -18,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Supported domains
 SUPPORTED_DOMAINS = [
-    'youtube.com', 'youtu.be', 'instagram.com', 'x.com',
-    'facebook.com', 'xvideos.com', 'xnxx.com', 'xhamster.com', 'pornhub.com'
+    'instagram.com'
 ]
 
 # Validate URLs
@@ -30,20 +28,7 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Get streaming URL using yt-dlp
-def get_streaming_url(url):
-    ydl_opts = {
-        'format': 'best',
-        'noplaylist': True,
-    }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get('url')
-    except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
-        return None
-
+# Process Instagram video download
 def process_instagram(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -51,13 +36,14 @@ def process_instagram(url):
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
-        'logger': logger,  # Add logger to yt-dlp options
-        'verbose': True,  # Enable verbose logging
+        'logger': logger,
+        'verbose': True,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
     except Exception as e:
-        logger.error(f"Error downloading video: {e}")
+        logger.error(f"Error downloading Instagram video: {e}")
         return None, 0
+
