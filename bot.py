@@ -1,35 +1,41 @@
+# bot.py
 import os
 import logging
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import telebot
-from config import API_TOKEN, WEBHOOK_URL
-from handlers.youtube_handler import process_youtube
-from handlers.instagram_handler import process_instagram
-from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media
+from config import API_TOKEN, WEBHOOK_URL  # Make sure this points to your config file
+from handlers.youtube_handler import process_youtube  # Example, adjust imports as needed
+from handlers.instagram_handler import process_instagram # Example
+from handlers.common_handler import process_adult #Example
+from handlers.x_handler import download_twitter_media #Example
+# ... (your other imports if any)
 
-PORT = int(os.getenv("PORT", 8080))
+# Bot setup
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
+# Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Supported Domains
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
     "instagram": (["instagram.com"], process_instagram),
-    "twitter": (["x.com", "twitter.com"], download_twitter_media),
+    "twitter": (["x.com", "twitter.com"], download_twitter_media),  # Using "x" for Twitter
     "adult": (
-        ["xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com", "redtube.com", "tube8.com", "spankbang.com"],
-        process_adult,
+        ["site1.com", "site2.com", "site3.com", "site4.com", "site5.com", "site6.com", "site7.com"], # Example placeholders. Replace with actual domains.
+        process_adult, # Ensure this handles different sites appropriately
     ),
 }
 
+# Platform Detection
 def detect_platform(url):
     for platform, (domains, handler) in SUPPORTED_DOMAINS.items():
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
 
+# Message Handler
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
@@ -42,23 +48,23 @@ def handle_message(message):
     bot.reply_to(message, f"⏳ Processing {platform.capitalize()}... Please wait.")
 
     try:
-        result = handler(url, message.chat.id)
+        result = handler(url, message.chat.id) # Call the handler for that platform
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
             return
 
-        if isinstance(result, tuple) and len(result) in [2, 3]:
+        if isinstance(result, tuple) and len(result) in [2, 3]:  # Check for tuple result
             file_path, file_size = result[:2]
             thumb_path = result[2] if len(result) == 3 else None
         else:
-            bot.reply_to(message, "❌ Unexpected response from the downloader.")
+            bot.reply_to(message, "❌ Unexpected response from the downloader.") # Important for debugging
             return
 
-        if not os.path.exists(file_path):
+        if not os.path.exists(file_path): # Check if the file exists after download
             bot.reply_to(message, "❌ Error: File not found.")
             return
-
+        
         with open(file_path, 'rb') as video:
             thumb = open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
             bot.send_video(
@@ -72,14 +78,15 @@ def handle_message(message):
 
         logger.info(f"✔ Video sent: {file_path}")
 
-        os.remove(file_path)
+        os.remove(file_path) # Clean up
         if thumb_path and os.path.exists(thumb_path):
-            os.remove(thumb_path)
+            os.remove(thumb_path) # Clean up the thumbnail as well
 
     except Exception as e:
-        logger.error(f"⚠️ Error processing request: {e}")
-        bot.reply_to(message, f"❌ Error: {str(e)}")
+        logger.exception(f"⚠️ Error processing request: {e}")  # Log full exception
+        bot.reply_to(message, f"❌ Error: {type(e).__name__}: {str(e)}")  # User-friendly error
 
+# Flask App
 app = Flask(__name__)
 
 @app.route(f"/{API_TOKEN}", methods=['POST'])
@@ -89,11 +96,10 @@ def webhook():
     bot.process_new_updates([update])
     return "OK", 200
 
-@app.route('/')
-def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-    return "Webhook set", 200
+@app.route("/health")  # Health Check Endpoint
+def health_check():
+    return jsonify({"status": "ok"}), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)  # Remove debug=True for production
