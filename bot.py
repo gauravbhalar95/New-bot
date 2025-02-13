@@ -23,7 +23,7 @@ SUPPORTED_DOMAINS = {
     "instagram": (["instagram.com"], process_instagram),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),  # Using "x" for Twitter
     "adult": (
-        ["site1.com", "site2.com", "site3.com", "site4.com", "site5.com", "site6.com", "site7.com"], # Example placeholders. Replace with actual domains.
+        ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xhamster43.desi", "xnxx.com", "youporn.com"], # Example placeholders. Replace with actual domains.
         process_adult, # Ensure this handles different sites appropriately
     ),
 }
