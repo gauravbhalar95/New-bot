@@ -29,7 +29,7 @@ def is_valid_url(url):
         return False
 
 # Process Instagram video download
-def process_instagram(url):
+def process_instagram(url, chat_id):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
