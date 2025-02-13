@@ -86,20 +86,19 @@ def handle_message(message):
         logger.exception(f"⚠️ Error processing request: {e}")  # Log full exception
         bot.reply_to(message, f"❌ Error: {type(e).__name__}: {str(e)}")  # User-friendly error
 
-# Flask App
+# Flask app for webhook
 app = Flask(__name__)
 
-@app.route(f"/{API_TOKEN}", methods=['POST'])
+@app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
+    bot.process_new_updates([telebot.types.Update.de_json(request.stream.read().decode("utf-8"))])
     return "OK", 200
 
-@app.route("/health")  # Health Check Endpoint
-def health_check():
-    return jsonify({"status": "ok"}), 200
+@app.route('/')
+def set_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)  # Remove debug=True for production
+    app.run(host='0.0.0.0', port=PORT)
