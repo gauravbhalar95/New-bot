@@ -48,7 +48,7 @@ def handle_message(message):
     bot.reply_to(message, f"⏳ Processing {platform.capitalize()}... Please wait.")
 
     try:
-        result = handler(url, message.chat.id) # Call the handler for that platform
+        result = handler(url) # Call the handler for that platform
 
         if not result:
             bot.reply_to(message, "❌ Download failed. Please try again later.")
