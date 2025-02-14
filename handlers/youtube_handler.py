@@ -27,12 +27,15 @@ def process_youtube(url):
         'verbose': True,
     }
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
-    except Exception as e:
-        logger.error(f"Error downloading video: {e}")
-        return None, 0
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=True)
+        if info_dict is None:
+            logger.error("No info_dict returned. Download failed.")
+            return None, 0
+        return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+except Exception as e:
+    logger.error(f"Error downloading video: {e}")
+    return None, 0
 
 def trim_video(video_filename, start_time, end_time):
     """Trim video using FFmpeg."""
