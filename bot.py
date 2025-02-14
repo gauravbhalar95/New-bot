@@ -1,5 +1,6 @@
 # bot.py
 import os
+import gc
 import logging
 from flask import Flask, request, jsonify
 import telebot
