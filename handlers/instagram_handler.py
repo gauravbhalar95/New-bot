@@ -6,7 +6,7 @@ import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, API_TOKEN, INSTAGRAM_FILE
-from utils.sanitize import sanitize_filename  # Sanitization utility
+from utils.sanitize import is_valid_url  # Sanitization utility
 
 # Initialize the bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
