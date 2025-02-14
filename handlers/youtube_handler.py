@@ -27,19 +27,19 @@ def process_youtube(url):
         'verbose': True,
     }
     try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(url, download=True)
-        if info_dict is None:
-            logger.error("No info_dict returned. Download failed.")
-            return None, 0
-        return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
-except Exception as e:
-    logger.error(f"Error downloading video: {e}")
-    return None, 0
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            if not info_dict:
+                logger.error("No info_dict returned. Download failed.")
+                return None, 0
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
 
 def trim_video(video_filename, start_time, end_time):
     """Trim video using FFmpeg."""
-    trimmed_filename = f"{DOWNLOAD_DIR}/trimmed_{os.path.basename(video_filename)}"
+    trimmed_filename = os.path.join(DOWNLOAD_DIR, f"trimmed_{os.path.basename(video_filename)}")
     ffmpeg_cmd = [
         "ffmpeg", "-i", video_filename, "-ss", start_time, "-to", end_time,
         "-c", "copy", trimmed_filename, "-y"
@@ -57,7 +57,7 @@ def trim_video(video_filename, start_time, end_time):
         return None, 0
 
 def process_youtube_full(url, start_time=None, end_time=None):
-    """Downloads and trims a YouTube video if start and end times are provided."""
+    """Download and optionally trim a YouTube video."""
     video_filename, file_size = process_youtube(url)
     if not video_filename:
         return None, 0
@@ -70,17 +70,17 @@ def handle_message(url, start_time=None, end_time=None):
     try:
         result = process_youtube_full(url, start_time, end_time)
         if result and result[0]:
-    if os.path.exists(result[0]):
-        logger.info(f"Video processed successfully: {result[0]}, Size: {result[1]} bytes")
-    else:
-        logger.error("File path does not exist.")
-else:
-    logger.error("Failed to process video.")
+            if os.path.exists(result[0]):
+                logger.info(f"Video processed successfully: {result[0]}, Size: {result[1]} bytes")
+            else:
+                logger.error("File path does not exist.")
+        else:
+            logger.error("Failed to process video.")
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
 
 def clear_memory():
-    """Memory clearing code using garbage collection and system cache flush (Linux only)."""
+    """Clear memory using garbage collection and flush system cache (Linux only)."""
     print("Running garbage collection...")
     gc.collect()
     if platform.system() == "Linux":
@@ -92,6 +92,6 @@ def clear_memory():
 if __name__ == "__main__":
     print("Starting YouTube processing and memory clearing process...")
     # Example usage (uncomment to test)
-    # handle_message("https://youtube.com/watch?v=example", "12345")
+    # handle_message("https://youtube.com/watch?v=example", "00:00:10", "00:01:00")
     clear_memory()
     print("Memory cleared successfully.")
