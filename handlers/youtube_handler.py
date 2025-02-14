@@ -12,20 +12,23 @@ def process_youtube(url, chat_id, start_time=None, end_time=None):
     output_dir = "downloads"
     os.makedirs(output_dir, exist_ok=True)  # Ensure output directory exists
 
-    # Download options for yt-dlp
+    def download_video(url):
     ydl_opts = {
-        "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
-        "format": "bestvideo+bestaudio/best",
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+        'socket_timeout': 10,
+        'retries': 5,
+        'logger': logger,  # Add logger to yt-dlp options
+        'verbose': True,  # Enable verbose logging
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_filename = ydl.prepare_filename(info)
-
-        if not os.path.exists(video_filename):
-            logger.error("Download failed")
-            return None
+            info_dict = ydl.extract_info(url, download=True)
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+    except Exception as e:
+        logger.error(f"Error downloading video: {e}")
+        return None, 0
 
         # If trimming is required
         if start_time and end_time:
