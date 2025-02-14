@@ -62,7 +62,7 @@ def trim_video(video_filename, start_time, end_time):
 
 def process_youtube(url, chat_id, start_time=None, end_time=None):
     """Downloads and trims a YouTube video if start and end times are provided."""
-    video_filename, file_size = download_video(url)
+    video_filename, file_size = process_youtube(url)
     if not video_filename:
         return None, 0
 
