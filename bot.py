@@ -35,56 +35,58 @@ def detect_platform(url):
             return platform, handler
     return None, None
 
-# Message Handler
+# Command: /start
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
+
+# Handle video download and optional streaming
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
     url = message.text.strip()
-    platform, handler = detect_platform(url)
-
-    if not platform:
-        bot.reply_to(message, "❌ Unsupported URL. Please send a valid link.")
+    if not is_valid_url(url):
+        bot.reply_to(message, "Invalid or unsupported URL.")
         return
 
-    bot.reply_to(message, f"⏳ Processing {platform.capitalize()}... Please wait.")
+    bot.reply_to(message, "Downloading video, please wait...")
+    file_path, file_size = download_video(url)
+
+    if not file_path:
+        bot.reply_to(message, "Error: Video download failed. Ensure the URL is correct.")
+        return
 
     try:
-        result = handler(url) # Call the handler for that platform
-
-        if not result:
-            bot.reply_to(message, "❌ Download failed. Please try again later.")
-            return
-
-        if isinstance(result, tuple) and len(result) in [2, 3]:  # Check for tuple result
-            file_path, file_size = result[:2]
-            thumb_path = result[2] if len(result) == 3 else None
+        # Check if the file size exceeds Telegram's limit (2GB)
+        if file_size > 2 * 1024 * 1024 * 1024:  # 2GB in bytes
+            streaming_url = get_streaming_url(url)
+            if streaming_url:
+                bot.reply_to(
+                    message,
+                    f"The video is too large to send on Telegram. Here is the streaming link:\n{streaming_url}"
+                )
+            else:
+                bot.reply_to(message, "Error: Unable to fetch a streaming link for this video.")
         else:
-            bot.reply_to(message, "❌ Unexpected response from the downloader.") # Important for debugging
-            return
-
-        if not os.path.exists(file_path): # Check if the file exists after download
-            bot.reply_to(message, "❌ Error: File not found.")
-            return
-        
-        with open(file_path, 'rb') as video:
-            thumb = open(thumb_path, 'rb') if thumb_path and os.path.exists(thumb_path) else None
-            bot.send_video(
-                message.chat.id,
-                video,
-                thumb=thumb,
-                caption=f"✅ Download complete! File size: {file_size / (1024 * 1024):.2f} MB"
-            )
-            if thumb:
-                thumb.close()
-
-        logger.info(f"✔ Video sent: {file_path}")
-
-        os.remove(file_path) # Clean up
-        if thumb_path and os.path.exists(thumb_path):
-            os.remove(thumb_path) # Clean up the thumbnail as well
-
+            # Try sending the video
+            with open(file_path, 'rb') as video:
+                bot.send_video(message.chat.id, video)
     except Exception as e:
-        logger.exception(f"⚠️ Error processing request: {e}")  # Log full exception
-        bot.reply_to(message, f"❌ Error: {type(e).__name__}: {str(e)}")  # User-friendly error
+        logger.error(f"Error sending video: {e}")
+        # If the video is too large, provide streaming link instead
+        streaming_url = get_streaming_url(url)
+        if streaming_url:
+            bot.reply_to(
+                message,
+                f"The video is too large to send directly on Telegram. Here is the streaming link:\n{streaming_url}"
+            )
+        else:
+            bot.reply_to(message, f"Error: {e}")
+    finally:
+        # Clean up the downloaded file and memory
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        # Free up memory by triggering garbage collection
+        gc.collect()
 
 # Flask app for webhook
 app = Flask(__name__)
