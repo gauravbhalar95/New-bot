@@ -70,9 +70,12 @@ def handle_message(url, start_time=None, end_time=None):
     try:
         result = process_youtube_full(url, start_time, end_time)
         if result and result[0]:
-            logger.info(f"Video processed successfully: {result[0]}, Size: {result[1]} bytes")
-        else:
-            logger.error("Failed to process video.")
+    if os.path.exists(result[0]):
+        logger.info(f"Video processed successfully: {result[0]}, Size: {result[1]} bytes")
+    else:
+        logger.error("File path does not exist.")
+else:
+    logger.error("Failed to process video.")
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
 
