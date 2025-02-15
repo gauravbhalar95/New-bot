@@ -68,11 +68,18 @@ def trim_video(video_filename, start_time, end_time):
     """Trim video using FFmpeg."""
     trimmed_filename = os.path.join(DOWNLOAD_DIR, f"trimmed_{os.path.basename(video_filename)}")
     ffmpeg_cmd = [
-        "ffmpeg", "-i", video_filename, "-ss", start_time, "-to", end_time,
-        "-c", "copy", trimmed_filename, "-y"
+        "ffmpeg", 
+        "-y",  # Overwrite without asking
+        "-ss", start_time,  # Start time
+        "-i", video_filename,  # Input file
+        "-to", end_time,  # End time
+        "-c:v", "libx264",  # Video codec
+        "-c:a", "aac",  # Audio codec
+        "-strict", "experimental",
+        trimmed_filename
     ]
     try:
-        subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         if os.path.exists(trimmed_filename):
             os.remove(video_filename)  # Delete original if trimming succeeded
             file_size = os.path.getsize(trimmed_filename) or 0
