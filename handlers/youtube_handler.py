@@ -2,6 +2,7 @@ import os
 import subprocess
 import yt_dlp
 import logging
+from handlers.trim_handlers import trim_handlers
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 
 # Setup logging
@@ -64,32 +65,6 @@ def extract_audio(url):
         logger.error(f"Error extracting audio: {e}")
         return None, 0
 
-def trim_video(video_filename, start_time, end_time):
-    """Trim video using FFmpeg."""
-    trimmed_filename = os.path.join(DOWNLOAD_DIR, f"trimmed_{os.path.basename(video_filename)}")
-    ffmpeg_cmd = [
-        "ffmpeg", 
-        "-y",  # Overwrite without asking
-        "-ss", start_time,  # Start time
-        "-i", video_filename,  # Input file
-        "-to", end_time,  # End time
-        "-c:v", "libx264",  # Video codec
-        "-c:a", "aac",  # Audio codec
-        "-strict", "experimental",
-        trimmed_filename
-    ]
-    try:
-        subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-        if os.path.exists(trimmed_filename):
-            os.remove(video_filename)  # Delete original if trimming succeeded
-            file_size = os.path.getsize(trimmed_filename) or 0
-            return trimmed_filename, file_size
-        else:
-            logger.error("Trimming failed")
-            return None, 0
-    except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg error: {e}")
-        return None, 0
 
 def process_youtube_full(url, start_time=None, end_time=None, audio_only=False):
     """Download and optionally trim a YouTube video or extract audio."""
