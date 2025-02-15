@@ -3,7 +3,6 @@ import subprocess
 import yt_dlp
 import logging
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
-import platform
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -31,7 +30,8 @@ def process_youtube(url):
             if not info_dict:
                 logger.error("No info_dict returned. Download failed.")
                 return None, 0
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0)
+            file_size = info_dict.get('filesize', 0) or 0
+            return ydl.prepare_filename(info_dict), file_size
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
@@ -58,7 +58,8 @@ def extract_audio(url):
                 logger.error("No info_dict returned. Audio download failed.")
                 return None, 0
             audio_filename = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
-            return audio_filename, os.path.getsize(audio_filename)
+            file_size = os.path.getsize(audio_filename) if os.path.exists(audio_filename) else 0
+            return audio_filename, file_size
     except Exception as e:
         logger.error(f"Error extracting audio: {e}")
         return None, 0
@@ -74,7 +75,8 @@ def trim_video(video_filename, start_time, end_time):
         subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         if os.path.exists(trimmed_filename):
             os.remove(video_filename)  # Delete original if trimming succeeded
-            return trimmed_filename, os.path.getsize(trimmed_filename)
+            file_size = os.path.getsize(trimmed_filename) or 0
+            return trimmed_filename, file_size
         else:
             logger.error("Trimming failed")
             return None, 0
@@ -87,6 +89,7 @@ def process_youtube_full(url, start_time=None, end_time=None, audio_only=False):
     if audio_only:
         return extract_audio(url)
     video_filename, file_size = process_youtube(url)
+    file_size = file_size or 0
     if not video_filename:
         return None, 0
     if start_time and end_time:
