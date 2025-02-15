@@ -9,6 +9,7 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
+from handlers.trim_handlers import trim_video
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
