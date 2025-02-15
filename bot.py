@@ -12,7 +12,7 @@ from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
-from utils.thumb_generator import generate_thumbnail, download_video
+from utils.thumb_generator import generate_thumbnail
 from telebot import types
 from queue import Queue
 
