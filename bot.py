@@ -2,7 +2,6 @@ import os
 import gc
 import logging
 import threading
-import multiprocessing
 from flask import Flask, request
 import telebot
 from config import API_TOKEN, WEBHOOK_URL, PORT
@@ -18,6 +17,7 @@ from queue import Queue
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logger = setup_logging()
+queue = Queue()
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -33,73 +33,53 @@ def detect_platform(url):
     return None, None
 
 def get_streaming_url(url):
-    """Generate a streaming link for large videos."""
-    return f"https://stream.example.com?url={url}"  # Replace with your actual streaming service
+    return f"https://stream.example.com?url={url}"  # Replace with actual service
+
+def download_video(url):
+    platform, handler = detect_platform(url)
+    if not platform:
+        raise ValueError("Unsupported platform")
+    return handler(url)  # Call appropriate handler
 
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
-def download_and_send_video(message, url, queue):
-    if not is_valid_url(url):
-        queue.put((message, "Invalid or unsupported URL."))
-        return
-    
-    queue.put((message, "Downloading video, please wait..."))
-    file_path, file_size = download_video(url)
-    
-    if not file_path:
-        queue.put((message, "Error: Video download failed."))
-        return
-
+def download_and_send_video(message, url):
     try:
-        if file_size > 2 * 1024 * 1024 * 1024:  # File larger than 2GB
-            streaming_url = get_streaming_url(url)
-            if streaming_url:
-                queue.put((message, f"Video too large for Telegram. Stream here:\n{streaming_url}"))
-            else:
-                queue.put((message, "Unable to fetch a streaming link."))
+        if not is_valid_url(url):
+            bot.reply_to(message, "Invalid or unsupported URL.")
+            return
+        bot.reply_to(message, "Downloading video, please wait...")
+        file_path, file_size = download_video(url)
+        if not file_path:
+            bot.reply_to(message, "Error: Video download failed.")
+            return
+        if file_size > 2 * 1024 * 1024 * 1024:
+            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-    except Exception as e:
-        logger.error(f"Error sending video: {e}")
-        streaming_url = get_streaming_url(url)
-        if streaming_url:
-            queue.put((message, f"Video too large. Stream here:\n{streaming_url}"))
-        else:
-            queue.put((message, f"Error: {e}"))
-    finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        os.remove(file_path)
         gc.collect()
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        bot.reply_to(message, f"Error occurred: {e}")
 
-def worker(queue):
+def worker():
     while True:
         message, url = queue.get()
         if message == "STOP":
             break
-        try:
-            download_and_send_video(message, url, queue)
-        except Exception as e:
-            logger.error(f"Error in worker process: {e}")
+        download_and_send_video(message, url)
         queue.task_done()
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
-    url = message.text.strip()
-    queue.put((message, url))
+    queue.put((message, message.text.strip()))
 
-# Create and start worker processes
-queue = Queue()
-num_workers = multiprocessing.cpu_count()  # Use all available CPU cores
-processes = []
-for i in range(num_workers):
-    p = multiprocessing.Process(target=worker, args=(queue,))
-    p.start()
-    processes.append(p)
+threading.Thread(target=worker, daemon=True).start()
 
-# Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
@@ -114,10 +94,4 @@ def set_webhook():
     return "Webhook set", 200
 
 if __name__ == '__main__':
-    try:
-        app.run(host='0.0.0.0', port=PORT)
-    finally:
-        for _ in range(num_workers):
-            queue.put(("STOP", None))
-        for p in processes:
-            p.join()
+    app.run(host='0.0.0.0', port=PORT)
