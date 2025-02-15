@@ -1,4 +1,3 @@
-import gc
 import os
 import subprocess
 import yt_dlp
@@ -13,16 +12,6 @@ logger = logging.getLogger(__name__)
 def sanitize_filename(name):
     """Sanitize the filename by removing or replacing invalid characters."""
     return "".join(c for c in name if c.isalnum() or c in (' ', '.', '_')).rstrip()
-
-def clear_memory():
-    """Clear memory using garbage collection and flush system cache (Linux only)."""
-    logger.info("Running garbage collection...")
-    gc.collect()
-    if platform.system() == "Linux":
-        logger.info("Clearing system caches...")
-        os.system('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches > /dev/null')
-    else:
-        logger.info("System cache clearing is only supported on Linux systems.")
 
 def process_youtube(url):
     """Download video using yt-dlp."""
@@ -46,8 +35,6 @@ def process_youtube(url):
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0
-    finally:
-        clear_memory()
 
 def extract_audio(url):
     """Download and extract audio from a YouTube video using yt-dlp."""
@@ -75,8 +62,6 @@ def extract_audio(url):
     except Exception as e:
         logger.error(f"Error extracting audio: {e}")
         return None, 0
-    finally:
-        clear_memory()
 
 def trim_video(video_filename, start_time, end_time):
     """Trim video using FFmpeg."""
@@ -96,8 +81,6 @@ def trim_video(video_filename, start_time, end_time):
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg error: {e}")
         return None, 0
-    finally:
-        clear_memory()
 
 def process_youtube_full(url, start_time=None, end_time=None, audio_only=False):
     """Download and optionally trim a YouTube video or extract audio."""
@@ -108,7 +91,6 @@ def process_youtube_full(url, start_time=None, end_time=None, audio_only=False):
         return None, 0
     if start_time and end_time:
         return trim_video(video_filename, start_time, end_time)
-    clear_memory()
     return video_filename, file_size
 
 def handle_message(url, start_time=None, end_time=None, audio_only=False):
@@ -124,13 +106,10 @@ def handle_message(url, start_time=None, end_time=None, audio_only=False):
             logger.error("Failed to process file.")
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
-    finally:
-        clear_memory()
 
 if __name__ == "__main__":
-    logger.info("Starting YouTube processing and memory clearing process...")
+    logger.info("Starting YouTube processing...")
     # Example usage (uncomment to test)
     # handle_message("https://youtube.com/watch?v=example", "00:00:10", "00:01:00")
     # handle_message("https://youtube.com/watch?v=example", audio_only=True)
-    clear_memory()
-    logger.info("Memory cleared successfully.")
+    logger.info("Process complete.")
