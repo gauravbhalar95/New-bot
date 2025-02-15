@@ -2,7 +2,7 @@ import os
 import subprocess
 import yt_dlp
 import logging
-from handlers.trim_handlers import trim_handlers
+from handlers.trim_handlers import trim_video
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 
 # Setup logging
