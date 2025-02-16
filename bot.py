@@ -106,5 +106,5 @@ bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
 return "Webhook set", 200
 
 if name == 'main':
-app.run(host='0.0.0.0', port=PORT)"
+app.run(host='0.0.0.0', port=PORT)
 
