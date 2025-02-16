@@ -1,12 +1,12 @@
 import os
 import gc
-import asyncio
 import logging
 import threading
+import asyncio
 from flask import Flask, request
 import telebot
-from telethon import TelegramClient  # Telethon import
-from config import API_TOKEN, WEBHOOK_URL, PORT, API_ID, API_HASH  # Added API_ID, API_HASH
+from telethon import TelegramClient
+from config import API_TOKEN, WEBHOOK_URL, PORT, API_ID, API_HASH
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
@@ -22,10 +22,13 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logger = setup_logging()
 queue = Queue()
 
-# Initialize Telethon client
-client = TelegramClient('bot_session', API_ID, API_HASH)
-client.start(bot_token=API_TOKEN)
-loop = client.loop  # Store the client’s event loop
+# Create a new asyncio loop for Telethon
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+# Initialize Telethon client with the custom loop
+client = TelegramClient('bot_session', API_ID, API_HASH, loop=loop)
+loop.run_until_complete(client.start(bot_token=API_TOKEN))
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -53,10 +56,6 @@ def download_video(url):
 def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
-
-async def send_video_async(chat_id, file_path):
-    await client.send_file(chat_id, file_path)
-
 def download_and_send_video(message, url):
     try:
         if not is_valid_url(url):
@@ -71,11 +70,12 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
+        # Skip sending large files, provide streaming link instead
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
-            # Run the coroutine in the existing Telethon loop
-            asyncio.run_coroutine_threadsafe(send_video_async(message.chat.id, file_path), loop)
+            with open(file_path, 'rb') as video:
+                loop.run_until_complete(client.send_file(message.chat.id, video))
 
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -88,6 +88,7 @@ def download_and_send_video(message, url):
         bot.reply_to(message, f"Error occurred: {e}")
 
 def worker():
+    asyncio.set_event_loop(loop)  # Set the correct loop for the worker
     while True:
         message, url = queue.get()
         if message == "STOP":
@@ -99,20 +100,21 @@ def worker():
 def handle_message(message):
     queue.put((message, message.text.strip()))
 
+# Start the worker thread with the correct loop
 threading.Thread(target=worker, daemon=True).start()
 
-app = Flask(__name__)  
-  
-@app.route('/' + API_TOKEN, methods=['POST'])  
-def webhook():  
-    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])  
-    return "OK", 200  
-  
-@app.route('/')  
-def set_webhook():  
-    bot.remove_webhook()  
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)  
-    return "Webhook set", 200  
-  
-if __name__ == '__main__':  
+app = Flask(__name__)
+
+@app.route('/' + API_TOKEN, methods=['POST'])
+def webhook():
+    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
+
+@app.route('/')
+def set_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
+
+if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT)
