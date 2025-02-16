@@ -18,3 +18,5 @@ gunicorn
 telebot
 pylint
 telethon
+asyncio
+nest_asyncio
