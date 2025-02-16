@@ -1,5 +1,4 @@
 import os
-import gc
 import logging
 import threading
 import asyncio
@@ -11,29 +10,20 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import trim_video
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
-from utils.thumb_generator import generate_thumbnail
 from telebot import types
-from queue import Queue
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logger = setup_logging()
-queue = Queue()
 
-# Create a new asyncio loop for Telethon
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-# Initialize Telethon client with the custom loop
+# Asyncio loop for Telethon client
+loop = asyncio.get_event_loop()
 client = TelegramClient('bot_session', API_ID, API_HASH, loop=loop)
 
-async def main():
+async def start_telethon():
     await client.start(bot_token=API_TOKEN)
-    print("Telethon client started")
-
-loop.run_until_complete(main())
+    logger.info("Telethon client started.")
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -55,7 +45,7 @@ def download_video(url):
     platform, handler = detect_platform(url)
     if not platform:
         raise ValueError("Unsupported platform")
-    return handler(url)  # Call appropriate handler
+    return handler(url)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -74,8 +64,7 @@ def download_and_send_video(message, url):
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
-
-        if file_size > 2 * 1024 * 1024 * 1024:  # If file size is greater than 2GB
+        if file_size > 2 * 1024 * 1024 * 1024:  # > 2GB
             streaming_link = get_streaming_url(file_path)
             bot.send_message(message.chat.id, f"Video is too large to send. Stream it here: {streaming_link}")
         else:
@@ -91,7 +80,7 @@ def handle_message(message):
     url = message.text.strip()
     threading.Thread(target=download_and_send_video, args=(message, url)).start()
 
-# Flask app to keep bot alive and handle webhooks
+# Flask app
 app = Flask(__name__)
 
 @app.route(f"/{API_TOKEN}", methods=['POST'])
@@ -105,7 +94,12 @@ def webhook():
 def index():
     return "Bot is running!", 200
 
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
 if __name__ == "__main__":
+    loop.run_until_complete(start_telethon())
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=PORT)
+    threading.Thread(target=run_flask).start()
+    bot.infinity_polling(skip_pending=True)
