@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 def process_adult(url):
     """
-    Downloads an adult video in HD, generates a thumbnail, and returns (file_path, file_size, thumbnail_path, streaming_url).
+    Downloads an adult video in HD and generates a thumbnail. 
+    Returns (file_path, streaming_url).
     """
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -40,30 +41,27 @@ def process_adult(url):
             info_dict = ydl.extract_info(url, download=True)
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
-                return None, None, None, None
+                return None, None
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            thumbnail_path = generate_thumbnail(file_path)
-
             streaming_url = info_dict.get('url') or info_dict.get('webpage_url')
 
-            if file_size > MAX_FILE_SIZE:
-                logger.info(f"⚠️ File too large ({file_size / (1024 * 1024):.2f} MB). Sending streaming link instead.")
-                return None, None, thumbnail_path, streaming_url
-
-            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-            return file_path, file_size, thumbnail_path, streaming_url
+            if os.path.exists(file_path):
+                logger.info(f"✅ Download completed: {file_path}")
+                return file_path, streaming_url
+            else:
+                logger.error("⚠️ File not found after download.")
+                return None, None
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
 
-    return None, None, None, None
+    return None, None
 
 # Example usage
-url = "VIDEO_LINK_HERE"
+url = "https://www.xvideos.com/video.otpitpb6819/39907973/0/a"
 file_path, file_size, thumbnail_path, streaming_url = process_adult(url)
 
 if streaming_url:
