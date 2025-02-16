@@ -12,7 +12,7 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def process_adult(url, chat_id):
+def process_adult(url):
     """Downloads an adult video in HD, sends thumbnail first, and then returns (file_path, file_size)."""
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
