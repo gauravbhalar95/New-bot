@@ -7,7 +7,7 @@ load_dotenv()
 # Telegram API credentials from https://my.telegram.org
 API_ID = os.getenv("API_ID")  # Get from my.telegram.org
 API_HASH = os.getenv("API_HASH")  # Get from my.telegram.org
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
+API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
 # Instagram authentication settings
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")  # Set this in your environment
