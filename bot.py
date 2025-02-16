@@ -8,11 +8,9 @@ from config import API_TOKEN, WEBHOOK_URL, PORT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media  # Updated import
-from handlers.trim_handlers import trim_video
+from handlers.x_handler import download_twitter_media
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
-from utils.thumb_generator import generate_thumbnail
 from telebot import types
 from queue import Queue
 
@@ -52,21 +50,16 @@ def download_and_send_video(message, url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
-        file_path, file_size, thumbnail_path = download_video(url)  # Updated to handle the new tuple
+        file_path, file_size = download_video(url)
         if not file_path:
             bot.reply_to(message, "Error: Video download failed.")
             return
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            with open(thumbnail_path, 'rb') as thumb:
-                bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
         os.remove(file_path)
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            os.remove(thumbnail_path)
         gc.collect()
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -90,14 +83,24 @@ app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    try:
+        logger.info("Webhook received.")
+        bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        return "Error", 500
 
 @app.route('/')
 def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "Webhook set", 200
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+        logger.info("Webhook set successfully.")
+        return "Webhook set", 200
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        return f"Error setting webhook: {e}", 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=int(PORT))
