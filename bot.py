@@ -28,7 +28,12 @@ asyncio.set_event_loop(loop)
 
 # Initialize Telethon client with the custom loop
 client = TelegramClient('bot_session', API_ID, API_HASH, loop=loop)
-loop.run_until_complete(client.start(bot_token=API_TOKEN))
+
+async def main():
+    await client.start(bot_token=API_TOKEN)
+    print("Telethon client started")
+
+loop.run_until_complete(main())
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -70,51 +75,37 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        # Skip sending large files, provide streaming link instead
-        if file_size > 2 * 1024 * 1024 * 1024:
-            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
+        if file_size > 2 * 1024 * 1024 * 1024:  # If file size is greater than 2GB
+            streaming_link = get_streaming_url(file_path)
+            bot.send_message(message.chat.id, f"Video is too large to send. Stream it here: {streaming_link}")
         else:
             with open(file_path, 'rb') as video:
-                loop.run_until_complete(client.send_file(message.chat.id, video))
-
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            os.remove(thumbnail_path)
-        gc.collect()
-
+                bot.send_video(message.chat.id, video)
+        bot.reply_to(message, "✅ Video sent successfully.")
     except Exception as e:
-        logger.error(f"Error: {e}")
-        bot.reply_to(message, f"Error occurred: {e}")
-
-def worker():
-    asyncio.set_event_loop(loop)  # Set the correct loop for the worker
-    while True:
-        message, url = queue.get()
-        if message == "STOP":
-            break
-        download_and_send_video(message, url)
-        queue.task_done()
+        logger.error(f"Error processing video: {e}")
+        bot.reply_to(message, f"❌ An error occurred: {str(e)}")
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_message(message):
-    queue.put((message, message.text.strip()))
+    url = message.text.strip()
+    threading.Thread(target=download_and_send_video, args=(message, url)).start()
 
-# Start the worker thread with the correct loop
-threading.Thread(target=worker, daemon=True).start()
-
+# Flask app to keep bot alive and handle webhooks
 app = Flask(__name__)
 
-@app.route('/' + API_TOKEN, methods=['POST'])
+@app.route(f"/{API_TOKEN}", methods=['POST'])
 def webhook():
-    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '', 200
 
 @app.route('/')
-def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "Webhook set", 200
+def index():
+    return "Bot is running!", 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    app.run(host="0.0.0.0", port=PORT)
