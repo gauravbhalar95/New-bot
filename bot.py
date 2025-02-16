@@ -52,22 +52,28 @@ def download_and_send_video(message, url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
-        file_path, file_size, thumbnail_path = download_video(url)  # Updated to handle the new tuple
+        file_path, file_size, thumbnail_path = download_video(url)
         if not file_path:
             bot.reply_to(message, "Error: Video download failed.")
             return
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
+
+        # Skip sending large files, provide streaming link instead
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-        os.remove(file_path)
+        
+        # Clean up files after sending
+        if os.path.exists(file_path):
+            os.remove(file_path)
         if thumbnail_path and os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
         gc.collect()
+
     except Exception as e:
         logger.error(f"Error: {e}")
         bot.reply_to(message, f"Error occurred: {e}")
