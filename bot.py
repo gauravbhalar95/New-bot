@@ -1,5 +1,6 @@
 import os
 import gc
+import asyncio
 import logging
 import threading
 from flask import Flask, request
@@ -64,15 +65,14 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        # Skip sending large files, provide streaming link instead
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
-            # Use Telethon to send large files
-            with open(file_path, 'rb') as video:
-                client.loop.run_until_complete(client.send_file(message.chat.id, video))
+            # Create a new asyncio loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(client.send_file(message.chat.id, file_path))
 
-        # Clean up files after sending
         if os.path.exists(file_path):
             os.remove(file_path)
         if thumbnail_path and os.path.exists(thumbnail_path):
