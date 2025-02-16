@@ -27,7 +27,8 @@ def detect_platform(url):
     for platform, (domains, handler) in SUPPORTED_DOMAINS.items():
         if any(domain in url for domain in domains):
             return platform, handler
-    return None, None, None
+    return None, None  # Return only two values
+
 
 def get_streaming_url(url):
     return f"https://stream.example.com?url={url}"  # Replace with actual service
@@ -36,7 +37,7 @@ def download_video(url):
     platform, handler = detect_platform(url)
     if not platform:
         raise ValueError("Unsupported platform")
-    return handler(url)
+    return handler(url)  # Ensure this returns two values (e.g., file_path, file_size)
 
 @bot.message_handler(commands=['start'])
 def start(message):
