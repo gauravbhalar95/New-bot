@@ -40,7 +40,7 @@ def download_video(url):
     platform, handler = detect_platform(url)
     if not platform:
         raise ValueError("Unsupported platform")
-    return handler(url)  # Ensure this handler returns three values: file_path, file_size, thumbnail_path
+    return handler(url)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -52,38 +52,29 @@ def download_and_send_video(message, url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
-        result = download_video(url)
-        if len(result) == 2:
-            file_path, file_size = result
-            thumbnail_path = None
-        else:
-            file_path, file_size, thumbnail_path = result
-
+        file_path, file_size, thumbnail_path = download_video(url)
         if not file_path:
             bot.reply_to(message, "Error: Video download failed.")
             return
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
-
+        
         if file_size > 2 * 1024 * 1024 * 1024:  # If file size is greater than 2GB
-            streaming_link = get_streaming_url(file_path)
-            bot.send_message(message.chat.id, f"Video is too large to send. Stream it here: {streaming_link}")
+            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
 
-        # Clean up files after sending
         if os.path.exists(file_path):
             os.remove(file_path)
         if thumbnail_path and os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
         gc.collect()
 
-        bot.reply_to(message, "✅ Video sent successfully.")
     except Exception as e:
-        logger.error(f"Error processing video: {e}")
-        bot.reply_to(message, f"❌ An error occurred: {str(e)}")
+        logger.error(f"Error: {e}")
+        bot.reply_to(message, f"Error occurred: {e}")
 
 def worker():
     while True:
@@ -99,21 +90,18 @@ def handle_message(message):
 
 threading.Thread(target=worker, daemon=True).start()
 
-# Flask app to keep bot alive and handle webhooks
 app = Flask(__name__)
 
-@app.route(f"/{API_TOKEN}", methods=['POST'])
+@app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    json_str = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return '', 200
+    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
+    return "OK", 200
 
 @app.route('/')
-def index():
-    return "Bot is running!", 200
-
-if __name__ == "__main__":
+def set_webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=PORT)
+    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=PORT)
