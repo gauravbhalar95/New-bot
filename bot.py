@@ -4,11 +4,12 @@ import logging
 import threading
 from flask import Flask, request
 import telebot
-from config import API_TOKEN, WEBHOOK_URL, PORT
+from telethon import TelegramClient  # Telethon import
+from config import API_TOKEN, WEBHOOK_URL, PORT, API_ID, API_HASH  # Added API_ID, API_HASH
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media  # Updated import
+from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import trim_video
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
@@ -19,6 +20,9 @@ from queue import Queue
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logger = setup_logging()
 queue = Queue()
+
+# Initialize Telethon client
+client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=API_TOKEN)
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -64,9 +68,10 @@ def download_and_send_video(message, url):
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
+            # Use Telethon to send large files
             with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
-        
+                client.loop.run_until_complete(client.send_file(message.chat.id, video))
+
         # Clean up files after sending
         if os.path.exists(file_path):
             os.remove(file_path)
