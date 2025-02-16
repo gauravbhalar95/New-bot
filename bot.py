@@ -3,7 +3,7 @@ import gc
 import logging
 import threading
 import telebot
-from config import API_TOKEN
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
