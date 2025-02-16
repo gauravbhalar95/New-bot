@@ -1,2 +1,3 @@
 web: python webhook.py
 worker: python bot.py
+worker: python auto_fix.py
