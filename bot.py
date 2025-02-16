@@ -27,7 +27,7 @@ def detect_platform(url):
     for platform, (domains, handler) in SUPPORTED_DOMAINS.items():
         if any(domain in url for domain in domains):
             return platform, handler
-    return None, None
+    return None, None, None
 
 def get_streaming_url(url):
     return f"https://stream.example.com?url={url}"  # Replace with actual service
