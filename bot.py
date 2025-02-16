@@ -51,6 +51,9 @@ def download_video(url):
 def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
+async def send_video_async(chat_id, file_path):
+    await client.send_file(chat_id, file_path)
+
 def download_and_send_video(message, url):
     try:
         if not is_valid_url(url):
@@ -68,10 +71,7 @@ def download_and_send_video(message, url):
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
-            # Create a new asyncio loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(client.send_file(message.chat.id, file_path))
+            asyncio.run(send_video_async(message.chat.id, file_path))  # Correct event loop usage
 
         if os.path.exists(file_path):
             os.remove(file_path)
