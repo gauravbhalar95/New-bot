@@ -35,33 +35,19 @@ def process_adult(url):
         }
     }
 
-    try:
+        try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-
-            # Ensure valid response
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
-                return None
-
-            # Get actual downloaded file path
+                return None, None, None
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-
-            # Call generate_thumbnail after video is downloaded
             thumbnail_path = generate_thumbnail(file_path)
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-
-            # Send the thumbnail before the video
-            if os.path.exists(thumbnail_path):
-                with open(thumbnail_path, 'rb') as thumb:
-                    bot.send_photo(chat_id, thumb, caption="✅ Here's the thumbnail!")
-
             return file_path, file_size, thumbnail_path
-
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
-
-    return None
+    return None, None, None
