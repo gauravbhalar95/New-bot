@@ -4,9 +4,6 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Telegram API credentials from https://my.telegram.org
-API_ID = os.getenv("API_ID")  # Get from my.telegram.org
-API_HASH = os.getenv("API_HASH")  # Get from my.telegram.org
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
 # Instagram authentication settings
