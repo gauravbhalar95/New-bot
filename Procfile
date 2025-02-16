@@ -1,1 +1,2 @@
-web: python3 auto_fix.py & python3 bot.py
+web: python webhook.py
+worker: python bot.py
