@@ -63,7 +63,7 @@ def extract_audio(url):
             return audio_filename, file_size
     except Exception as e:
         logger.error(f"Error extracting audio: {e}")
-        return None, 0
+        return None, 0, None
 
 
 def process_youtube_full(url, start_time=None, end_time=None, audio_only=False):
