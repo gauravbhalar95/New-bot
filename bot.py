@@ -23,7 +23,9 @@ logger = setup_logging()
 queue = Queue()
 
 # Initialize Telethon client
-client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=API_TOKEN)
+client = TelegramClient('bot_session', API_ID, API_HASH)
+client.start(bot_token=API_TOKEN)
+loop = client.loop  # Store the client’s event loop
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
@@ -51,6 +53,7 @@ def download_video(url):
 def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
+
 async def send_video_async(chat_id, file_path):
     await client.send_file(chat_id, file_path)
 
@@ -71,7 +74,8 @@ def download_and_send_video(message, url):
         if file_size > 2 * 1024 * 1024 * 1024:
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
-            asyncio.run(send_video_async(message.chat.id, file_path))  # Correct event loop usage
+            # Run the coroutine in the existing Telethon loop
+            asyncio.run_coroutine_threadsafe(send_video_async(message.chat.id, file_path), loop)
 
         if os.path.exists(file_path):
             os.remove(file_path)
