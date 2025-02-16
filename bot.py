@@ -9,10 +9,8 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import trim_video
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
-from utils.thumb_generator import generate_thumbnail
 from telebot import types
 from queue import Queue
 
@@ -85,14 +83,24 @@ app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
-    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
+    try:
+        logger.info("Webhook received.")
+        bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        return "Error", 500
 
 @app.route('/')
 def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "Webhook set", 200
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+        logger.info("Webhook set successfully.")
+        return "Webhook set", 200
+    except Exception as e:
+        logger.error(f"Failed to set webhook: {e}")
+        return f"Error setting webhook: {e}", 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=int(PORT))
