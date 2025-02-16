@@ -16,13 +16,11 @@ def process_adult(url):
     """
     Downloads an adult video in HD, generates a thumbnail, and returns (file_path, file_size, thumbnail_path, streaming_url).
     """
-
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
-    # ✅ yt-dlp options for fast & stable downloads (No Cookies)
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'best[ext=mp4]/best',  # HD quality, max 1080p video
+        'format': 'best[ext=mp4]/best',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
@@ -47,12 +45,11 @@ def process_adult(url):
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             thumbnail_path = generate_thumbnail(file_path)
-            
-            # Get streaming URL
-            streaming_url = info_dict.get('url')
+
+            streaming_url = info_dict.get('url') or info_dict.get('webpage_url')
 
             if file_size > MAX_FILE_SIZE:
-                logger.info(f"⚠️ File too large ({file_size} bytes). Sending streaming link instead.")
+                logger.info(f"⚠️ File too large ({file_size / (1024 * 1024):.2f} MB). Sending streaming link instead.")
                 return None, None, thumbnail_path, streaming_url
 
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
@@ -64,3 +61,14 @@ def process_adult(url):
         logger.error(f"⚠️ Unexpected error: {e}")
 
     return None, None, None, None
+
+# Example usage
+url = "VIDEO_LINK_HERE"
+file_path, file_size, thumbnail_path, streaming_url = process_adult(url)
+
+if streaming_url:
+    print(f"Streaming URL: {streaming_url}")
+elif file_path:
+    print(f"Downloaded file: {file_path}, Size: {file_size} bytes")
+else:
+    print("Download failed.")
