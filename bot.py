@@ -2,18 +2,14 @@ import os
 import gc
 import logging
 import threading
-from flask import Flask, request
 import telebot
-from config import API_TOKEN, WEBHOOK_URL, PORT
+from config import API_TOKEN
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import trim_video
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
-from utils.thumb_generator import generate_thumbnail
-from telebot import types
 from queue import Queue
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -59,7 +55,7 @@ def download_and_send_video(message, url):
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
-        
+
         if file_size > 2 * 1024 * 1024 * 1024:  # If file size is greater than 2GB
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
@@ -89,19 +85,3 @@ def handle_message(message):
     queue.put((message, message.text.strip()))
 
 threading.Thread(target=worker, daemon=True).start()
-
-app = Flask(__name__)
-
-@app.route('/' + API_TOKEN, methods=['POST'])
-def webhook():
-    bot.process_new_updates([types.Update.de_json(request.stream.read().decode("utf-8"))])
-    return "OK", 200
-
-@app.route('/')
-def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-    return "Webhook set", 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
