@@ -19,7 +19,6 @@ def download_twitter_media(url):
     """
     Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).
     """
-
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
@@ -62,3 +61,25 @@ def download_twitter_media(url):
         logger.error(f"⚠️ Unexpected error: {e}")
 
     return None, None, None
+
+
+def get_streaming_url(url):
+    """
+    Fetches a streaming URL without downloading the video.
+    """
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+        'cookiefile': X_FILE,  # Include cookies
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://x.com/'
+        }
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
