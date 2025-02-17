@@ -34,7 +34,6 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Process Instagram video download
 def process_instagram(url):
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
@@ -49,7 +48,7 @@ def process_instagram(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Added third value
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
     except Exception as e:
         logger.error(f"Error downloading Instagram video: {e}")
         return None, 0, None
