@@ -4,6 +4,7 @@ import logging
 import threading
 import telebot
 import requests
+import yt_dlp  # Added for streaming link
 from config import API_TOKEN
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
@@ -31,6 +32,20 @@ def detect_platform(url):
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
+
+# Added this function for streaming link using yt-dlp
+def get_streaming_url(url):
+    ydl_opts = {
+        'format': 'best',
+        'noplaylist': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"Error fetching streaming URL: {e}")
+        return None
 
 def upload_to_api_video(file_path):
     url = "https://ws.api.video/videos"
@@ -70,7 +85,6 @@ def download_and_send_video(message, url):
             return
         bot.reply_to(message, "Downloading video, please wait...")
 
-        # Log memory usage at the start
         log_memory_usage()
 
         file_path, file_size, thumbnail_path = download_video(url)
@@ -78,7 +92,6 @@ def download_and_send_video(message, url):
             bot.reply_to(message, "Error: Video download failed.")
             return
 
-        # Log memory usage after download
         log_memory_usage()
 
         if thumbnail_path and os.path.exists(thumbnail_path):
@@ -86,21 +99,21 @@ def download_and_send_video(message, url):
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
         if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
-            streaming_link = upload_to_api_video(file_path)
-            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")
+            streaming_link = get_streaming_url(url)  # Used yt-dlp for streaming link
+            if streaming_link:
+                bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")
+            else:
+                bot.reply_to(message, "Failed to get streaming link.")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
 
-        # Clean up resources and log memory usage after sending video
         if os.path.exists(file_path):
             os.remove(file_path)
         if thumbnail_path and os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
 
-        # Log memory usage after cleanup
         log_memory_usage()
-
         gc.collect()
 
     except Exception as e:
@@ -119,5 +132,4 @@ def worker():
 def handle_message(message):
     queue.put((message, message.text.strip()))
 
-# Start worker thread to handle video download in background
 threading.Thread(target=worker, daemon=True).start()
