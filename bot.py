@@ -12,6 +12,7 @@ from handlers.x_handler import download_twitter_media
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
 from queue import Queue
+import psutil  # To monitor memory usage
 
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -54,6 +55,10 @@ def download_video(url):
         raise ValueError("Unsupported platform")
     return handler(url)
 
+def log_memory_usage():
+    memory = psutil.virtual_memory()
+    logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
+
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
@@ -64,10 +69,18 @@ def download_and_send_video(message, url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
+
+        # Log memory usage at the start
+        log_memory_usage()
+
         file_path, file_size, thumbnail_path = download_video(url)
         if not file_path:
             bot.reply_to(message, "Error: Video download failed.")
             return
+
+        # Log memory usage after download
+        log_memory_usage()
+
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
@@ -79,10 +92,15 @@ def download_and_send_video(message, url):
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
 
+        # Clean up resources and log memory usage after sending video
         if os.path.exists(file_path):
             os.remove(file_path)
         if thumbnail_path and os.path.exists(thumbnail_path):
             os.remove(thumbnail_path)
+
+        # Log memory usage after cleanup
+        log_memory_usage()
+
         gc.collect()
 
     except Exception as e:
@@ -101,4 +119,5 @@ def worker():
 def handle_message(message):
     queue.put((message, message.text.strip()))
 
+# Start worker thread to handle video download in background
 threading.Thread(target=worker, daemon=True).start()
