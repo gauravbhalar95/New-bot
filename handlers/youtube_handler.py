@@ -32,7 +32,7 @@ def process_youtube(url):
                 logger.error("No info_dict returned. Download failed.")
                 return None, 0, None 
             file_size = info_dict.get('filesize', 0) or 0
-            return ydl.prepare_filename(info_dict), file_size
+            return ydl.prepare_filename(info_dict), file_size, None  # Fixed: Added third value
     except Exception as e:
         logger.error(f"Error downloading video: {e}")
         return None, 0, None
