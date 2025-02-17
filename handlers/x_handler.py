@@ -23,6 +23,7 @@ def download_twitter_media(url):
         'socket_timeout': 30,
         'retries': 10,
         'fragment_retries': 10,
+        'cookies_file': X_FILE
         'continuedl': True,
         'http_chunk_size': 1048576,
         'quiet': False,
