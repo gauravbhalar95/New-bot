@@ -35,9 +35,17 @@ def detect_platform(url):
 
 # Added this function for streaming link using yt-dlp
 def get_streaming_url(url):
+    """
+    Fetches a streaming URL without downloading the video.
+    """
     ydl_opts = {
         'format': 'best',
         'noplaylist': True,
+        'cookiefile': COOKIES_FILE,  # Include cookies
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://x.com/'
+        }
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
