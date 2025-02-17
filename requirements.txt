@@ -20,3 +20,4 @@ pylint
 telethon
 asyncio
 nest_asyncio
+psutil
