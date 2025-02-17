@@ -57,7 +57,7 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > 2 * 1024 * 1024 * 1024:  # If file size is greater than 2GB
+        if file_size > 100 * 1024 * 1024:  # If file size is greater than 2GB
             bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
         else:
             with open(file_path, 'rb') as video:
