@@ -14,6 +14,14 @@ from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
 from queue import Queue
 import psutil  # To monitor memory usage
+import time
+import requests
+from requests.exceptions import ConnectionError
+
+
+
+
+
 
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -71,6 +79,24 @@ def upload_to_api_video(file_path):
         return response.json()['assets']['player']
     else:
         raise Exception("Failed to upload video to api.video")
+
+
+def send_request_with_retries(url, payload, retries=5, delay=3):
+    for attempt in range(retries):
+        try:
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                return response
+            else:
+                logger.error(f"Received unexpected status code {response.status_code}")
+        except ConnectionError as e:
+            logger.error(f"Connection error: {e}")
+            if attempt < retries - 1:
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                logger.error("Max retries reached. Request failed.")
+    return None
 
 def download_video(url):
     platform, handler = detect_platform(url)
