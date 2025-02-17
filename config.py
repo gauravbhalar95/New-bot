@@ -24,6 +24,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 X_FILE = "x.txt"
 YOUTUBE_FILE = "youtube_cookies.txt"
 INSTAGRAM_FILE = "Instagram_cookies.txt"
+COOKIES_FILE = "cookies.txt"
 
 # Supported video platforms
 SUPPORTED_DOMAINS = [
