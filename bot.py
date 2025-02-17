@@ -3,7 +3,8 @@ import gc
 import logging
 import threading
 import telebot
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
+import requests
+from config import API_TOKEN
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
@@ -12,6 +13,7 @@ from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
 from queue import Queue
 
+API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 logger = setup_logging()
 queue = Queue()
@@ -27,17 +29,30 @@ def detect_platform(url):
     for platform, (domains, handler) in SUPPORTED_DOMAINS.items():
         if any(domain in url for domain in domains):
             return platform, handler
-    return None, None  # Return only two values
+    return None, None
 
-
-def get_streaming_url(url):
-    return f"https://stream.example.com?url={url}"  # Replace with actual service
+def upload_to_api_video(file_path):
+    url = "https://ws.api.video/videos"
+    headers = {
+        "Authorization": f"Bearer {API_VIDEO_KEY}"
+    }
+    files = {
+        'file': open(file_path, 'rb')
+    }
+    data = {
+        'title': os.path.basename(file_path)
+    }
+    response = requests.post(url, headers=headers, files=files, data=data)
+    if response.status_code == 201:
+        return response.json()['assets']['player']
+    else:
+        raise Exception("Failed to upload video to api.video")
 
 def download_video(url):
     platform, handler = detect_platform(url)
     if not platform:
         raise ValueError("Unsupported platform")
-    return handler(url)  # Ensure this returns two values (e.g., file_path, file_size)
+    return handler(url)
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -57,8 +72,9 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > 100 * 1024 * 1024:  # If file size is greater than 2GB
-            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{get_streaming_url(url)}")
+        if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
+            streaming_link = upload_to_api_video(file_path)
+            bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
