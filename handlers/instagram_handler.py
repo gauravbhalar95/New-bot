@@ -4,15 +4,14 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
+import subprocess  # For running ffmpeg
 from config import DOWNLOAD_DIR, DOWNLOAD_DIR2, DOWNLOAD_DIR3, INSTAGRAM_FILE
 from utils.sanitize import is_valid_url  # Sanitization utility
 
 logger = logging.getLogger(__name__)
 
-# Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
 
-# Validate URLs
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -20,16 +19,13 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Sanitize filename
 def sanitize_filename(name):
     return re.sub(r'[\/:*?"<>|]', '', name)
 
-# Ensure the download directory exists
 def ensure_download_dir_exists(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-# Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
         percent = d.get('_percent_str', '0%')
@@ -39,43 +35,70 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Determine the download directory based on content type
 def get_download_directory(url):
     if '/stories/' in url or '/stories' in url:
         ensure_download_dir_exists(DOWNLOAD_DIR3)
-        return DOWNLOAD_DIR3  # For stories
+        return DOWNLOAD_DIR3
     elif '/p/' in url or '/reel/' in url:
         ensure_download_dir_exists(DOWNLOAD_DIR)
-        return DOWNLOAD_DIR  # For posts/reels
+        return DOWNLOAD_DIR
     else:
         ensure_download_dir_exists(DOWNLOAD_DIR2)
-        return DOWNLOAD_DIR2  # For images
+        return DOWNLOAD_DIR2
 
-# Process all Instagram content with cookies
+def merge_with_ffmpeg(video_path, audio_path, output_path):
+    try:
+        command = [
+            'ffmpeg', '-y', '-i', video_path, '-i', audio_path,
+            '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental', output_path
+        ]
+        subprocess.run(command, check=True)
+        logger.info(f'Merged files into {output_path}')
+        return output_path
+    except subprocess.CalledProcessError as e:
+        logger.error(f'Error merging files with ffmpeg: {e}')
+        return None
+
 def process_instagram(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'format': 'bv+ba/b',  # For all formats
+        'format': 'bv+ba/b',  # Download best video and audio
         'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,  # Use cookies
+        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
         'verbose': True,
-        'noplaylist': True,  # Disable playlists for multiple media posts
+        'noplaylist': True,
+        'merge_output_format': 'mp4'  # Set output format for ffmpeg
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None
+            filename = ydl.prepare_filename(info_dict)
+            
+            # Check if there are separate video and audio files
+            if 'requested_downloads' in info_dict:
+                video_file = None
+                audio_file = None
+                for f in info_dict['requested_downloads']:
+                    if f['ext'] in ['mp4', 'mkv', 'webm']:
+                        video_file = f['_filename']
+                    elif f['ext'] in ['m4a', 'mp3', 'opus']:
+                        audio_file = f['_filename']
+                
+                if video_file and audio_file:
+                    merged_file = os.path.join(download_directory, sanitize_filename(info_dict['title']) + '_merged.mp4')
+                    merge_with_ffmpeg(video_file, audio_file, merged_file)
+                    return merged_file, info_dict.get('filesize', 0), None
+            return filename, info_dict.get('filesize', 0), None
     except Exception as e:
         logger.error(f"Error downloading Instagram content: {e}")
         return None, 0, None
 
-# Send media to user
 def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
         with open(media_path, 'rb') as media:
@@ -87,7 +110,6 @@ def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     except Exception as e:
         logger.error(f"Failed to send {media_type} to user {chat_id}: {e}")
 
-# Cleanup after download
 def cleanup_media(media_path):
     try:
         if os.path.exists(media_path):
