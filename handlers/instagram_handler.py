@@ -4,7 +4,7 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
-from config import DOWNLOAD_DIR, INSTAGRAM_FILE
+from config import DOWNLOAD_DIR, DOWNLOAD_DIR2, DOWNLOAD_DIR3, INSTAGRAM_FILE
 from utils.sanitize import is_valid_url  # Sanitization utility
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,6 @@ def is_valid_url(url):
 def sanitize_filename(name):
     return re.sub(r'[\/:*?"<>|]', '', name)
 
-# Create the download directory if it does not exist
-def ensure_download_dir_exists():
-    if not os.path.exists(DOWNLOAD_DIR):
-        os.makedirs(DOWNLOAD_DIR)
 
 # Progress hook for downloads
 def download_progress_hook(d):
