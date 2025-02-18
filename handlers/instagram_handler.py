@@ -56,7 +56,7 @@ def process_instagram(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',  # For all formats
+        'format': 'best',  # For all formats
         'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,  # Use cookies
         'socket_timeout': 10,
