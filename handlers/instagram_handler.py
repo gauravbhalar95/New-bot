@@ -39,40 +39,43 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Process Instagram content (images, videos, stories)
+# Determine the download directory based on content type
+def get_download_directory(url):
+    if '/stories/' in url or '/stories' in url:
+        ensure_download_dir_exists(DOWNLOAD_DIR3)
+        return DOWNLOAD_DIR3  # For stories
+    elif '/p/' in url or '/reel/' in url:
+        ensure_download_dir_exists(DOWNLOAD_DIR)
+        return DOWNLOAD_DIR  # For posts/reels
+    else:
+        ensure_download_dir_exists(DOWNLOAD_DIR2)
+        return DOWNLOAD_DIR2  # For images
+
+# Process all Instagram content with cookies
 def process_instagram(url):
-    ensure_download_dir_exists(DOWNLOAD_DIR)  # Ensure the main download directory exists
-    if "story" in url:  # If it's a story, use the specific directory for stories
-        ensure_download_dir_exists(DOWNLOAD_DIR3)  # Ensure story download directory exists
-        download_directory = DOWNLOAD_DIR3
-    elif "media" in url:  # If it's an image, use the specific directory for images
-        ensure_download_dir_exists(DOWNLOAD_DIR2)  # Ensure image download directory exists
-        download_directory = DOWNLOAD_DIR2
-    else:  # For other media, use the default download directory
-        download_directory = DOWNLOAD_DIR
+    download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # For videos, change this line if you want images
+        'format': 'bestvideo+bestaudio/best',  # For all formats
         'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
+        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,  # Use cookies
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
         'verbose': True,
-        'extract_flat': True,  # If you want only the metadata without downloading media
-        'noplaylist': True,  # Don't process Instagram posts with multiple media
+        'noplaylist': True,  # Disable playlists for multiple media posts
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None
     except Exception as e:
         logger.error(f"Error downloading Instagram content: {e}")
         return None, 0, None
 
-# Send media to user (bot instance will be passed from main)
+# Send media to user
 def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
         with open(media_path, 'rb') as media:
