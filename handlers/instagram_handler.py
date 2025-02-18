@@ -5,6 +5,7 @@ import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
 import subprocess  # For running ffmpeg
+import instaloader  # For downloading images and stories
 from config import DOWNLOAD_DIR, DOWNLOAD_DIR2, DOWNLOAD_DIR3, INSTAGRAM_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.sanitize import is_valid_url  # Sanitization utility
 
@@ -59,11 +60,39 @@ def merge_with_ffmpeg(video_path, audio_path, output_path):
         logger.error(f'Error merging files with ffmpeg: {e}')
         return None
 
-def process_instagram(url):
+def process_instagram_with_instaloader(url):
+    L = instaloader.Instaloader()
+    L.load_session_from_file(INSTAGRAM_USERNAME, INSTAGRAM_FILE)
+
+    download_directory = get_download_directory(url)
+
+    try:
+        if '/stories/' in url:
+            profile_name = url.split('/stories/')[1].split('/')[0]
+            profile = instaloader.Profile.from_username(L.context, profile_name)
+            for story in L.get_stories(userids=[profile.userid]):
+                L.download_storyitem(story, target=download_directory)
+            return f"Stories from {profile_name} downloaded.", None, None
+
+        else:
+            post_shortcode = url.split('/p/')[1].split('/')[0] if '/p/' in url else None
+            if post_shortcode:
+                post = instaloader.Post.from_shortcode(L.context, post_shortcode)
+                L.download_post(post, target=download_directory)
+                return f"Post {post_shortcode} downloaded.", None, None
+            else:
+                return None, 0, "Unsupported URL"
+    except Exception as e:
+        logger.error(f"Error downloading Instagram content with instaloader: {e}")
+        return None, 0, e
+
+def process_instagram_with_ytdlp(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'cookiefile': 'INSTAGRAM_FILE',
+        'username': INSTAGRAM_USERNAME,
+        'password': INSTAGRAM_PASSWORD,
+        'cookiefile': INSTAGRAM_FILE,  # Path to your cookies file
         'format': 'bv+ba/b',
         'outtmpl': f'{download_directory}/%(title)s.%(ext)s',
         'retries': 5,
@@ -77,23 +106,29 @@ def process_instagram(url):
             info_dict = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info_dict)
 
+            video_file = None
+            audio_file = None
             if 'requested_downloads' in info_dict:
-                video_file = None
-                audio_file = None
                 for f in info_dict['requested_downloads']:
                     if f['ext'] in ['mp4', 'mkv', 'webm']:
                         video_file = f['_filename']
                     elif f['ext'] in ['m4a', 'mp3', 'opus']:
                         audio_file = f['_filename']
 
-                if video_file and audio_file:
-                    merged_file = os.path.join(download_directory, sanitize_filename(info_dict['title']) + '_merged.mp4')
-                    merge_with_ffmpeg(video_file, audio_file, merged_file)
-                    return merged_file, info_dict.get('filesize', 0), None
+            if video_file and audio_file:
+                merged_file = os.path.join(download_directory, sanitize_filename(info_dict['title']) + '_merged.mp4')
+                merge_with_ffmpeg(video_file, audio_file, merged_file)
+                return merged_file, info_dict.get('filesize', 0), None
             return filename, info_dict.get('filesize', 0), None
     except Exception as e:
-        logger.error(f"Error downloading Instagram content: {e}")
+        logger.error(f"Error downloading Instagram content with yt-dlp: {e}")
         return None, 0, None
+
+def process_instagram(url):
+    if '/stories/' in url or '/p/' in url:
+        return process_instagram_with_instaloader(url)
+    else:
+        return process_instagram_with_ytdlp(url)
 
 def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
