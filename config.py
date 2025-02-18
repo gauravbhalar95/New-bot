@@ -17,8 +17,16 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.getenv("PORT", 8080))
 
 # Download directory
-DOWNLOAD_DIR = "downloads\"
+DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# Download directory
+DOWNLOAD_DIR2 = "downloads/post"
+os.makedirs(DOWNLOAD_DIR2, exist_ok=True)
+
+# Download directory
+DOWNLOAD_DIR3 = "downloads/story"
+os.makedirs(DOWNLOAD_DIR3, exist_ok=True)
 
 # Cookies file for authenticated downloads
 X_FILE = "x.txt"
