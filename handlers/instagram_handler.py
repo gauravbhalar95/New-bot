@@ -24,6 +24,10 @@ def is_valid_url(url):
 def sanitize_filename(name):
     return re.sub(r'[\/:*?"<>|]', '', name)
 
+# Ensure the download directory exists
+def ensure_download_dir_exists(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
 # Progress hook for downloads
 def download_progress_hook(d):
@@ -37,11 +41,19 @@ def download_progress_hook(d):
 
 # Process Instagram content (images, videos, stories)
 def process_instagram(url):
-    ensure_download_dir_exists()  # Ensure the download directory exists
+    ensure_download_dir_exists(DOWNLOAD_DIR)  # Ensure the main download directory exists
+    if "story" in url:  # If it's a story, use the specific directory for stories
+        ensure_download_dir_exists(DOWNLOAD_DIR3)  # Ensure story download directory exists
+        download_directory = DOWNLOAD_DIR3
+    elif "media" in url:  # If it's an image, use the specific directory for images
+        ensure_download_dir_exists(DOWNLOAD_DIR2)  # Ensure image download directory exists
+        download_directory = DOWNLOAD_DIR2
+    else:  # For other media, use the default download directory
+        download_directory = DOWNLOAD_DIR
 
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # For videos, change this line if you want images
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -51,6 +63,7 @@ def process_instagram(url):
         'extract_flat': True,  # If you want only the metadata without downloading media
         'noplaylist': True,  # Don't process Instagram posts with multiple media
     }
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
