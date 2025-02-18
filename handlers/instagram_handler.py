@@ -63,24 +63,20 @@ def process_instagram(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-    'cookiefile': 'INSTAGRAM_FILE',  # Use your cookies file
-    'format': 'bv+ba/b',
-    'outtmpl': f'{download_directory}/%(title)s.%(ext)s',
-    'retries': 5,
-    'socket_timeout': 10,
-    'logger': logger,
-    'progress_hooks': [download_progress_hook],
-}
-
-with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    ydl.download([instagram_url])
+        'cookiefile': 'INSTAGRAM_FILE',
+        'format': 'bv+ba/b',
+        'outtmpl': f'{download_directory}/%(title)s.%(ext)s',
+        'retries': 5,
+        'socket_timeout': 10,
+        'logger': logger,
+        'progress_hooks': [download_progress_hook],
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info_dict)
-            
-            # Check if there are separate video and audio files
+
             if 'requested_downloads' in info_dict:
                 video_file = None
                 audio_file = None
@@ -89,7 +85,7 @@ with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         video_file = f['_filename']
                     elif f['ext'] in ['m4a', 'mp3', 'opus']:
                         audio_file = f['_filename']
-                
+
                 if video_file and audio_file:
                     merged_file = os.path.join(download_directory, sanitize_filename(info_dict['title']) + '_merged.mp4')
                     merge_with_ffmpeg(video_file, audio_file, merged_file)
