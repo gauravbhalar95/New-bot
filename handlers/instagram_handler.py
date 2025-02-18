@@ -34,9 +34,10 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
+# Process Instagram content (images, videos, stories)
 def process_instagram(url):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'best[ext=mp4]/best',  # For videos, change this line if you want images
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
@@ -44,30 +45,35 @@ def process_instagram(url):
         'progress_hooks': [download_progress_hook],
         'logger': logger,
         'verbose': True,
+        'extract_flat': True,  # If you want only the metadata without downloading media
+        'noplaylist': True,  # Don't process Instagram posts with multiple media
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
     except Exception as e:
-        logger.error(f"Error downloading Instagram video: {e}")
+        logger.error(f"Error downloading Instagram content: {e}")
         return None, 0, None
 
-# Send video to user (bot instance will be passed from main)
-def send_video_to_user(bot, chat_id, video_path):
+# Send media to user (bot instance will be passed from main)
+def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
-        with open(video_path, 'rb') as video:
-            bot.send_video(chat_id, video)
-        logger.info(f"Video sent to user {chat_id}")
+        with open(media_path, 'rb') as media:
+            if media_type == "video":
+                bot.send_video(chat_id, media)
+            elif media_type == "photo":
+                bot.send_photo(chat_id, media)
+            logger.info(f"{media_type.capitalize()} sent to user {chat_id}")
     except Exception as e:
-        logger.error(f"Failed to send video to user {chat_id}: {e}")
+        logger.error(f"Failed to send {media_type} to user {chat_id}: {e}")
 
 # Cleanup after download
-def cleanup_video(video_path):
+def cleanup_media(media_path):
     try:
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        if os.path.exists(media_path):
+            os.remove(media_path)
             gc.collect()
-            logger.info(f"Cleaned up {video_path}")
+            logger.info(f"Cleaned up {media_path}")
     except Exception as e:
-        logger.error(f"Failed to clean up {video_path}: {e}")
+        logger.error(f"Failed to clean up {media_path}: {e}")
