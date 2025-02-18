@@ -63,17 +63,18 @@ def process_instagram(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'format': 'bv+ba/b',  # Download best video and audio
-        'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
-        'socket_timeout': 10,
-        'retries': 5,
-        'progress_hooks': [download_progress_hook],
-        'logger': logger,
-        'verbose': True,
-        'noplaylist': True,
-        'merge_output_format': 'mp4'  # Set output format for ffmpeg
-    }
+    'username': INSTAGRAM_USERNAME,
+    'password': INSTAGRAM_PASSWORD,
+    'format': 'bv+ba/b',
+    'outtmpl': f'{download_directory}/{sanitize_filename("%(title)s")}.%(ext)s',
+    'cookiefile':INSTAGRAM_FILE,
+    'socket_timeout': 10,
+    'retries': 5,
+    'progress_hooks': [download_progress_hook],
+    'logger': logger,
+    'verbose': True,
+    'noplaylist': True,
+}
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
