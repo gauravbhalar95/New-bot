@@ -5,7 +5,7 @@ import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
 import subprocess  # For running ffmpeg
-from config import DOWNLOAD_DIR, DOWNLOAD_DIR2, DOWNLOAD_DIR3, INSTAGRAM_FILE
+from config import DOWNLOAD_DIR, DOWNLOAD_DIR2, DOWNLOAD_DIR3, INSTAGRAM_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.sanitize import is_valid_url  # Sanitization utility
 
 logger = logging.getLogger(__name__)
