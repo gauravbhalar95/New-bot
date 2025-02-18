@@ -24,6 +24,11 @@ def is_valid_url(url):
 def sanitize_filename(name):
     return re.sub(r'[\/:*?"<>|]', '', name)
 
+# Create the download directory if it does not exist
+def ensure_download_dir_exists():
+    if not os.path.exists(DOWNLOAD_DIR):
+        os.makedirs(DOWNLOAD_DIR)
+
 # Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
@@ -36,6 +41,8 @@ def download_progress_hook(d):
 
 # Process Instagram content (images, videos, stories)
 def process_instagram(url):
+    ensure_download_dir_exists()  # Ensure the download directory exists
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',  # For videos, change this line if you want images
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
