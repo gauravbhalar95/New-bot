@@ -36,19 +36,24 @@ def download_progress_hook(d):
 
 def process_instagram(url):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
-        'username': INSTAGRAM_USERNAME,
-        'password': INSTAGRAM_PASSWORD,
-        'socket_timeout': 10,
-        'retries': 5,
-        'progress_hooks': [download_progress_hook],
-        'logger': logger,
-        'verbose': True,
-        'extractor_retries': 5,
-        'force_generic_extractor': True  # Forces yt-dlp to use an alternative method
-    }
+    'format': 'best[ext=mp4]/best',
+    'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+    'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,  # Ensure cookie file exists
+    'socket_timeout': 10,
+    'retries': 5,
+    'progress_hooks': [download_progress_hook],
+    'logger': logger,
+    'verbose': True,
+    'extractor_retries': 5
+}
+
+try:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None
+except Exception as e:
+    logger.error(f"Error downloading Instagram video: {e}")
+    return None, 0, None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
