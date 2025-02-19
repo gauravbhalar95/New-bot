@@ -86,7 +86,8 @@ def process_instagram_with_instaloader(url):
         logger.error(f"Error downloading Instagram content with instaloader: {e}")
         return None, 0, e
 
-def process_instagram(url):
+def process_instagram_with_yt_dlp(url):
+    """ Process Instagram downloads using yt-dlp """
     download_directory = get_download_directory(url)
 
     ydl_opts = {
@@ -125,10 +126,11 @@ def process_instagram(url):
         return None, 0, None
 
 def process_instagram(url):
+    """ Determines the correct method to download Instagram content """
     if '/stories/' in url or '/p/' in url:
         return process_instagram_with_instaloader(url)
     else:
-        return process_instagram(url)
+        return process_instagram_with_yt_dlp(url)  # Fixed the recursion issue!
 
 def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
