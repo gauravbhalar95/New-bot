@@ -4,7 +4,7 @@ import yt_dlp
 import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
-from config import DOWNLOAD_DIR, INSTAGRAM_FILE
+from config import DOWNLOAD_DIR, INSTAGRAM_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.sanitize import is_valid_url  # Sanitization utility
 
 logger = logging.getLogger(__name__)
@@ -39,11 +39,15 @@ def process_instagram(url):
         'format': 'best[ext=mp4]/best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
+        'username': INSTAGRAM_USERNAME,
+        'password': INSTAGRAM_PASSWORD,
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
         'verbose': True,
+        'extractor_retries': 5,
+        'force_generic_extractor': True  # Forces yt-dlp to use an alternative method
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
