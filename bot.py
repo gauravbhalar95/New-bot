@@ -34,7 +34,7 @@ SUPPORTED_DOMAINS = {
     "instagram": (["instagram.com"], process_instagram),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
-    "facebook": (["facebook.com"],process _facebook)
+    "facebook": (["facebook.com"],process_facebook)
 }
 
 def detect_platform(url):
