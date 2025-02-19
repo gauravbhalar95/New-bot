@@ -91,16 +91,18 @@ def process_instagram_with_yt_dlp(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
-        'username': INSTAGRAM_USERNAME,
-        'password': INSTAGRAM_PASSWORD,
-        'cookiefile': INSTAGRAM_FILE,  # Path to your cookies file
-        'format': 'bv+ba/b',
-        'outtmpl': f'{download_directory}/%(title)s.%(ext)s',
-        'retries': 5,
-        'socket_timeout': 10,
-        'logger': logger,
-        'progress_hooks': [download_progress_hook],
-    }
+    'username': INSTAGRAM_USERNAME,
+    'password': INSTAGRAM_PASSWORD,
+    'cookiefile': INSTAGRAM_FILE,
+    'format': 'bv+ba/b',
+    'outtmpl': f'{download_directory}/%(title)s.%(ext)s',
+    'retries': 5,
+    'socket_timeout': 10,
+    'extractor_retries': 5,
+    'force_generic_extractor': True,  # Force generic extraction
+    'logger': logger,
+    'progress_hooks': [download_progress_hook],
+}
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
