@@ -2,7 +2,7 @@ import yt_dlp
 import os
 from config import FACEBOOK_FILE
 
-def download_facebook_video(video_url, output_dir="downloads"):
+def process_facebook(video_url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
     options = {
         "outtmpl": f"{output_dir}/%(title)s.%(ext)s",  # Save with original title
