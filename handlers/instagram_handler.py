@@ -86,7 +86,7 @@ def process_instagram_with_instaloader(url):
         logger.error(f"Error downloading Instagram content with instaloader: {e}")
         return None, 0, e
 
-def process_instagram_with_ytdlp(url):
+def process_instagram(url):
     download_directory = get_download_directory(url)
 
     ydl_opts = {
