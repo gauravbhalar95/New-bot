@@ -9,7 +9,7 @@ from config import API_TOKEN, COOKIES_FILE
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.facebook_handler import process_facebook
+from handlers.facebook_handlers import process_facebook
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
