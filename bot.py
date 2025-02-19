@@ -9,6 +9,7 @@ from config import API_TOKEN, COOKIES_FILE
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
+from handlers.facebook_handler import process _facebook
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import is_valid_url
 from utils.logger import setup_logging
@@ -33,6 +34,7 @@ SUPPORTED_DOMAINS = {
     "instagram": (["instagram.com"], process_instagram),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
+    "facebook": (["facebook.com"],process _facebook)
 }
 
 def detect_platform(url):
