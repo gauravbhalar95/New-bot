@@ -23,4 +23,4 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Start the bot
-CMD ["python3", "bot.py"]
+CMD python3 bot.py & python3 webhook.py && wait
