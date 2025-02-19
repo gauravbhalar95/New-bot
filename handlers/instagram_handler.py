@@ -2,12 +2,11 @@ import os
 import logging
 import yt_dlp
 import re
-import gc  # Garbage collection for memory cleanup
 from urllib.parse import urlparse
+import gc  # Garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import is_valid_url  # Sanitization utility
 
-# Setup logger
 logger = logging.getLogger(__name__)
 
 # Supported domains
@@ -25,7 +24,7 @@ def is_valid_url(url):
 def sanitize_filename(name):
     return re.sub(r'[\/:*?"<>|]', '', name)
 
-# Download progress hook
+# Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
         percent = d.get('_percent_str', '0%')
@@ -35,29 +34,21 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Process Instagram video download
 def process_instagram(url):
     ydl_opts = {
-        'format': 'bv+ba/b',  # Best video + best audio fallback
-        'outtmpl': os.path.join(DOWNLOAD_DIR, f"{sanitize_filename('%(title)s')}.%(ext)s"),
-        'merge_output_format': 'mp4',  # Ensure FFmpeg merges into MP4
-        'postprocessors': [
-            {'key': 'FFmpegMerger'},  # Merge video & audio
-            {'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}  # Convert to MP4
-        ],
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
         'verbose': True,
-        'extractor_retries': 5
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
     except Exception as e:
         logger.error(f"Error downloading Instagram video: {e}")
         return None, 0, None
@@ -80,14 +71,3 @@ def cleanup_video(video_path):
             logger.info(f"Cleaned up {video_path}")
     except Exception as e:
         logger.error(f"Failed to clean up {video_path}: {e}")
-
-# Ensure FFmpeg is installed
-def check_ffmpeg():
-    if os.system("ffmpeg -version") != 0:
-        logger.error("FFmpeg is not installed. Install it before running this script.")
-        return False
-    return True
-
-# Run FFmpeg check before downloading
-if not check_ffmpeg():
-    raise SystemExit("FFmpeg is required. Please install it before running this script.")
