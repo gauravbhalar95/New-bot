@@ -128,7 +128,7 @@ def process_instagram(url):
     if '/stories/' in url or '/p/' in url:
         return process_instagram_with_instaloader(url)
     else:
-        return process_instagram_with_ytdlp(url)
+        return process_instagram(url)
 
 def send_media_to_user(bot, chat_id, media_path, media_type="video"):
     try:
