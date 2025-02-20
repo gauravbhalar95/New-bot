@@ -6,7 +6,7 @@ def process_facebook(video_url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
     options = {
         "outtmpl": f"{output_dir}/%(title)s.%(ext)s",  # Save with original title
-        "format": "bv*+ba/b",  # Best video-only + best audio-only OR best combined format
+        "format": "best",  # Best video-only + best audio-only OR best combined format
         "cookies": FACEBOOK_FILE,  # Use Facebook cookies
         "merge_output_format": "mp4",  # Ensure MP4 format
         "postprocessors": [{
