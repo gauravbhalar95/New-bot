@@ -4,18 +4,6 @@ import re
 from config import FACEBOOK_FILE
 from utils.renamer import rename_files_in_directory
 
-def sanitize_filename(filename, max_length=100):
-    """
-    Removes special characters from the filename and trims it to a maximum length.
-    """
-    # Replace invalid characters with an underscore
-    filename = re.sub(r'[\\/*?:"<>|]', '_', filename)
-    
-    # Trim to max length while keeping file extension
-    if len(filename) > max_length:
-        filename = filename[:max_length]
-
-    return filename.strip()
 
 def process_facebook(video_url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
