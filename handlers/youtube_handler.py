@@ -2,15 +2,13 @@ import os
 import subprocess
 import yt_dlp
 import logging
+from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-def sanitize_filename(name):
-    """Sanitize the filename by removing or replacing invalid characters."""
-    return "".join(c for c in name if c.isalnum() or c in (' ', '.', '_')).rstrip()
 
 def process_youtube(url):
     """Download video using yt-dlp."""
