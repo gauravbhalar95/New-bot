@@ -1,6 +1,7 @@
 import yt_dlp
 import os
 from config import FACEBOOK_FILE
+from utils.sanitize import sanitize_filename
 
 def process_facebook(video_url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
