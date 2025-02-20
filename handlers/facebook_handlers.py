@@ -10,8 +10,17 @@ def process_facebook(video_url, output_dir="downloads"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        info_dict = ydl.extract_info(video_url, download=False)
+        original_title = info_dict.get("title", "video")
+        file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if extension is missing
+
+    # **Sanitize the filename**
+    safe_title = sanitize_filename(original_title)
+
+    # **Set yt-dlp options**
     options = {
-        "outtmpl": f"{output_dir}/%(title)s.%(ext)",  # Save with original title
+        "outtmpl": f"{output_dir}/{safe_title}.%(ext)s",
         "format": "best",
         "cookies": FACEBOOK_FILE,
         "merge_output_format": "mp4",
@@ -21,18 +30,11 @@ def process_facebook(video_url, output_dir="downloads"):
         }]
     }
 
+    # **Download the video**
     with yt_dlp.YoutubeDL(options) as ydl:
-        info_dict = ydl.extract_info(video_url, download=False)
-        original_title = info_dict.get("title", "video")
-        
-        # **Sanitize the filename to prevent errors**
-        safe_title = sanitize_filename(original_title)
-        options["outtmpl"] = f"{output_dir}/{safe_title}.%(ext)s"
-
-        # **Download the video**
         ydl.download([video_url])
 
-    # **Call the renamer function after download**
+    # **Rename files after downloading**
     rename_files_in_directory(output_dir)
 
     return f"Video downloaded and renamed successfully in {output_dir}"
