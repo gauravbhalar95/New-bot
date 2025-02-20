@@ -1,7 +1,7 @@
 import yt_dlp
 import os
 import re
-from config import FACEBOOK_FILE
+from config import FACEBOOK_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
 from utils.sanitize import sanitize_filename
 
