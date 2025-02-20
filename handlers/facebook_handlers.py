@@ -5,14 +5,14 @@ from config import FACEBOOK_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
 from utils.sanitize import sanitize_filename
 
-def process_facebook(video_url, output_dir="downloads"):
+def process_facebook(url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-        info_dict = ydl.extract_info(video_url, download=False)
+        info_dict = ydl.extract_info(url, download=False)
         original_title = info_dict.get("title", "video")
         file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
 
@@ -34,7 +34,7 @@ def process_facebook(video_url, output_dir="downloads"):
 
     # **Download the video**
     with yt_dlp.YoutubeDL(options) as ydl:
-        ydl.download([video_url])
+        ydl.download([url])
 
     # **Rename files after downloading**
     rename_files_in_directory(output_dir)
