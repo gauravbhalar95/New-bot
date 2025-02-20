@@ -1,8 +1,21 @@
 import yt_dlp
 import os
+import re
 from config import FACEBOOK_FILE
-from utils.sanitize import sanitize_filename
 from utils.renamer import rename_files_in_directory
+
+def sanitize_filename(filename, max_length=100):
+    """
+    Removes special characters from the filename and trims it to a maximum length.
+    """
+    # Replace invalid characters with an underscore
+    filename = re.sub(r'[\\/*?:"<>|]', '_', filename)
+    
+    # Trim to max length while keeping file extension
+    if len(filename) > max_length:
+        filename = filename[:max_length]
+
+    return filename.strip()
 
 def process_facebook(video_url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
@@ -13,14 +26,15 @@ def process_facebook(video_url, output_dir="downloads"):
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         info_dict = ydl.extract_info(video_url, download=False)
         original_title = info_dict.get("title", "video")
-        file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if extension is missing
+        file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
 
-    # **Sanitize the filename**
+    # **Sanitize and truncate the filename**
     safe_title = sanitize_filename(original_title)
+    filename = f"{safe_title}.{file_ext}"
 
     # **Set yt-dlp options**
     options = {
-        "outtmpl": f"{output_dir}/{safe_title}.%(ext)s",
+        "outtmpl": f"{output_dir}/{filename}",
         "format": "best",
         "cookies": FACEBOOK_FILE,
         "merge_output_format": "mp4",
