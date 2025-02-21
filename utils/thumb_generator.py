@@ -1,10 +1,8 @@
 import os
 import logging
 from PIL import Image
+from utils.logger import Setup_logging
 
-# ✅ Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 # ✅ Thumbnail directory
 THUMBNAIL_DIR = "thumbnails"
