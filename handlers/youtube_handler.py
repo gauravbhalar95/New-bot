@@ -9,6 +9,10 @@ from config import YOUTUBE_FILE, DOWNLOAD_DIR
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Sanitize filename
+def sanitize_filename(name):
+    return re.sub(r'[\/:*?"<>|]', '', name)
+
 
 def process_youtube(url):
     """Download video using yt-dlp."""
