@@ -35,7 +35,7 @@ def download_progress_hook(d):
 # Process Instagram Video Download
 def process_instagram(url):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
+        'format': 'bv+ba/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'cookiefile': INSTAGRAM_FILE,  # Ensure this points to the correct Instagram cookies file
         'socket_timeout': 10,
