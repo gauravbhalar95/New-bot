@@ -13,19 +13,19 @@ def truncate_filename(filename, max_length=100):
         return filename[:max_length].rsplit(' ', 1)[0]  # Avoid truncating in the middle of a word
     return filename
 
-def process_facebook(url, output_dir="downloads"):
+def process_facebook(url, output_dir=DOWNLOAD_DIR):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     try:
-        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:  # 👈 Progress ON
             info_dict = ydl.extract_info(url, download=False)
             original_title = info_dict.get("title", "video")
             file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
     except Exception as e:
-        return f"❌ Error extracting info: {e}"
+        return f"❌ Error extracting info: {str(e)}"
 
     # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
@@ -39,8 +39,9 @@ def process_facebook(url, output_dir="downloads"):
     options = {
         "outtmpl": os.path.join(output_dir, filename),
         "format": "bv+ba/b",
-        "cookies": FACEBOOK_FILE,
+        "cookiefile": FACEBOOK_FILE,
         "merge_output_format": "mp4",
+        "noprogress": False,  # 👈 Show Download Progress
         "postprocessors": [{
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
@@ -50,7 +51,7 @@ def process_facebook(url, output_dir="downloads"):
     try:
         # **Download the video**
         with yt_dlp.YoutubeDL(options) as ydl:
-            ydl.download([url])
+            ydl.download([url])  # 👈 Now it will show progress
 
         # **Rename files after downloading**
         rename_files_in_directory(output_dir)
@@ -58,4 +59,4 @@ def process_facebook(url, output_dir="downloads"):
         return f"✅ Video downloaded and renamed successfully in {output_dir}"
 
     except Exception as e:
-        return f"❌ Download failed: {e}"
+        return f"❌ Download failed: {str(e)}"
