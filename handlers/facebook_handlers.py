@@ -3,7 +3,9 @@ import os
 import re
 from config import FACEBOOK_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
-from utils.sanitize import is_valid_url  # Sanitization utility
+from utils.sanitize import sanitize_filename  # Sanitization utility
+
+
 def process_facebook(url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
     
