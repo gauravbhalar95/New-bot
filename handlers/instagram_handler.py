@@ -30,7 +30,7 @@ logger = setup_logging()
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
 
-def is_valid_url(url):
+def sanitize_filename(url):
     """Check if the given URL is a valid Instagram link."""
     try:
         result = urlparse(url)
