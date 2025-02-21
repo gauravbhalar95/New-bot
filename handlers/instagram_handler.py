@@ -8,8 +8,7 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
-# Initialize logger
-logger = setup_logging()
+logger = logging.getLogger(__name__)
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
@@ -22,6 +21,10 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+# Sanitize filename
+def sanitize_filename(name):
+    return re.sub(r'[\/:*?"<>|]', '', name)
+
 # Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
@@ -33,12 +36,9 @@ def download_progress_hook(d):
         logger.info(f"Download finished: {d['filename']}")
 
 def process_instagram(url):
-    sanitized_title = sanitize_filename("%(title)s")
-    output_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.%(ext)s")
-
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
-        'outtmpl': output_path,
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -46,33 +46,17 @@ def process_instagram(url):
         'logger': logger,
         'verbose': True,
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            
-            if info_dict and isinstance(info_dict, dict):
-                video_path = ydl.prepare_filename(info_dict)
-                file_size = info_dict.get('filesize', 0)
-                return video_path, file_size, None  # Third value for thumbnail placeholder
-            else:
-                logger.error("Failed to retrieve video info.")
-                return None, 0
-
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"Download error: {e}")
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
-
-    return None, 0
+        logger.error(f"Error downloading Instagram video: {e}")
+        return None, 0, None
 
 # Send video to user (bot instance will be passed from main)
 def send_video_to_user(bot, chat_id, video_path):
     try:
-        if not video_path or not os.path.exists(video_path):
-            logger.error(f"File not found: {video_path}")
-            return
-
         with open(video_path, 'rb') as video:
             bot.send_video(chat_id, video)
         logger.info(f"Video sent to user {chat_id}")
@@ -82,11 +66,9 @@ def send_video_to_user(bot, chat_id, video_path):
 # Cleanup after download
 def cleanup_video(video_path):
     try:
-        if video_path and os.path.exists(video_path):
+        if os.path.exists(video_path):
             os.remove(video_path)
             gc.collect()
             logger.info(f"Cleaned up {video_path}")
-        else:
-            logger.warning(f"Cleanup skipped, file not found: {video_path}")
     except Exception as e:
         logger.error(f"Failed to clean up {video_path}: {e}")
