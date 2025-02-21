@@ -1,23 +1,33 @@
-# Use an official Python runtime as a base image
-FROM python:3.9-slim
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the project files into the container
-COPY . .
+# Copy the requirements file into the container
+COPY requirements.txt /app/requirements.txt
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install system dependencies (e.g., ffmpeg)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Supervisor
-RUN apt-get update && apt-get install -y supervisor
+# Install necessary Python dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy the Supervisor configuration file
-COPY Supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+# Ensure yt-dlp is always up-to-date
+RUN pip install --no-cache-dir --upgrade yt-dlp
 
-# Expose a port if necessary (optional)
-EXPOSE 8080  # Change this if needed
+# Copy the rest of the application code into the container
+COPY . /app
 
-# Start the application with Supervisor
-CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Expose port 8080 for Flask
+EXPOSE 8080
+
+# Set environment variables (you can also use a .env file instead)
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production
+
+# Command to run the application
+CMD python bot.py & python webhook.py
