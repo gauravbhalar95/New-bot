@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy the rest of the application code into the container
-COPY . 
+COPY . /app
 
 # Expose port 8080 for Flask
 EXPOSE 8080
