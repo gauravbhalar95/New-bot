@@ -7,8 +7,25 @@ from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename  # Sanitization utility
 
-# Initialize logger (assuming 'name' is defined elsewhere, or replace with a specific name)
-logger = logging.getLogger(__name__)  # Use __name__ for the logger name
+def setup_logging(log_level=logging.INFO):
+    """Sets up logging configuration."""
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_level)
+
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Create console handler and set level to debug
+    ch = logging.StreamHandler()
+    ch.setLevel(log_level)
+    ch.setFormatter(formatter)
+
+    # Add ch to logger
+    logger.addHandler(ch)
+
+    return logger
+
+# Initialize logger with setup_logging
+logger = setup_logging()
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
