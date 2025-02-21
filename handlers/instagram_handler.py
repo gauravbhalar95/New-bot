@@ -54,7 +54,7 @@ def process_instagram(url):
             if info_dict and isinstance(info_dict, dict):
                 video_path = ydl.prepare_filename(info_dict)
                 file_size = info_dict.get('filesize', 0)
-                return video_path, file_size
+                return video_path, file_size, None  # Third value for thumbnail placeholder
             else:
                 logger.error("Failed to retrieve video info.")
                 return None, 0
