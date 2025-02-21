@@ -32,7 +32,7 @@ queue = Queue()
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
     "instagram": (["instagram.com"], process_instagram),
-    "facebook": (["facebook.com"],process_facebook),
+    "facebook": (["facebook.com"], process_facebook),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
 }
