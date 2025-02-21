@@ -1,7 +1,7 @@
 import os
 import logging
 from PIL import Image
-from utils.logger import Setup_logging
+from utils.logger import setup_logging
 
 
 # ✅ Thumbnail directory
