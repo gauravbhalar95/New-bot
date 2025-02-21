@@ -24,7 +24,7 @@ def process_facebook(url, output_dir="downloads"):
     # **Set yt-dlp options**
     options = {
         "outtmpl": f"{output_dir}/{filename}",
-        "format": "best",
+        "format": "bv+ba/b",
         "cookies": FACEBOOK_FILE,
         "merge_output_format": "mp4",
         "postprocessors": [{
