@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
 
-# Validate URLs
-def sanitize_filename(url):
+def is_valid_url(url):
     try:
         result = urlparse(url)
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
