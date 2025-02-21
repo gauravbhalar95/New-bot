@@ -2,18 +2,14 @@ import yt_dlp
 import os
 import telebot
 import logging
+from utils.logger import setup_logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
 
-# Ensure the download directory exists
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def download_twitter_media(url):
     """
