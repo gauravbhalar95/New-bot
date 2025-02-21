@@ -23,7 +23,7 @@ def download_twitter_media(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'best[ext=mp4]/best',
+        'format': 'bv+ba/b',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
@@ -68,7 +68,7 @@ def get_streaming_url(url):
     Fetches a streaming URL without downloading the video.
     """
     ydl_opts = {
-        'format': 'best',
+        'format': 'bv+ba/b',
         'noplaylist': True,
         'cookiefile': X_FILE,  # Include cookies
         'headers': {
