@@ -35,7 +35,7 @@ def download_progress_hook(d):
 def process_instagram(url):
     sanitized_title = sanitize_filename("%(title)s")
     output_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.%(ext)s")
-    
+
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': output_path,
@@ -46,7 +46,7 @@ def process_instagram(url):
         'logger': logger,
         'verbose': True,
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
@@ -57,7 +57,7 @@ def process_instagram(url):
         logger.error(f"Download error: {e}")
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-    
+
     return None, 0
 
 # Send video to user (bot instance will be passed from main)
@@ -66,7 +66,7 @@ def send_video_to_user(bot, chat_id, video_path):
         if not os.path.exists(video_path):
             logger.error(f"File not found: {video_path}")
             return
-        
+
         with open(video_path, 'rb') as video:
             bot.send_video(chat_id, video)
         logger.info(f"Video sent to user {chat_id}")
