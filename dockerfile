@@ -1,31 +1,23 @@
-# Use official Python image
-FROM python:3.12
+# Use an official Python runtime as a base image
+FROM python:3.9-slim
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the application files
-COPY . /app
+# Copy the project files into the container
+COPY . .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Supervisor
-RUN apt-get update && apt-get install -y supervisor && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y supervisor
 
-# Copy Supervisor config
-COPY supervisord.conf /etc/supervisord.conf
+# Copy the Supervisor configuration file
+COPY Supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port if needed (optional, only if webhook is used)
-EXPOSE 8080
+# Expose a port if necessary (optional)
+EXPOSE 8080  # Change this if needed
 
-# Copy and set permissions for Supervisor configuration
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Add the bot processes to Supervisor
-RUN echo "[program:bot]\ncommand=python3 bot.py\nautostart=true\nautorestart=true\nstderr_logfile=/dev/stderr\nstdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/supervisord.conf
-
-RUN echo "[program:webhook]\ncommand=python3 webhook.py\nautostart=true\nautorestart=true\nstderr_logfile=/dev/stderr\nstdout_logfile=/dev/stdout" >> /etc/supervisor/conf.d/supervisord.conf
-
-# Run Supervisor
-CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start the application with Supervisor
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
