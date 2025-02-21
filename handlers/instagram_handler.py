@@ -5,9 +5,9 @@ import re
 from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
-from utils.sanitize import is_valid_url  # Sanitization utility
+from utils.sanitize import sanitize_filename
 
-logger = logging.getLogger(__name__)
+
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
@@ -20,9 +20,6 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Sanitize filename
-def sanitize_filename(name):
-    return re.sub(r'[\/:*?"<>|]', '', name)
 
 # Progress hook for downloads
 def download_progress_hook(d):
