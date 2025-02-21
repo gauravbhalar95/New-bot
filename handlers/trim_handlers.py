@@ -3,9 +3,8 @@ import logging
 from config import DOWNLOAD_DIR
 from utils.sanitize import sanitize_filename  # Sanitization utility
 import yt_dlp
+from utils.logger import setup_logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 def download_and_trim_video(youtube_url, start_time, end_time):
     """Download and trim video from YouTube using yt-dlp with postprocessor_args."""
