@@ -116,7 +116,7 @@ def start(message):
 
 def download_and_send_video(message, url):
     try:
-        if not is_valid_url(url):
+        if not sanitize_filename(url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
