@@ -1,20 +1,17 @@
-# Use official Python image as the base image
+# Use official Python image
 FROM python:3.12
 
-# Set the working directory inside the container
+# Set the working directory
 WORKDIR /app
 
-# Copy the entire project into the container
+# Copy project files
 COPY . /app
 
-# Install required dependencies
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Ensure necessary environment variables (if any)
-ENV PYTHONUNBUFFERED=1
-
-# Expose a port if needed (e.g., for webhook usage)
+# Expose port (only if using a webhook)
 EXPOSE 8080
 
-# Run the bot script when the container starts
+# Start the bot directly (keeping the container alive)
 CMD ["python3", "bot.py"]
