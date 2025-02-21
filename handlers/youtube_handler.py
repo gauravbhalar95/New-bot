@@ -4,7 +4,8 @@ import yt_dlp
 import logging
 from utils.sanitize import sanitize_filename  # Sanitization utility
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
-from utils.renamers import renamer
+from utils.renamer import rename_files_in_directory
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
