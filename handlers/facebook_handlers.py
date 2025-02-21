@@ -3,12 +3,19 @@ import os
 import re
 from config import FACEBOOK_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
-from utils.sanitize import sanitize_filename  # Sanitization utility
+from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
+
+# **Limit Filename Length to 100 Characters (or Adjust as Needed)**
+def truncate_filename(filename, max_length=100):
+    """Truncate the filename to prevent errors due to excessive length."""
+    if len(filename) > max_length:
+        return filename[:max_length].rsplit(' ', 1)[0]  # Avoid truncating in the middle of a word
+    return filename
 
 def process_facebook(url, output_dir="downloads"):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
-    
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -17,9 +24,10 @@ def process_facebook(url, output_dir="downloads"):
         original_title = info_dict.get("title", "video")
         file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
 
-    # **Sanitize and truncate the filename**
+    # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
-    filename = f"{safe_title}.{file_ext}"
+    truncated_title = truncate_filename(safe_title, 100)  # **Limit to 100 chars**
+    filename = f"{truncated_title}.{file_ext}"
 
     # **Set yt-dlp options**
     options = {
@@ -40,4 +48,4 @@ def process_facebook(url, output_dir="downloads"):
     # **Rename files after downloading**
     rename_files_in_directory(output_dir)
 
-    return f"Video downloaded and renamed successfully in {output_dir}"
+    return f"✅ Video downloaded and renamed successfully in {output_dir}"
