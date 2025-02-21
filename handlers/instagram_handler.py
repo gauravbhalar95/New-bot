@@ -50,9 +50,15 @@ def process_instagram(url):
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            video_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get('filesize', 0)
-            return video_path, file_size
+            
+            if info_dict and isinstance(info_dict, dict):
+                video_path = ydl.prepare_filename(info_dict)
+                file_size = info_dict.get('filesize', 0)
+                return video_path, file_size
+            else:
+                logger.error("Failed to retrieve video info.")
+                return None, 0
+
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"Download error: {e}")
     except Exception as e:
@@ -63,7 +69,7 @@ def process_instagram(url):
 # Send video to user (bot instance will be passed from main)
 def send_video_to_user(bot, chat_id, video_path):
     try:
-        if not os.path.exists(video_path):
+        if not video_path or not os.path.exists(video_path):
             logger.error(f"File not found: {video_path}")
             return
 
@@ -76,7 +82,7 @@ def send_video_to_user(bot, chat_id, video_path):
 # Cleanup after download
 def cleanup_video(video_path):
     try:
-        if os.path.exists(video_path):
+        if video_path and os.path.exists(video_path):
             os.remove(video_path)
             gc.collect()
             logger.info(f"Cleaned up {video_path}")
