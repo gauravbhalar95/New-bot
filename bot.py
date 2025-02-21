@@ -9,15 +9,20 @@ from config import API_TOKEN, COOKIES_FILE
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
-from handlers.facebook_handlers import process_facebook
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
+from handler.facebook_handlers import process_facebook
 from queue import Queue
 import psutil  # To monitor memory usage
 import time
 import requests
 from requests.exceptions import ConnectionError
+
+
+
+
+
 
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
@@ -27,9 +32,9 @@ queue = Queue()
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
     "instagram": (["instagram.com"], process_instagram),
+    "facebook": (["facebook.com"],process_facebook),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
-    "facebook": (["facebook.com"],process_facebook)
 }
 
 def detect_platform(url):
@@ -111,7 +116,7 @@ def start(message):
 
 def download_and_send_video(message, url):
     try:
-        if not sanitize_filename(url):
+        if not is_valid_url(url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
         bot.reply_to(message, "Downloading video, please wait...")
