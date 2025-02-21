@@ -34,9 +34,10 @@ YOUTUBE_FILE = "youtube_cookies.txt"
 INSTAGRAM_FILE = "Instagram_cookies.txt"
 COOKIES_FILE = "cookies.txt"
 FACEBOOK_FILE = "facebook.txt"
+
 # Supported video platforms
 SUPPORTED_DOMAINS = [
-    "youtube.com", "youtu.be", "instagram.com", "x.com",
+    "youtube.com", "youtu.be", "facebook.com", "instagram.com", "x.com",
     "facebook.com", "xvideos.com", "xnxx.com", "xhamster.com", "pornhub.com"
 ]
 
