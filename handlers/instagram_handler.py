@@ -2,12 +2,13 @@ import os
 import logging
 import yt_dlp
 import re
-from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
+from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
+# Setup Logger
 logger = logging.getLogger(__name__)
 
 # Supported domains
@@ -21,10 +22,6 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Sanitize filename
-def sanitize_filename(name):
-    return re.sub(r'[\/:*?"<>|]', '', name)
-
 # Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
@@ -35,21 +32,25 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
+# Process Instagram Video Download
 def process_instagram(url):
     ydl_opts = {
-    'format': 'best[ext=mp4]/best',
-    'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-    'cookiefile': 'instagram_cookies.txt',  # Update this with your cookies file
-    'socket_timeout': 10,
-    'retries': 5,
-    'progress_hooks': [download_progress_hook],
-    'logger': logger,
-    'verbose': True,
-}
+        'format': 'best[ext=mp4]/best',
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'cookiefile': INSTAGRAM_FILE,  # Ensure this points to the correct Instagram cookies file
+        'socket_timeout': 10,
+        'retries': 5,
+        'progress_hooks': [download_progress_hook],
+        'logger': logger,
+        'verbose': True,
+    }
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None  # Fixed: Added third value
+            video_path = ydl.prepare_filename(info_dict)
+            file_size = info_dict.get('filesize', 0)
+            return video_path, file_size, None  # Return video path and size
     except Exception as e:
         logger.error(f"Error downloading Instagram video: {e}")
         return None, 0, None
