@@ -1,7 +1,7 @@
 import os
 import logging
 from config import DOWNLOAD_DIR
-from utils.sanitize import is_valid_url  # Sanitization utility
+from utils.sanitize import sanitize_filename  # Sanitization utility
 import yt_dlp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
