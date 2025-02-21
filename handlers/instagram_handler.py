@@ -8,6 +8,8 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
+# Initialize logger
+logger = setup_logging()
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
@@ -19,7 +21,6 @@ def is_valid_url(url):
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
-
 
 # Progress hook for downloads
 def download_progress_hook(d):
