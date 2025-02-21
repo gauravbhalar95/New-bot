@@ -12,7 +12,7 @@ def process_adult(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'best',
+        'format': 'bv+ba/b',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 5,
