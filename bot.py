@@ -12,7 +12,7 @@ from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from handler.facebook_handlers import process_facebook
+from handlers.facebook_handlers import process_facebook
 from queue import Queue
 import psutil  # To monitor memory usage
 import time
