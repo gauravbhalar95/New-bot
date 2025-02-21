@@ -58,9 +58,9 @@ def process_instagram(url):
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
-        'verbose': True,
+        'verbose': True,  # Enable verbose logging
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
         },
     }
     try:
