@@ -37,15 +37,15 @@ def download_progress_hook(d):
 
 def process_instagram(url):
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
-        'cookiefile': INSTAGRAM_FILE if os.path.exists(INSTAGRAM_FILE) else None,
-        'socket_timeout': 10,
-        'retries': 5,
-        'progress_hooks': [download_progress_hook],
-        'logger': logger,
-        'verbose': True,
-    }
+    'format': 'best[ext=mp4]/best',
+    'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+    'cookiefile': 'instagram_cookies.txt',  # Update this with your cookies file
+    'socket_timeout': 10,
+    'retries': 5,
+    'progress_hooks': [download_progress_hook],
+    'logger': logger,
+    'verbose': True,
+}
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
