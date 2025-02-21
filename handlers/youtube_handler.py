@@ -2,7 +2,7 @@ import os
 import subprocess
 import yt_dlp
 import logging
-from utils.sanitize import sanitize_filename
+from utils.sanitize import is_valid_url  # Sanitization utility
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 
 # Setup logging
