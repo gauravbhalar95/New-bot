@@ -6,7 +6,7 @@ from utils.renamer import rename_files_in_directory
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
-# **Limit Filename Length to 100 Characters (or Adjust as Needed)**
+# **Limit Filename Length to Prevent Errors**
 def truncate_filename(filename, max_length=100):
     """Truncate the filename to prevent errors due to excessive length."""
     if len(filename) > max_length:
@@ -26,12 +26,16 @@ def process_facebook(url, output_dir="downloads"):
 
     # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
-    truncated_title = truncate_filename(safe_title, 100)  # **Limit to 100 chars**
+    truncated_title = truncate_filename(safe_title, 100)  # Limit to 100 chars
     filename = f"{truncated_title}.{file_ext}"
+
+    # **Ensure Filename is Valid**
+    if "/" in filename or "\\" in filename:
+        filename = filename.replace("/", "_").replace("\\", "_")
 
     # **Set yt-dlp options**
     options = {
-        "outtmpl": f"{output_dir}/{filename}",
+        "outtmpl": os.path.join(output_dir, filename),
         "format": "bv+ba/b",
         "cookies": FACEBOOK_FILE,
         "merge_output_format": "mp4",
