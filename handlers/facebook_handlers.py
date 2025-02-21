@@ -19,10 +19,13 @@ def process_facebook(url, output_dir="downloads"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-        info_dict = ydl.extract_info(url, download=False)
-        original_title = info_dict.get("title", "video")
-        file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            original_title = info_dict.get("title", "video")
+            file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
+    except Exception as e:
+        return f"❌ Error extracting info: {e}"
 
     # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
@@ -30,8 +33,7 @@ def process_facebook(url, output_dir="downloads"):
     filename = f"{truncated_title}.{file_ext}"
 
     # **Ensure Filename is Valid**
-    if "/" in filename or "\\" in filename:
-        filename = filename.replace("/", "_").replace("\\", "_")
+    filename = re.sub(r'[\/\\:*?"<>|]', "_", filename)  # Replace invalid characters
 
     # **Set yt-dlp options**
     options = {
@@ -45,11 +47,15 @@ def process_facebook(url, output_dir="downloads"):
         }]
     }
 
-    # **Download the video**
-    with yt_dlp.YoutubeDL(options) as ydl:
-        ydl.download([url])
+    try:
+        # **Download the video**
+        with yt_dlp.YoutubeDL(options) as ydl:
+            ydl.download([url])
 
-    # **Rename files after downloading**
-    rename_files_in_directory(output_dir)
+        # **Rename files after downloading**
+        rename_files_in_directory(output_dir)
 
-    return f"✅ Video downloaded and renamed successfully in {output_dir}"
+        return f"✅ Video downloaded and renamed successfully in {output_dir}"
+
+    except Exception as e:
+        return f"❌ Download failed: {e}"
