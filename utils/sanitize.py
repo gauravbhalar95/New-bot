@@ -1,7 +1,7 @@
 import re
 import os
 
-def sanitize_filename(filename, max_length=100):
+def sanitize_filename(filename, max_length=250):
     """
     Removes special characters from the filename and trims it to a maximum length.
 
