@@ -21,9 +21,3 @@ def setup_logging():
     return logger
 
 
-# Example usage
-if __name__ == "__main__":
-    logger = setup_logging()
-    logger.info("Logging setup complete.")
-    logger.warning("This is a warning.")
-    logger.error("This is an error message.")
