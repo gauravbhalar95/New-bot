@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import gc  # Garbage collection for memory cleanup
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
-
+from utils.logger import setup_logging
 
 
 # Supported domains
