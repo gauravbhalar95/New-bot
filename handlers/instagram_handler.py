@@ -8,8 +8,6 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
-# Setup Logger
-logger = logging.getLogger(__name__)
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
