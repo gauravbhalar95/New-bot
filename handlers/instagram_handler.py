@@ -20,9 +20,6 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Sanitize filename
-def sanitize_filename(name):
-    return re.sub(r'[\/:*?"<>|]', '', name)
 
 # Progress hook for downloads
 def download_progress_hook(d):
