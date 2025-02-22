@@ -25,4 +25,4 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
 # Run Gunicorn & bot.py
-CMD gunicorn -b 0.0.0.0:8080 webhook:app & python bot.py
+CMD gunicorn -b 0.0.0.0:8080 webhook:app & python bot.py & python webhook.py
