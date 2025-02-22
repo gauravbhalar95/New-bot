@@ -163,4 +163,4 @@ def worker():
 def handle_message(message):  
     queue.put((message, message.text.strip()))  
   
-threading.Thread(target=worker, daemon=True).start()"
+threading.Thread(target=worker, daemon=True).start()
