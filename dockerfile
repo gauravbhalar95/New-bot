@@ -28,4 +28,4 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production  
 
 # Run update.sh first, then start webhook.py and bot.py  
-CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py"]
+CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
