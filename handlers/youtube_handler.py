@@ -7,6 +7,8 @@ from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
 from utils.logger import setup_logging
 
+# Initialize logger
+logger = setup_logging()
 
 def process_youtube(url):
     """Download video using yt-dlp."""
