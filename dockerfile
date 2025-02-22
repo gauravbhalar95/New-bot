@@ -12,21 +12,17 @@ RUN apt-get update && \
 # Copy the requirements file and install Python dependencies
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp gunicorn
+    pip install --no-cache-dir --upgrade yt-dlp 
 
 # Copy the rest of the application code into the container
 COPY . /app
 
 # Expose port 8080 for Flask
-EXPOSE 9000
+EXPOSE 8080
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
-# Run Gunicorn, bot.py, and webhook.py, then stop after execution
-CMD gunicorn -b 0.0.0.0:9000 webhook:app & \
-    python bot.py & \
-    python webhook.py && \
-    sleep 10 && \
-    fuser -k 9000/tcp
+# Run webhook.py first, then bot.py
+CMD python webhook.py & python bot.py
