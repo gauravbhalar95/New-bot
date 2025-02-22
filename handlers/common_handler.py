@@ -7,6 +7,9 @@ from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 
 
+# Initialize logger
+logger = setup_logging()
+
 def process_adult(url):
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
