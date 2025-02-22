@@ -1,13 +1,15 @@
 import os
 import logging
 import yt_dlp
-import re
+import re  # Regular expressions for validation
 import gc  # Garbage collection for memory cleanup
 from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
+# Initialize logger
+logger = setup_logging()
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
@@ -42,7 +44,7 @@ def process_instagram(url):
         'logger': logger,
         'verbose': True,
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
