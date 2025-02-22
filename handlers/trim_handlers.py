@@ -6,6 +6,9 @@ import yt_dlp
 from utils.logger import setup_logging
 
 
+# Initialize logger
+logger = setup_logging()
+
 def download_and_trim_video(youtube_url, start_time, end_time):
     """Download and trim video from YouTube using yt-dlp with postprocessor_args."""
     ydl_opts = {
