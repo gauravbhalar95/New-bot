@@ -2,7 +2,7 @@ from flask import Flask, request
 import os
 import logging
 from telebot import types
-from config import API_TOKEN, WEBHOOK_URL
+from config import API_TOKEN, WEBHOOK_URL, PORT
 from bot import bot  
 
 # Flask app for webhook
