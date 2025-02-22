@@ -28,5 +28,5 @@ EXPOSE 8080
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
-# Command to run both bot and webhook
-CMD ["sh", "-c", "./update.sh && python bot.py & python webhook.py"]
+# Command to run bot and webhook using Gunicorn
+CMD ["sh", "-c", "./update.sh && gunicorn -b 0.0.0.0:8080 webhook:app & python bot.py"]
