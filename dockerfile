@@ -24,5 +24,9 @@ EXPOSE 8080
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
-# Run Gunicorn & bot.py
-CMD gunicorn -b 0.0.0.0:8080 webhook:app & python bot.py & python webhook.py
+# Run Gunicorn, bot.py, and webhook.py, then stop after execution
+CMD gunicorn -b 0.0.0.0:8080 webhook:app & \
+    python bot.py & \
+    python webhook.py && \
+    sleep 10 && \
+    fuser -k 8080/tcp
