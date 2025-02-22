@@ -18,15 +18,15 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . /app
 
 # Expose port 8080 for Flask
-EXPOSE 8080
+EXPOSE 9000
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production
 
 # Run Gunicorn, bot.py, and webhook.py, then stop after execution
-CMD gunicorn -b 0.0.0.0:8080 webhook:app & \
+CMD gunicorn -b 0.0.0.0:9000 webhook:app & \
     python bot.py & \
     python webhook.py && \
     sleep 10 && \
-    fuser -k 8080/tcp
+    fuser -k 9000/tcp
