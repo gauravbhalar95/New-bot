@@ -14,7 +14,7 @@ INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")  # Set this in your environ
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Server Port (default: 8080)
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 9000))
 
 # Download directory
 DOWNLOAD_DIR = "downloads"
