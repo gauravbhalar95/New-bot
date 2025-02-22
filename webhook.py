@@ -14,4 +14,7 @@ return "OK", 200
 def set_webhook():
 bot.remove_webhook()
 bot.set_webhook(url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
-return
+return"Webhook set", 200
+
+if name == 'main':
+app.run(host='0.0.0.0', port=PORT)
