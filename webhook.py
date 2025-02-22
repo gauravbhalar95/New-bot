@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask
 import os
 import logging
 from telebot import types
