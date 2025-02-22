@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # Copy the rest of the application code into the container  
 COPY . /app  
 
-# Ensure update.sh has execute permissions  
+# Ensure scripts have execute permissions  
 RUN chmod +x /app/update.sh  
 
 # Expose port 8080 for Flask  
@@ -25,7 +25,8 @@ EXPOSE 8080
 
 # Set environment variables  
 ENV PYTHONUNBUFFERED=1 \  
-    FLASK_ENV=production  
+    FLASK_ENV=production \  
+    PORT=8080  
 
-# Run update.sh first, then start webhook.py and bot.py  
+# Run update.sh, then start webhook.py and bot.py  
 CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
