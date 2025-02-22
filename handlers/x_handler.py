@@ -6,6 +6,8 @@ from utils.logger import setup_logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
 
+# Initialize logger
+logger = setup_logging()
 
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
