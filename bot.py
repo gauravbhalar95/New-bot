@@ -105,10 +105,13 @@ def send_request_with_retries(url, payload, retries=5, delay=3):
     return None  
   
 def download_video(url):  
-    platform, handler = detect_platform(url)  
+    platform, handlers = detect_platform(url)  
     if not platform:  
         raise ValueError("Unsupported platform")  
-    return handler(url)  
+
+    # Extract the first handler function and call it
+    main_handler = handlers[0]  # Get the first function from the tuple
+    return main_handler(url)
   
 def log_memory_usage():  
     memory = psutil.virtual_memory()  
