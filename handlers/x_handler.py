@@ -1,17 +1,16 @@
 import yt_dlp
 import os
 import telebot
-import logging
 from utils.logger import setup_logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
 
+# Initialize logger
 logger = setup_logging()
-logger.info("Logger initialized successfully")
+logger.info("✅ Logger initialized successfully")
 
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
-
 
 def download_twitter_media(url):
     """
@@ -26,7 +25,7 @@ def download_twitter_media(url):
         'socket_timeout': 30,
         'retries': 10,
         'fragment_retries': 10,
-        'cookiefile': X_FILE,  # Use the cookies from X_FILE
+        'cookiefile': X_FILE,
         'continuedl': True,
         'http_chunk_size': 1048576,  # 1 MB chunk size
         'quiet': False,
@@ -60,7 +59,6 @@ def download_twitter_media(url):
 
     return None, None, None
 
-
 def get_streaming_url(url):
     """
     Fetches a streaming URL without downloading the video.
@@ -68,7 +66,7 @@ def get_streaming_url(url):
     ydl_opts = {
         'format': 'bv+ba/b',
         'noplaylist': True,
-        'cookiefile': X_FILE,  # Include cookies
+        'cookiefile': X_FILE,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://x.com/'
@@ -79,5 +77,5 @@ def get_streaming_url(url):
             info_dict = ydl.extract_info(url, download=False)
             return info_dict.get('url')
     except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
+        logger.error(f"⚠️ Error fetching streaming URL: {e}")
         return None
