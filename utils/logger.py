@@ -6,18 +6,17 @@ def setup_logging():
     if not os.path.exists('logs'):
         os.makedirs('logs')
 
-    # Configure the logging settings
-    logging.basicConfig(
-        level=logging.INFO,  # Set the logging level to INFO
-        format="%(asctime)s - %(levelname)s - %(message)s",  # Define the log message format
-        handlers=[
-            logging.FileHandler("logs/bot.log"),  # Log messages to a file
-            logging.StreamHandler()  # Log messages to the console
-        ]
-    )
-
-    # Create and return a logger instance
     logger = logging.getLogger(__name__)
+
+    # Prevent adding duplicate handlers
+    if not logger.hasHandlers():
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler("logs/bot.log"),
+                logging.StreamHandler()
+            ]
+        )
+
     return logger
-
-
