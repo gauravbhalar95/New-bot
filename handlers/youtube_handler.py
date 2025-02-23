@@ -8,7 +8,8 @@ from utils.renamer import rename_files_in_directory
 from utils.logger import setup_logging
 
 # Initialize logger
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 
 def process_youtube(url):
     """Download video using yt-dlp."""
