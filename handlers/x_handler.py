@@ -1,15 +1,35 @@
 import yt_dlp
 import os
 import telebot
-from utils.logger import setup_logging
+import logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
 
-# Initialize logger
-logger = setup_logging()
+# **Logger Setup (Directly Inside X_handlers.py)**
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+logger = logging.getLogger("bot_logger")
+
+if not logger.hasHandlers():
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    # **File Handler**
+    file_handler = logging.FileHandler("logs/bot.log")
+    file_handler.setFormatter(formatter)
+
+    # **Console Handler**
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+
+    # **Add Handlers to Logger**
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
 logger.info("✅ Logger initialized successfully")
 
-# Initialize Telegram bot
+# **Initialize Telegram bot**
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 def download_twitter_media(url):
@@ -37,8 +57,11 @@ def download_twitter_media(url):
     }
 
     try:
+        logger.info(f"🔄 Downloading video from URL: {url}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
+
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
                 return None, None, None
@@ -47,7 +70,7 @@ def download_twitter_media(url):
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             thumbnail_path = generate_thumbnail(file_path)
 
-            logger.info(f"✅ Download completed: {file_path}")
+            logger.info(f"✅ Download completed: {file_path} ({file_size} bytes)")
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
 
             return file_path, file_size, thumbnail_path
@@ -73,9 +96,19 @@ def get_streaming_url(url):
         }
     }
     try:
+        logger.info(f"🔍 Fetching streaming URL for: {url}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
-            return info_dict.get('url')
+            stream_url = info_dict.get('url')
+
+            if stream_url:
+                logger.info(f"✅ Streaming URL fetched: {stream_url}")
+            else:
+                logger.warning("⚠️ No streaming URL found.")
+
+            return stream_url
+
     except Exception as e:
         logger.error(f"⚠️ Error fetching streaming URL: {e}")
         return None
