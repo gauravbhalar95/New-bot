@@ -50,7 +50,7 @@ def get_streaming_url(url):
     Fetches a streaming URL without downloading the video.  
     """  
     ydl_opts = {  
-        'format': 'bv+ba/b',  
+        'format': 'best',  
         'noplaylist': True,  
         'cookiefile': COOKIES_FILE,  # Include cookies  
         'headers': {  
