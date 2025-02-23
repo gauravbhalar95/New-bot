@@ -4,6 +4,9 @@ from PIL import Image
 from utils.logger import setup_logging
 
 
+# Initialize logger
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 # ✅ Thumbnail directory
 THUMBNAIL_DIR = "thumbnails"
 os.makedirs(THUMBNAIL_DIR, exist_ok=True)
