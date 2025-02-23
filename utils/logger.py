@@ -1,7 +1,7 @@
 import logging
 import os
 
-def setup_logging():
+def setup_logging(log_level=logging.INFO): #Added log level parameter
     # Create 'logs' directory if it doesn't exist
     if not os.path.exists('logs'):
         os.makedirs('logs')
@@ -9,7 +9,7 @@ def setup_logging():
     logger = logging.getLogger("bot_logger")  # Use a unique name
 
     if not logger.hasHandlers():  # Prevent duplicate handlers
-        logger.setLevel(logging.INFO)
+        logger.setLevel(log_level) #Set log level from parameter
 
         file_handler = logging.FileHandler("logs/bot.log")
         stream_handler = logging.StreamHandler()
