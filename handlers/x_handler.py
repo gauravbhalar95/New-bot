@@ -4,33 +4,11 @@ import telebot
 import logging
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
+from utils.logger import setup_logging
 
-# **Logger Setup (Directly Inside X_handlers.py)**
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+# Initialize logger
+logger = setup_logging()
 
-logger = logging.getLogger("bot_logger")
-
-if not logger.hasHandlers():
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-    # **File Handler**
-    file_handler = logging.FileHandler("logs/bot.log")
-    file_handler.setFormatter(formatter)
-
-    # **Console Handler**
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-
-    # **Add Handlers to Logger**
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-logger.info("✅ Logger initialized successfully")
-
-# **Initialize Telegram bot**
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 def download_twitter_media(url):
     """
