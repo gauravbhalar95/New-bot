@@ -42,9 +42,17 @@ SUPPORTED_DOMAINS = {
 def detect_platform(url):
     for platform, values in SUPPORTED_DOMAINS.items():
         domains = values[0]
-        handler = values[1:]  # Capture all handlers, even if there are multiple
+        handlers = values[1:]  
+
         if any(domain in url for domain in domains):
-            return platform, handler
+            if platform == "instagram":
+                if "/stories/" in url:
+                    return platform, (extract_username_from_url,)
+                else:
+                    return platform, (process_instagram,)
+
+            return platform, handlers  
+
     return None, None
   
 # Added this function for streaming link using yt-dlp  
