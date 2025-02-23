@@ -7,7 +7,8 @@ from utils.logger import setup_logging
 
 
 # Initialize logger
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 
 def download_and_trim_video(youtube_url, start_time, end_time):
     """Download and trim video from YouTube using yt-dlp with postprocessor_args."""
