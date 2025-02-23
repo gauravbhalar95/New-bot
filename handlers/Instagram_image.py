@@ -1,6 +1,7 @@
 import requests
 import re
 
+
 # RapidAPI Key અને API URL
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
 BASE_URL = "instagram-scraper-api2.p.rapidapi.com"
