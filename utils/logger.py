@@ -24,23 +24,3 @@ def setup_logging(log_level=logging.INFO):
 
     return logger
 
-def log_info(logger, message):
-    """Logs an info level message."""
-    logger.info(message)
-
-def log_warning(logger, message):
-    """Logs a warning level message."""
-    logger.warning(message)
-
-def log_error(logger, message):
-    """Logs an error level message."""
-    logger.error(message)
-
-def log_debug(logger, message):
-    """Logs a debug level message."""
-    logger.debug(message)
-
-def log_critical(logger, message):
-    """Logs a critical level message."""
-    logger.critical(message)
-
