@@ -7,7 +7,7 @@ import requests
 import yt_dlp  # Added for streaming link  
 from config import API_TOKEN, COOKIES_FILE  
 from handlers.youtube_handler import process_youtube
-from handlers.instagram_image import extract_username_from_url
+from handlers.Instagram_image import extract_username_from_url
 from handlers.instagram_handler import process_instagram  
 from handlers.common_handler import process_adult  
 from handlers.x_handler import download_twitter_media  
