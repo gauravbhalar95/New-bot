@@ -18,7 +18,13 @@ import psutil  # To monitor memory usage
 import time  
 import requests  
 from requests.exceptions import ConnectionError  
-   
+
+
+
+# Initialize logger
+logger = setup_logging()
+
+ 
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"  
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')  
 logger = setup_logging()  
