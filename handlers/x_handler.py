@@ -9,6 +9,13 @@ from utils.thumb_generator import generate_thumbnail
 # Initialize logger
 logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
 
+logger.debug("This is a DEBUG message")
+logger.info("This is an INFO message")
+logger.warning("This is a WARNING message")
+logger.error("This is an ERROR message")
+logger.critical("This is a CRITICAL message")
+
+
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
