@@ -21,8 +21,8 @@ from requests.exceptions import ConnectionError
 
 
 
-# Initialize logger
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 
  
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"  
