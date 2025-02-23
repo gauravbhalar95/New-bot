@@ -80,8 +80,3 @@ def get_streaming_url(url):
         logger.error(f"Error fetching streaming URL: {e}")
         return None
 
-if __name__ == "__main__":
-    # Example usage
-    url = "https://x.com/some-video-url"
-    print(download_twitter_media(url))
-    print(get_streaming_url(url))
