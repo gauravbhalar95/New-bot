@@ -23,3 +23,4 @@ nest_asyncio
 psutil
 api.video
 Instaloader
+waitress
