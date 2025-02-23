@@ -24,3 +24,6 @@ def setup_logging(log_level=logging.INFO):
 
     return logger
 
+logger = setup_logging(logging.DEBUG)  # Logger setup
+
+print(logger)  # Check if logger is initialized properly
