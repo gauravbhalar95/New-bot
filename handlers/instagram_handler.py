@@ -9,7 +9,8 @@ from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
 # Initialize logger
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
