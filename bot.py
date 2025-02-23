@@ -39,11 +39,13 @@ SUPPORTED_DOMAINS = {
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),  
 }  
   
-def detect_platform(url):  
-    for platform, (domains, handler) in SUPPORTED_DOMAINS.items():  
-        if any(domain in url for domain in domains):  
-            return platform, handler  
-    return None, None  
+def detect_platform(url):
+    for platform, values in SUPPORTED_DOMAINS.items():
+        domains = values[0]
+        handler = values[1:]  # Capture all handlers, even if there are multiple
+        if any(domain in url for domain in domains):
+            return platform, handler
+    return None, None
   
 # Added this function for streaming link using yt-dlp  
 def get_streaming_url(url):  
