@@ -29,4 +29,4 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=9000  
 
 # Start application with better logging
-CMD ["/bin/bash", "-c", "echo 'Starting update...' && /app/update.sh && echo 'Update complete, starting services...' && gunicorn -b 0.0.0.0:9000 webhook:app & python bot.py"]
+CMD ["/bin/bash", "-c", "/app/update.sh && gunicorn -b 0.0.0.0:9000 webhook:app & python bot.py && tail -f /dev/null"]
