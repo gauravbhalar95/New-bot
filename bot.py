@@ -50,7 +50,7 @@ def get_streaming_url(url):
     Fetches a streaming URL without downloading the video.  
     """  
     ydl_opts = {  
-        'format': 'best',  
+        'format': 'bv+ba/b',  
         'noplaylist': True,  
         'cookiefile': COOKIES_FILE,  # Include cookies  
         'headers': {  
@@ -135,7 +135,7 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:  
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")  
   
-        if file_size > 2 * 1024 * 1024 * 1024:  # 50MB limit for Telegram  
+        if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram  
             streaming_link = get_streaming_url(url)  # Used yt-dlp for streaming link  
             if streaming_link:  
                 bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")  
