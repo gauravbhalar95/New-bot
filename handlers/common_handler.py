@@ -8,7 +8,8 @@ from utils.logger import setup_logging
 
 
 # Initialize logger
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+
 
 def process_adult(url):
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
