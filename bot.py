@@ -42,18 +42,18 @@ SUPPORTED_DOMAINS = {
 def detect_platform(url):
     for platform, values in SUPPORTED_DOMAINS.items():
         domains = values[0]
-        handlers = values[1:]  
+        handlers = values[1:]
 
         if any(domain in url for domain in domains):
             if platform == "instagram":
-                if "/stories/" in url:
-                    return platform, (get_instagram_content,)
+                if "/stories/" in url:  
+                    return platform, (get_instagram_content,)  # Story URLs માટે
+                elif "/p/" in url:
+                    return platform, (process_instagram,)  # Post URLs માટે
                 else:
-                    return platform, (process_instagram,)
+                    return platform, handlers  
 
-            return platform, handlers  
-
-    return None, None
+        return None, None
   
 # Added this function for streaming link using yt-dlp  
 def get_streaming_url(url):  
