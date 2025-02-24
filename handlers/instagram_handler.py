@@ -7,10 +7,10 @@ from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
+from handlers.Instagram_image import get_instagram_content  # Import Story/Post handler
 
 # Initialize logger
-logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
-
+logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
 
 # Supported domains
 SUPPORTED_DOMAINS = ['instagram.com']
@@ -22,6 +22,11 @@ def is_valid_url(url):
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
+
+# Detect whether the URL is a reel/video or an image/post
+def is_instagram_video(url):
+    """ Check if the URL belongs to a Reel or Video """
+    return any(x in url for x in ['/reel/', '/tv/', '/video/'])
 
 # Progress hook for downloads
 def download_progress_hook(d):
@@ -74,3 +79,14 @@ def cleanup_video(video_path):
             logger.info(f"Cleaned up {video_path}")
     except Exception as e:
         logger.error(f"Failed to clean up {video_path}: {e}")
+
+# Main Instagram Handler
+def handle_instagram_url(url):
+    if is_instagram_video(url):
+        # If it's a Reel or Video, process with yt-dlp
+        logger.info("Detected Instagram Video/Reel. Processing with yt-dlp...")
+        return process_instagram(url)
+    else:
+        # If it's a Post/Story, process with Instagram_image handler
+        logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
+        return get_instagram_content(url)
