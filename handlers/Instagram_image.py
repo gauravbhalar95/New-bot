@@ -1,9 +1,8 @@
 import os
 import requests
 import re
-import logging
 from utils.sanitize import sanitize_filename
-from utils.logger import setup_logging
+from utils.logger import log_message
 
 # RapidAPI Key અને API URL
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
@@ -19,10 +18,6 @@ HEADERS = {
 if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
-def sanitize_filename(name):
-    """ Remove invalid filename characters """
-    return re.sub(r'[<>:"/\\|?*]', '_', name)  
-
 def extract_username_from_url(url):
     """Extract Instagram username from URL"""
     match = re.search(r"instagram\\.com/([^/?]+)", url)
@@ -30,6 +25,9 @@ def extract_username_from_url(url):
 
 def get_instagram_content(url):
     """Fetch Instagram Posts and Images"""
+    if not url:
+        return "❌ Error: URL is not provided!"
+
     post_url = f"https://{BASE_URL}/instagram/posts/url"
     params = {"url": url}
     response = requests.get(post_url, headers=HEADERS, params=params)
@@ -37,19 +35,15 @@ def get_instagram_content(url):
     if response.status_code == 200:
         data = response.json()
         if "posts" in data and data["posts"]:
-            print("\nInstagram Posts Found:")
-            for post in data["posts"]:
-                filename = sanitize_filename(f"downloads/Post by {extract_username_from_url(url)}.jpg")
+            image_paths = []
+            for i, post in enumerate(data["posts"], start=1):
+                filename = sanitize_filename(f"downloads/Post_{i}.jpg")
                 with open(filename, "wb") as f:
                     f.write(requests.get(post['url']).content)
-                print(f"Downloaded: {filename}")
+                image_paths.append(filename)
+            
+            return image_paths  # Return list of image file paths
         else:
-            print("\nNo Instagram Posts found.")
+            return "⚠️ No Instagram Posts found."
     else:
-        print("Failed to fetch Instagram content.")
-    
-    # Return the response object for use outside the function
-    return response
-
-# Get the response from the function
-response = get_instagram_content(url)
+        return f"❌ Failed to fetch Instagram content. Status Code: {response.status_code}"
