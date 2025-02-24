@@ -1,21 +1,30 @@
 import os
 import logging
 import yt_dlp
-import re  # Regular expressions for validation
-import gc  # Garbage collection for memory cleanup
+import requests
+import re
+import gc
 from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from handlers.Instagram_image import get_instagram_content  # Import Story/Post handler
 
-# Initialize logger
-logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
+# RapidAPI Key અને API URL
+RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
+BASE_URL = "instagram-scraper-api2.p.rapidapi.com"
+HEADERS = {
+    "X-RapidAPI-Key": RAPIDAPI_KEY,
+    "X-RapidAPI-Host": "instagram-scraper-api2.p.rapidapi.com"
+}
 
-# Supported domains
+# Logger initialization
+logger = setup_logging(logging.DEBUG)
 SUPPORTED_DOMAINS = ['instagram.com']
 
-# Validate URLs
+# Ensure 'downloads' directory exists
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
+
 def is_valid_url(url):
     try:
         result = urlparse(url)
@@ -23,70 +32,67 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-# Detect whether the URL is a reel/video or an image/post
+def extract_username_from_url(url):
+    match = re.search(r"instagram\.com/([^/?]+)", url)
+    return match.group(1) if match else None
+
 def is_instagram_video(url):
-    """ Check if the URL belongs to a Reel or Video """
     return any(x in url for x in ['/reel/', '/tv/', '/video/'])
 
-# Progress hook for downloads
 def download_progress_hook(d):
     if d['status'] == 'downloading':
-        percent = d.get('_percent_str', '0%')
-        speed = d.get('_speed_str', 'N/A')
-        eta = d.get('_eta_str', 'N/A')
-        logger.info(f"Downloading... {percent} at {speed}, ETA: {eta}")
+        logger.info(f"Downloading... {d.get('_percent_str', '0%')} at {d.get('_speed_str', 'N/A')}, ETA: {d.get('_eta_str', 'N/A')}")
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Process Instagram Video Download
-def process_instagram(url):
+def process_instagram_video(url):
     ydl_opts = {
         'format': 'bv+ba/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'cookiefile': INSTAGRAM_FILE,  # Ensure this points to the correct Instagram cookies file
+        'cookiefile': INSTAGRAM_FILE,
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'logger': logger,
-        'verbose': True,
     }
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            video_path = ydl.prepare_filename(info_dict)
-            file_size = info_dict.get('filesize', 0)
-            return video_path, file_size, None  # Return video path and size
+            return ydl.prepare_filename(info_dict), info_dict.get('filesize', 0), None
     except Exception as e:
         logger.error(f"Error downloading Instagram video: {e}")
         return None, 0, None
 
-# Send video to user (bot instance will be passed from main)
-def send_video_to_user(bot, chat_id, video_path):
-    try:
-        with open(video_path, 'rb') as video:
-            bot.send_video(chat_id, video)
-        logger.info(f"Video sent to user {chat_id}")
-    except Exception as e:
-        logger.error(f"Failed to send video to user {chat_id}: {e}")
+def get_instagram_content(url):
+    username = extract_username_from_url(url)
+    if not username:
+        logger.error("Invalid Instagram URL")
+        return
+    
+    # Fetch stories
+    story_response = requests.get(f"https://{BASE_URL}/v1/stories", headers=HEADERS, params={"username": username})
+    if story_response.status_code == 200:
+        story_data = story_response.json()
+        for story in story_data.get("stories", []):
+            filename = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"Story_{username}.jpg"))
+            with open(filename, "wb") as f:
+                f.write(requests.get(story['url']).content)
+            logger.info(f"Downloaded: {filename}")
+    
+    # Fetch images
+    image_response = requests.get(f"https://{BASE_URL}/v1/images", headers=HEADERS, params={"username": username})
+    if image_response.status_code == 200:
+        image_data = image_response.json()
+        for image in image_data.get("images", []):
+            filename = os.path.join(DOWNLOAD_DIR, sanitize_filename(f"Post_{username}.jpg"))
+            with open(filename, "wb") as f:
+                f.write(requests.get(image['url']).content)
+            logger.info(f"Downloaded: {filename}")
 
-# Cleanup after download
-def cleanup_video(video_path):
-    try:
-        if os.path.exists(video_path):
-            os.remove(video_path)
-            gc.collect()
-            logger.info(f"Cleaned up {video_path}")
-    except Exception as e:
-        logger.error(f"Failed to clean up {video_path}: {e}")
-
-# Main Instagram Handler
 def handle_instagram_url(url):
     if is_instagram_video(url):
-        # If it's a Reel or Video, process with yt-dlp
-        logger.info("Detected Instagram Video/Reel. Processing with yt-dlp...")
-        return process_instagram(url)
+        logger.info("Processing Instagram Video/Reel...")
+        return process_instagram_video(url)
     else:
-        # If it's a Post/Story, process with Instagram_image handler
-        logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
+        logger.info("Processing Instagram Post/Story...")
         return get_instagram_content(url)
