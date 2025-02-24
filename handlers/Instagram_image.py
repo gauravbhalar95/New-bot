@@ -1,6 +1,9 @@
 import os
 import requests
 import re
+import logging
+from utils.logger import setup_logging
+from utils.sanitaiz import 
 
 
 # RapidAPI Key અને API URL
@@ -49,7 +52,5 @@ def get_instagram_content(url):
     # Return the response object for use outside the function
     return response
 
-# Test Call
-url = "https://www.instagram.com/p/DGbCVf3N0Q4/?img_index=2&igsh=MXZ1d2hvaW45N3hpcw=="
 # Get the response from the function
 response = get_instagram_content(url)
