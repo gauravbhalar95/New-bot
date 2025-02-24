@@ -1,5 +1,5 @@
 import os  
-  import gc  
+import gc  
 import logging  
 import threading  
 import telebot  
