@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg supervisor && \
     rm -rf /var/lib/apt/lists/*  
 
 # Copy dependency list and install Python packages
@@ -20,6 +20,9 @@ COPY . /app
 # Ensure update.sh has execution permissions
 RUN chmod +x /app/update.sh  
 
+# Copy Supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
 # Expose the application port
 EXPOSE 9000  
 
@@ -28,5 +31,5 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=9000  
 
-# Start application with better logging
-CMD ["/bin/bash", "-c", "/app/update.sh && gunicorn -b 0.0.0.0:9000 webhook:app & python bot.py && tail -f /dev/null"]
+# Start Supervisor to manage processes
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
