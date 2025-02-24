@@ -45,7 +45,7 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-def process_instagram_video(url):
+def process_instagram(url):
     ydl_opts = {
         'format': 'bv+ba/b',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
