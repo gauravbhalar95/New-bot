@@ -7,7 +7,7 @@ import requests
 import yt_dlp  # Added for streaming link  
 from config import API_TOKEN, COOKIES_FILE  
 from handlers.youtube_handler import process_youtube
-from handlers.Instagram_image import extract_username_from_url
+from handlers.Instagram_image import get_instagram_content
 from handlers.instagram_handler import process_instagram  
 from handlers.common_handler import process_adult  
 from handlers.x_handler import download_twitter_media  
@@ -33,7 +33,7 @@ queue = Queue()
   
 SUPPORTED_DOMAINS = {  
     "youtube": (["youtube.com", "youtu.be"], process_youtube),  
-    "instagram": (["instagram.com"], process_instagram, extract_username_from_url),  
+    "instagram": (["instagram.com"], process_instagram, get_instagram_content),  
     "facebook": (["facebook.com"], process_facebook),  
     "twitter": (["x.com", "twitter.com"], download_twitter_media),  
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),  
@@ -47,7 +47,7 @@ def detect_platform(url):
         if any(domain in url for domain in domains):
             if platform == "instagram":
                 if "/stories/" in url:
-                    return platform, (extract_username_from_url,)
+                    return platform, (get_instagram_content,)
                 else:
                     return platform, (process_instagram,)
 
