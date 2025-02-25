@@ -4,7 +4,7 @@ import re
 import requests
 import json
 from config import API_TOKEN
-from utils.renamer import renamer  # 🆕 Renamer utility import
+from utils.renamer import rename_files_in_directory
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
