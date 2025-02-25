@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from handlers.Instagram_image import process_instagram_post
+from handlers.Instagram_image import fetch_instagram_media
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
@@ -89,4 +89,4 @@ def handle_instagram_url(url):
     else:
         # If it's a Post/Story, process with Instagram_image handler
         logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
-        return fetch_instagram_media(post_url)
+        return fetch_instagram_media
