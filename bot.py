@@ -28,7 +28,7 @@ API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
-    "instagram": (["instagram.com"], process_instagram, get_instagram_content),
+    "instagram": (["instagram.com"], process_instagram, fetch_instagram_media),
     "facebook": (["facebook.com"], process_facebook),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
