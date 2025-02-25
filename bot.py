@@ -12,7 +12,7 @@ from requests.exceptions import ConnectionError
 
 from config import API_TOKEN, COOKIES_FILE
 from handlers.youtube_handler import process_youtube
-from handlers.Instagram_image import fetch_instagram_media
+from handlers.Instagram_image import process_instagram_post
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
@@ -28,7 +28,7 @@ API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 
 SUPPORTED_DOMAINS = {
     "youtube": (["youtube.com", "youtu.be"], process_youtube),
-    "instagram": (["instagram.com"], process_instagram, fetch_instagram_media),
+    "instagram": (["instagram.com"], process_instagram, process_instagram_post),
     "facebook": (["facebook.com"], process_facebook),
     "twitter": (["x.com", "twitter.com"], download_twitter_media),
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
