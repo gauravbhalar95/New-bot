@@ -89,4 +89,4 @@ def handle_instagram_url(url):
     else:
         # If it's a Post/Story, process with Instagram_image handler
         logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
-        return process_instagram_post
+        return fetch_instagram_media(post_url)
