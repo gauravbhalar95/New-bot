@@ -85,7 +85,7 @@ def handle_instagram_url(url):
     if is_instagram_video(url):
         # If it's a Reel or Video, process with yt-dlp
         logger.info("Detected Instagram Video/Reel. Processing with yt-dlp...")
-        return process_instagram(url)
+        return process_instagram_post
     else:
         # If it's a Post/Story, process with Instagram_image handler
         logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
