@@ -1,6 +1,7 @@
 import telebot
 import os
 import re
+import urllib.parse
 import requests
 import json
 from config import API_TOKEN
@@ -53,17 +54,29 @@ def get_file_extension(url):
         return url.split(".")[-1].split("?")[0]  
     return None  # Return None if no extension found
 
+
 def download_file(url, file_path):
-    """Download file from URL and save it to given path"""
+    """Download file from URL after decoding it and save to given path"""
     try:
-        response = requests.get(url, stream=True)
+        decoded_url = urllib.parse.unquote(url)  # ✅ URL decode
+        if not decoded_url.startswith("http"):
+            decoded_url = "https://" + decoded_url  # ✅ Ensure URL has protocol
+
+        print(f"🔗 Downloading from: {decoded_url}")  # Debugging URL
+
+        headers = {"User-Agent": "Mozilla/5.0"}  # ✅ Some sites block bots
+        response = requests.get(decoded_url, headers=headers, stream=True)
+
         if response.status_code == 200:
             with open(file_path, "wb") as file:
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
+            print(f"✅ Downloaded: {file_path}")
             return True
         else:
+            print(f"❌ Failed: {response.status_code} - {response.text}")  # Debugging response
             return False
+
     except Exception as e:
         print(f"❌ Error downloading file: {e}")
         return False
