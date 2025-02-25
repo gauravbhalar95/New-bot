@@ -154,4 +154,4 @@ def handle_message(message):
     queue.put((message, message.text.strip()))
 
 threading.Thread(target=worker, daemon=True).start()
-bot.polling(none_stop=True)
+
