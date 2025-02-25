@@ -4,7 +4,7 @@ import re
 import requests
 import json
 import mimetypes
-
+from config import API_TOKEN
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
