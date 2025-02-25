@@ -1,80 +1,70 @@
 import telebot
 import os
 import re
-import urllib.parse
 import requests
 import json
+import mimetypes
+from urllib.parse import unquote
 from config import API_TOKEN
-from utils.renamer import rename_files_in_directory
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-# API Credentials
+# ✅ NEW RapidAPI Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
-RAPIDAPI_HOST = "instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com"
+RAPIDAPI_HOST = "instagram-downloader-download-instagram-videos-stories.p.rapidapi.com"
 
-# Ensure 'downloads' directory exists
+# 📂 Ensure 'downloads' directory exists
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def sanitize_filename(filename):
-    """
-    Sanitize filename to prevent errors.
-    - Removes unwanted characters
-    - Limits filename length to 100 characters
-    """
+    """Sanitize filename to prevent errors."""
     filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
     return filename[:100]
 
 def fetch_instagram_media(post_url):
-    """
-    Fetch Instagram media URLs using RapidAPI.
-    Returns a list of media URLs if available, else an error message.
-    """
-    url = f"https://{RAPIDAPI_HOST}/convert?url={post_url}"
+    """Fetch Instagram media URLs using RapidAPI."""
+    url = f"https://{RAPIDAPI_HOST}/index"
     headers = {
         "x-rapidapi-key": RAPIDAPI_KEY,
         "x-rapidapi-host": RAPIDAPI_HOST
     }
+    payload = {"url": post_url}
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.post(url, headers=headers, json=payload)
         response_data = response.json()
 
         if "media" in response_data and response_data["media"]:
-            return response_data["media"]  # Return list of media URLs
+            return response_data["media"]
         return "⚠️ No media found."
 
     except (json.JSONDecodeError, requests.RequestException) as e:
         return f"❌ Error: {str(e)}"
 
 def get_file_extension(url):
-    """Extract file extension from URL"""
+    """Extract file extension from URL."""
     if "." in url.split("/")[-1]:  
         return url.split(".")[-1].split("?")[0]  
-    return None  # Return None if no extension found
-
+    return None
 
 def download_file(url, file_path):
-    """Download file from URL after decoding it and save to given path"""
+    """Download file from URL and save it to given path."""
     try:
-        decoded_url = urllib.parse.unquote(url)  # ✅ URL decode
-        if not decoded_url.startswith("http"):
-            decoded_url = "https://" + decoded_url  # ✅ Ensure URL has protocol
-
-        print(f"🔗 Downloading from: {decoded_url}")  # Debugging URL
-
-        headers = {"User-Agent": "Mozilla/5.0"}  # ✅ Some sites block bots
+        decoded_url = unquote(url)  # ✅ Fix URL Encoding
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.instagram.com/",
+        }
         response = requests.get(decoded_url, headers=headers, stream=True)
 
         if response.status_code == 200:
             with open(file_path, "wb") as file:
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
-            print(f"✅ Downloaded: {file_path}")
             return True
         else:
-            print(f"❌ Failed: {response.status_code} - {response.text}")  # Debugging response
+            print(f"❌ Download Failed: {response.status_code}")
             return False
 
     except Exception as e:
@@ -82,8 +72,8 @@ def download_file(url, file_path):
         return False
 
 def process_instagram_post(message, post_url):
-    """Fetch Instagram media, download files, rename them, and send to Telegram."""
-    media_urls = fetch_instagram_media(post_url)  # Fetch Instagram media links
+    """Fetch Instagram media, download files, and send to Telegram."""
+    media_urls = fetch_instagram_media(post_url)
 
     if not isinstance(media_urls, list) or not media_urls:
         bot.send_message(message.chat.id, "❌ Instagram media not found.")
@@ -98,7 +88,7 @@ def process_instagram_post(message, post_url):
             continue
 
         file_extension = get_file_extension(media_url) or ("mp4" if media_type == "video" else "jpg")
-        filename = sanitize_filename(f"{media_type}_{i}.{file_extension}")
+        filename = f"{media_type}_{i}.{file_extension}"
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
         if not download_file(media_url, file_path):
@@ -107,19 +97,17 @@ def process_instagram_post(message, post_url):
 
         if not os.path.exists(file_path):
             bot.send_message(message.chat.id, f"⚠️ File not found: {filename}")
-            continue  # Skip sending if file is missing
+            continue
 
-        # 🆕 **Use renamer utility before sending**
-        renamed_file_path = rename_files_in_directory(file_path)  
-        
         try:
-            with open(renamed_file_path, "rb") as file:
+            with open(file_path, "rb") as file:
                 if media_type in ["image", "story"]:
                     bot.send_photo(message.chat.id, file, caption=f"📸 Instagram {media_type.capitalize()}")
                 elif media_type == "video":
                     bot.send_video(message.chat.id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
 
-            os.remove(renamed_file_path)  # Delete file after sending
+            os.remove(file_path)  # 🗑️ Delete file after sending
 
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Error sending {media_type}: {e}")
+
