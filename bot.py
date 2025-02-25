@@ -38,8 +38,10 @@ def detect_platform(url):
     for platform, values in SUPPORTED_DOMAINS.items():
         domains, *handlers = values
         if any(domain in url for domain in domains):
-            if platform == "instagram" and "/stories/" in url:
-                return platform, (process_instagram_post,)
+            if platform == "instagram":
+                if "/reel/" in url or "/reels/" in url:  
+                    return platform, (handle_instagram_url,)  # Reels માટે  
+                return platform, (process_instagram_post,)  # ઈમેજ અને સ્ટોરી માટે  
             return platform, handlers
     return None, None
 
