@@ -3,7 +3,7 @@ import re
 import requests
 import json
 import mimetypes
-from utils.renamer import renamer  # Renaming function imported from utils module
+from utils.renamer import rename_files_in_directory  # Renaming function imported from utils module
 
 # API Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
