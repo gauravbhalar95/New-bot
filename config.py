@@ -6,6 +6,10 @@ load_dotenv()
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
+RAPIDAPI_KEY = 425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7
+RAPIDAPI_HOST = instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com
+
+
 # Instagram authentication settings
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")  # Set this in your environment
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")  # Set this in your environment
