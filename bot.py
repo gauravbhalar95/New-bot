@@ -39,7 +39,7 @@ def detect_platform(url):
         domains, *handlers = values
         if any(domain in url for domain in domains):
             if platform == "instagram" and "/stories/" in url:
-                return platform, (get_instagram_content,)
+                return platform, (process_instagram_post,)
             return platform, handlers
     return None, None
 
