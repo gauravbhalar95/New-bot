@@ -4,7 +4,7 @@ import re
 import requests
 import json
 from config import API_TOKEN
-from utils.renamer import renamer  # 🆕 Renamer utility import
+from utils.renamer import rename_files_in_directory
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
@@ -97,7 +97,7 @@ def process_instagram_post(message, post_url):
             continue  # Skip sending if file is missing
 
         # 🆕 **Use renamer utility before sending**
-        renamed_file_path = renamer(file_path)  
+        renamed_file_path = rename_files_in_directory(file_path)  
         
         try:
             with open(renamed_file_path, "rb") as file:
