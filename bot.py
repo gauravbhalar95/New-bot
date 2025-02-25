@@ -106,42 +106,50 @@ def start(message):
 def download_and_send_video(message, url):
     try:
         if not sanitize_filename(url):
-            bot.reply_to(message, "Invalid or unsupported URL.")
+            bot.reply_to(message, "❌ Invalid or unsupported URL.")
             return
-        bot.reply_to(message, "Downloading video, please wait...")
-        
+
+        bot.reply_to(message, "⏳ Processing your request...")
+
         log_memory_usage()
+        platform, handlers = detect_platform(url)
+
+        if platform == "instagram" and handlers:
+            handlers[0](message, url)  # Instagram માટે અલગ ફંક્શન
+            return
+
         file_path, file_size, thumbnail_path = download_video(url)
-        
+
         if not file_path:
-            bot.reply_to(message, "Error: Video download failed.")
+            bot.reply_to(message, "❌ Error: Video download failed.")
             return
-        
+
         log_memory_usage()
-        
+
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
-        
+
         if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram
             streaming_link = get_streaming_url(url)
             if streaming_link:
-                bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")
+                bot.reply_to(message, f"📺 Video too large. Stream here:\n{streaming_link}")
             else:
-                bot.reply_to(message, "Failed to get streaming link.")
+                bot.reply_to(message, "⚠️ Failed to get streaming link.")
         else:
             with open(file_path, 'rb') as video:
                 bot.send_video(message.chat.id, video)
-        
+
         for path in [file_path, thumbnail_path]:
             if path and os.path.exists(path):
                 os.remove(path)
-        
+
         log_memory_usage()
         gc.collect()
+
     except Exception as e:
-        logger.error(f"Error: {e}")
-        bot.reply_to(message, f"Error occurred: {e}")
+        logger.error(f"❌ Error: {e}")
+        bot.reply_to(message, f"❌ Error occurred: {e}")
 
 def worker():
     while True:
