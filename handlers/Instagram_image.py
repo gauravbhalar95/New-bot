@@ -6,6 +6,9 @@ import json
 import mimetypes
 
 
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
+
+
 # API Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
 RAPIDAPI_HOST = "instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com"
