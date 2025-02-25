@@ -99,9 +99,9 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_message(message):
+    queue.put((message, message.text.strip()))
 
 def download_and_send_video(message, url):
     try:
