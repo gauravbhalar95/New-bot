@@ -81,9 +81,9 @@ def download_file(file_url, filename):
     except Exception as e:
         print(f"❌ Error downloading {filename}: {str(e)}")
 
-def process_instagram_post(post_url):
+def process_instagram_post(message, post_url):
     """
-    Fetch media, download files.
+    Fetch Instagram media, download files, and send to Telegram.
     """
     media_urls = fetch_instagram_media(post_url)
 
@@ -92,12 +92,25 @@ def process_instagram_post(post_url):
             media_url = media_item.get("url")
 
             if media_url:
-                file_extension = get_file_extension(media_url) or "unknown"
+                file_extension = get_file_extension(media_url) or "jpg"  # Default to .jpg
                 media_type = media_item.get("type", "unknown")  # e.g., image, video, story
                 filename = f"{media_type.capitalize()}_{i}.{file_extension}"
-                download_file(media_url, filename)
+                
+                download_file(media_url, filename)  # Download file
+                
+                file_path = os.path.join(DOWNLOAD_DIR, filename)
+
+                # Send to Telegram
+                with open(file_path, "rb") as file:
+                    if media_type in ["image", "story"]:
+                        bot.send_photo(message.chat.id, file, caption=f"📸 Instagram {media_type.capitalize()}")
+                    elif media_type == "video":
+                        bot.send_video(message.chat.id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
+
+                os.remove(file_path)  # Clean up after sending
+
             else:
-                print(f"⚠️ No URL found in media item {i}")
+                bot.send_message(message.chat.id, f"⚠️ No URL found in media item {i}")
 
     else:
-        print(media_urls)
+        bot.send_message(message.chat.id, media_urls)  # Send error message if media not found
