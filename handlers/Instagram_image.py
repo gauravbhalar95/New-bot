@@ -85,7 +85,7 @@ def process_instagram_post(message, post_url):
     """
     Fetch Instagram media, download files, and send to Telegram.
     """
-    media_urls = fetch_instagram_media(post_url)
+    media_urls = fetch_instagram_media(post_url)  # Fetch Instagram media links
 
     if isinstance(media_urls, list):
         for i, media_item in enumerate(media_urls, start=1):
@@ -93,24 +93,33 @@ def process_instagram_post(message, post_url):
 
             if media_url:
                 file_extension = get_file_extension(media_url) or "jpg"  # Default to .jpg
-                media_type = media_item.get("type", "unknown")  # e.g., image, video, story
-                filename = f"{media_type.capitalize()}_{i}.{file_extension}"
-                
-                download_file(media_url, filename)  # Download file
+                media_type = media_item.get("type", "unknown")  # Detect type (image/video/story)
+                filename = f"{media_type}_{i}.{file_extension}"
                 
                 file_path = os.path.join(DOWNLOAD_DIR, filename)
+                download_file(media_url, file_path)  # Download file
+                
+                # ✅ **Ensure file exists before sending**
+                if not os.path.exists(file_path):
+                    bot.send_message(message.chat.id, f"⚠️ File not found: {filename}")
+                    continue
+                
+                try:
+                    # ✅ **Send media to Telegram based on type**
+                    with open(file_path, "rb") as file:
+                        if media_type in ["image", "story"]:
+                            bot.send_photo(message.chat.id, file, caption=f"📸 Instagram {media_type.capitalize()}")
+                        elif media_type == "video":
+                            bot.send_video(message.chat.id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
 
-                # Send to Telegram
-                with open(file_path, "rb") as file:
-                    if media_type in ["image", "story"]:
-                        bot.send_photo(message.chat.id, file, caption=f"📸 Instagram {media_type.capitalize()}")
-                    elif media_type == "video":
-                        bot.send_video(message.chat.id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
+                    # ✅ **Remove file after sending**
+                    os.remove(file_path)
 
-                os.remove(file_path)  # Clean up after sending
+                except Exception as e:
+                    bot.send_message(message.chat.id, f"❌ Error sending {media_type}: {e}")
 
             else:
                 bot.send_message(message.chat.id, f"⚠️ No URL found in media item {i}")
 
     else:
-        bot.send_message(message.chat.id, media_urls)  # Send error message if media not found
+        bot.send_message(message.chat.id, f"❌ Error fetching Instagram media: {media_urls}")
