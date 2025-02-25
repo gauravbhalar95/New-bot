@@ -9,9 +9,9 @@ if not os.path.exists("downloads"):
     os.makedirs("downloads")
 
 def sanitize_filename(filename):
-    """Sanitize filename to prevent errors."""
-    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)  # Remove unwanted characters
-    return filename[:100]  # Limit filename length
+    """Sanitize and trim filename to prevent errors."""
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename.strip())  # Remove unwanted characters
+    return filename[:100] if filename else "default_filename"
 
 def fetch_instagram_media(post_url):
     """Fetch Instagram media URLs using RapidAPI"""
@@ -25,15 +25,14 @@ def fetch_instagram_media(post_url):
         response_data = response.json()
         if "media" in response_data and response_data["media"]:
             return response_data["media"]  # List of media
-        else:
-            return None
     except (json.JSONDecodeError, requests.RequestException):
-        return None
+        pass
+    return None
 
 def get_file_extension(media_item):
     """Determine file extension based on media type"""
     media_type = media_item.get("type", "").lower()
-    return "jpg" if media_type == "image" else "mp4"
+    return "jpg" if media_type == "image" else "mp4" if media_type == "video" else "bin"
 
 def download_instagram_media(post_url):
     """Download all media from an Instagram post automatically"""
@@ -45,7 +44,8 @@ def download_instagram_media(post_url):
             media_url = media_item.get("url")
             file_extension = get_file_extension(media_item)
             filename = f"Instagram_{i}.{file_extension}"
-            filepath = os.path.join("downloads", sanitize_filename(filename))
+            sanitized_filename = sanitize_filename(filename)
+            filepath = os.path.join("downloads", sanitized_filename)
 
             try:
                 response = requests.get(media_url, stream=True)
@@ -54,7 +54,14 @@ def download_instagram_media(post_url):
                         for chunk in response.iter_content(1024):
                             file.write(chunk)
                     downloaded_files.append(filepath)
-            except Exception:
-                continue
+                    print(f"✅ Downloaded: {filepath}")
+                else:
+                    print(f"❌ Failed to download: {media_url}")
+            except Exception as e:
+                print(f"❌ Error downloading {media_url}: {str(e)}")
 
     return downloaded_files  # Returns list of downloaded file paths
+
+# Example usage:
+# post_url = "https://www.instagram.com/p/xyz/"
+# download_instagram_media(post_url)
