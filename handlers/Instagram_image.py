@@ -2,16 +2,22 @@ import os
 import re
 import requests
 import json
-from config import RAPIDAPI_KEY, RAPIDAPI_HOST
+import mimetypes
+from utils.renamer import renamer  # Renaming function imported from utils module
+
+# API Credentials
+RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
+RAPIDAPI_HOST = "instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com"
 
 # Ensure 'downloads' directory exists
-if not os.path.exists("downloads"):
-    os.makedirs("downloads")
+DOWNLOAD_DIR = "downloads"
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR)
 
 def sanitize_filename(filename):
-    """Sanitize and trim filename to prevent errors."""
-    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename.strip())  # Remove unwanted characters
-    return filename[:100] if filename else "default_filename"
+    """Sanitize filename to prevent errors."""
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)  # Remove unwanted characters
+    return filename[:100]  # Limit filename length
 
 def fetch_instagram_media(post_url):
     """Fetch Instagram media URLs using RapidAPI"""
@@ -24,44 +30,56 @@ def fetch_instagram_media(post_url):
         response = requests.get(url, headers=headers)
         response_data = response.json()
         if "media" in response_data and response_data["media"]:
-            return response_data["media"]  # List of media
-    except (json.JSONDecodeError, requests.RequestException):
-        pass
-    return None
+            return response_data["media"]  # Return list of media URLs
+        else:
+            return "⚠️ No media found."
+    except (json.JSONDecodeError, requests.RequestException) as e:
+        return f"❌ Error: {str(e)}"
 
-def get_file_extension(media_item):
-    """Determine file extension based on media type"""
-    media_type = media_item.get("type", "").lower()
-    return "jpg" if media_type == "image" else "mp4" if media_type == "video" else "bin"
+def get_file_extension(url):
+    """Get file extension based on MIME type or URL"""
+    try:
+        response = requests.head(url, allow_redirects=True)
+        content_type = response.headers.get("Content-Type")
+        if content_type:
+            extension = mimetypes.guess_extension(content_type)
+            if extension:
+                return extension.lstrip('.')  # Remove leading dot
+    except requests.RequestException:
+        pass  # Ignore errors and fall back to URL-based extraction
+    return url.split(".")[-1].split("?")[0]  # Extract from URL
 
-def download_instagram_media(post_url):
-    """Download all media from an Instagram post automatically"""
-    media_items = fetch_instagram_media(post_url)
-    downloaded_files = []
+def download_file(file_url, filename):
+    """Download file from URL and save locally"""
+    try:
+        response = requests.get(file_url, stream=True)
+        if response.status_code == 200:
+            filename = sanitize_filename(filename)
+            filepath = os.path.join(DOWNLOAD_DIR, filename)
+            with open(filepath, "wb") as file:
+                for chunk in response.iter_content(1024):
+                    file.write(chunk)
+            print(f"✅ Downloaded: {filename}")
+        else:
+            print(f"❌ Failed to download: {filename} (Status Code: {response.status_code})")
+    except Exception as e:
+        print(f"❌ Error downloading {filename}: {str(e)}")
 
-    if media_items:
-        for i, media_item in enumerate(media_items, start=1):
+def process_instagram_post(post_url):
+    """Fetch media, download, and rename files"""
+    media_urls = fetch_instagram_media(post_url)
+    if isinstance(media_urls, list):
+        for i, media_item in enumerate(media_urls, start=1):
             media_url = media_item.get("url")
-            file_extension = get_file_extension(media_item)
-            filename = f"Instagram_{i}.{file_extension}"
-            sanitized_filename = sanitize_filename(filename)
-            filepath = os.path.join("downloads", sanitized_filename)
-
-            try:
-                response = requests.get(media_url, stream=True)
-                if response.status_code == 200:
-                    with open(filepath, "wb") as file:
-                        for chunk in response.iter_content(1024):
-                            file.write(chunk)
-                    downloaded_files.append(filepath)
-                    print(f"✅ Downloaded: {filepath}")
-                else:
-                    print(f"❌ Failed to download: {media_url}")
-            except Exception as e:
-                print(f"❌ Error downloading {media_url}: {str(e)}")
-
-    return downloaded_files  # Returns list of downloaded file paths
-
-# Example usage:
-# post_url = "https://www.instagram.com/p/xyz/"
-# download_instagram_media(post_url)
+            if media_url:
+                file_extension = get_file_extension(media_url)
+                if not file_extension:
+                    file_extension = "unknown"  # Default if not detected
+                media_type = media_item.get("type", "unknown")  # e.g., image, video, story
+                filename = f"{media_type.capitalize()}_{i}.{file_extension}"
+                download_file(media_url, filename)
+            else:
+                print(f"⚠️ No URL found in media item {i}")
+        renamer(DOWNLOAD_DIR)  # Call the renaming function from utils
+    else:
+        print(media_urls)
