@@ -3,11 +3,10 @@ import os
 import re
 import requests
 import json
-import mimetypes
 from config import API_TOKEN
+from utils.renamer import renamer  # 🆕 Renamer utility import
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
-
 
 # API Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
@@ -48,7 +47,6 @@ def fetch_instagram_media(post_url):
     except (json.JSONDecodeError, requests.RequestException) as e:
         return f"❌ Error: {str(e)}"
 
-
 def get_file_extension(url):
     """Extract file extension from URL"""
     if "." in url.split("/")[-1]:  
@@ -71,7 +69,7 @@ def download_file(url, file_path):
         return False
 
 def process_instagram_post(message, post_url):
-    """Fetch Instagram media, download files, and send to Telegram."""
+    """Fetch Instagram media, download files, rename them, and send to Telegram."""
     media_urls = fetch_instagram_media(post_url)  # Fetch Instagram media links
 
     if not isinstance(media_urls, list) or not media_urls:
@@ -87,7 +85,7 @@ def process_instagram_post(message, post_url):
             continue
 
         file_extension = get_file_extension(media_url) or ("mp4" if media_type == "video" else "jpg")
-        filename = f"{media_type}_{i}.{file_extension}"
+        filename = sanitize_filename(f"{media_type}_{i}.{file_extension}")
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
         if not download_file(media_url, file_path):
@@ -98,14 +96,17 @@ def process_instagram_post(message, post_url):
             bot.send_message(message.chat.id, f"⚠️ File not found: {filename}")
             continue  # Skip sending if file is missing
 
+        # 🆕 **Use renamer utility before sending**
+        renamed_file_path = renamer(file_path)  
+        
         try:
-            with open(file_path, "rb") as file:
+            with open(renamed_file_path, "rb") as file:
                 if media_type in ["image", "story"]:
                     bot.send_photo(message.chat.id, file, caption=f"📸 Instagram {media_type.capitalize()}")
                 elif media_type == "video":
                     bot.send_video(message.chat.id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
 
-            os.remove(file_path)  # Delete file after sending
+            os.remove(renamed_file_path)  # Delete file after sending
 
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ Error sending {media_type}: {e}")
