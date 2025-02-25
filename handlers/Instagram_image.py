@@ -4,7 +4,7 @@ import re
 import requests
 import json
 import mimetypes
-from bot import bot
+
 
 # API Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
