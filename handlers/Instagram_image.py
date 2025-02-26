@@ -30,7 +30,7 @@ def fetch_instagram_media(url):
     Fetch Instagram media URLs using RapidAPI.
     Returns a list of media URLs if available, else an error message.
     """
-    url = f"https://{RAPIDAPI_HOST}/convert?url={post_url}"
+    url = f"https://{RAPIDAPI_HOST}/convert?url={url}"
     headers = {
         "x-rapidapi-key": RAPIDAPI_KEY,
         "x-rapidapi-host": RAPIDAPI_HOST
