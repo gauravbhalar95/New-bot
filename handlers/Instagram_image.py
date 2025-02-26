@@ -29,8 +29,14 @@ def fetch_instagram_media(url):
     try:
         response = requests.get(api_url, headers=headers)
         response_data = response.json()
-        return response_data.get("media", [])  # Return list of media URLs
-    except (json.JSONDecodeError, requests.RequestException):
+        
+        # Check if response_data is valid
+        if not response_data or "media" not in response_data:
+            return []  # Return empty list if media key is missing
+        
+        return response_data["media"]  # Return list of media URLs
+    except (json.JSONDecodeError, requests.RequestException) as e:
+        print(f"❌ API Error: {e}")
         return []
 
 def get_file_extension(url):
@@ -54,11 +60,15 @@ def download_file(url, file_path):
 def process_instagram_post(url):
     """Fetch Instagram media, download files, rename them, and return file paths."""
     media_urls = fetch_instagram_media(url)
-    if not media_urls:
+    
+    if not media_urls:  # Check if media_urls is None or empty
         return None  # No media found
 
     downloaded_files = []
     for i, media_item in enumerate(media_urls, start=1):
+        if not isinstance(media_item, dict):  # Ensure media_item is a dictionary
+            continue
+        
         media_url = media_item.get("url")
         media_type = media_item.get("type", "unknown")
 
@@ -73,4 +83,4 @@ def process_instagram_post(url):
             renamed_file_path = rename_files_in_directory(file_path)
             downloaded_files.append((renamed_file_path, media_type))
 
-    return downloaded_files  # Return list of downloaded file paths
+    return downloaded_files if downloaded_files else None
