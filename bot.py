@@ -156,3 +156,7 @@ def handle_message(message):
     queue.put((message, message.text.strip()))    
   
 threading.Thread(target=worker, daemon=True).start()
+
+if __name__ == "__main__":
+    print("✅ Bot is running...")  # Debugging message
+    bot.infinity_polling()  # Keep bot running
