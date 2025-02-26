@@ -25,7 +25,7 @@ def sanitize_filename(filename):
     filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
     return filename[:100]
 
-def fetch_instagram_media(post_url):
+def fetch_instagram_media(url):
     """
     Fetch Instagram media URLs using RapidAPI.
     Returns a list of media URLs if available, else an error message.
@@ -68,7 +68,7 @@ def download_file(url, file_path):
         print(f"❌ Error downloading file: {e}")
         return False
 
-def process_instagram_post(message, post_url):
+def process_instagram_post(url):
     """Fetch Instagram media, download files, rename them, and send to Telegram."""
     media_urls = fetch_instagram_media(post_url)  # Fetch Instagram media links
 
