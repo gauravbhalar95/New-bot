@@ -12,7 +12,7 @@ from requests.exceptions import ConnectionError
   
 from config import API_TOKEN, COOKIES_FILE  
 from handlers.youtube_handler import process_youtube  
-from handlers.Instagram_image import process_instagram_post  
+from handlers.Instagram_image import process_instagram_post(message, post_url)  
 from handlers.instagram_handler import handle_instagram_url  
 from handlers.common_handler import process_adult  
 from handlers.x_handler import download_twitter_media  
