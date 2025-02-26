@@ -70,9 +70,3 @@ def handle_message(url, start_time=None, end_time=None, audio_only=False):
     except Exception as e:
         logger.error(f"⚠️ Error processing request: {e}")
 
-if __name__ == "__main__":
-    logger.info("Starting YouTube processing...")
-    # Example usage (uncomment to test)
-    # handle_message("https://youtube.com/watch?v=example", "00:00:10", "00:01:00")
-    # handle_message("https://youtube.com/watch?v=example", audio_only=True)
-    logger.info("Process complete.")
