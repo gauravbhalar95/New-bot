@@ -1,13 +1,9 @@
-import telebot
 import os
 import re
 import requests
 import json
 from config import API_TOKEN
 from utils.renamer import rename_files_in_directory  # Ensure this exists
-
-# Initialize Telegram Bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 # API Credentials
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
@@ -33,13 +29,9 @@ def fetch_instagram_media(url):
     try:
         response = requests.get(api_url, headers=headers)
         response_data = response.json()
-
-        if "media" in response_data and response_data["media"]:
-            return response_data["media"]  # Return list of media URLs
-        return None
-
-    except (json.JSONDecodeError, requests.RequestException) as e:
-        return None
+        return response_data.get("media", [])  # Return list of media URLs
+    except (json.JSONDecodeError, requests.RequestException):
+        return []
 
 def get_file_extension(url):
     """Extract file extension from URL."""
@@ -55,49 +47,30 @@ def download_file(url, file_path):
                 for chunk in response.iter_content(chunk_size=1024):
                     file.write(chunk)
             return True
-    except Exception as e:
-        print(f"❌ Error downloading file: {e}")
+    except Exception:
+        return False
     return False
 
-def process_instagram_post(url, chat_id):
-    """Fetch Instagram media, download files, rename them, and send to Telegram."""
-    media_urls = fetch_instagram_media(url)  # Fetch Instagram media links
-
+def process_instagram_post(url):
+    """Fetch Instagram media, download files, rename them, and return file paths."""
+    media_urls = fetch_instagram_media(url)
     if not media_urls:
-        bot.send_message(chat_id, "❌ Instagram media not found.")
-        return
+        return None  # No media found
 
+    downloaded_files = []
     for i, media_item in enumerate(media_urls, start=1):
         media_url = media_item.get("url")
         media_type = media_item.get("type", "unknown")
 
         if not media_url:
-            bot.send_message(chat_id, f"⚠️ No URL found for media item {i}")
             continue
 
         file_extension = get_file_extension(media_url) or ("mp4" if media_type == "video" else "jpg")
         filename = sanitize_filename(f"{media_type}_{i}.{file_extension}")
         file_path = os.path.join(DOWNLOAD_DIR, filename)
 
-        if not download_file(media_url, file_path):
-            bot.send_message(chat_id, f"❌ Failed to download {filename}")
-            continue
+        if download_file(media_url, file_path):
+            renamed_file_path = rename_files_in_directory(file_path)
+            downloaded_files.append((renamed_file_path, media_type))
 
-        if not os.path.exists(file_path):
-            bot.send_message(chat_id, f"⚠️ File not found: {filename}")
-            continue  # Skip sending if file is missing
-
-        renamed_file_path = rename_files_in_directory(file_path)  # Rename before sending
-
-        try:
-            with open(renamed_file_path, "rb") as file:
-                if media_type in ["image", "story"]:
-                    bot.send_photo(chat_id, file, caption=f"📸 Instagram {media_type.capitalize()}")
-                elif media_type == "video":
-                    bot.send_video(chat_id, file, caption=f"🎥 Instagram {media_type.capitalize()}")
-
-            os.remove(renamed_file_path)  # Delete file after sending
-
-        except Exception as e:
-            bot.send_message(chat_id, f"❌ Error sending {media_type}: {e}")
-
+    return downloaded_files  # Return list of downloaded file paths
