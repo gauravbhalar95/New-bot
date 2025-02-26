@@ -40,11 +40,11 @@ def detect_platform(url):
         if any(domain in url for domain in domains):  
             if platform == "instagram":  
                 if "/reel/" in url or "/reels/" in url:    
-                    return platform, (handle_instagram_url,)  # Reels માટે    
-                return platform, (process_instagram_post(url))  # ઈમેજ અને સ્ટોરી માટે    
+                    return platform, (handle_instagram_url,)  # Handle reels  
+                return platform, (lambda url, chat_id: process_instagram_post(url, chat_id),)  # Image/Story  
             return platform, handlers  
-    return None, None  
-  
+    return None, None
+
 def get_streaming_url(url):  
     """Fetches a streaming URL without downloading the video."""  
     ydl_opts = {  
