@@ -68,9 +68,9 @@ def download_file(url, file_path):
         print(f"❌ Error downloading file: {e}")
         return False
 
-def process_instagram_post(post_url):
+def process_instagram_post(url):
     """Fetch Instagram media, download files, rename them, and send to Telegram."""
-    media_urls = fetch_instagram_media(post_url)  # Fetch Instagram media links
+    media_urls = fetch_instagram_media(url)  # Fetch Instagram media links
 
     if not isinstance(media_urls, list) or not media_urls:
         bot.send_message(message.chat.id, "❌ Instagram media not found.")
