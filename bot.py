@@ -171,6 +171,3 @@ def handle_message(message):
     queue.put((message, message.text.strip()))  
   
 threading.Thread(target=worker, daemon=True).start()
-
-if __name__ == "__main__":
-    bot.polling(none_stop=True)
