@@ -13,7 +13,7 @@ logger = setup_logging(logging.DEBUG)
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def download_and_trim_video(youtube_url, start_time, end_time):
+def process_youtube(youtube_url, start_time, end_time):
     """Download a YouTube video with audio and trim it using FFmpeg."""
     
     ydl_opts = {
