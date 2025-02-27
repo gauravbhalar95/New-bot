@@ -22,5 +22,5 @@ asyncio
 nest_asyncio
 psutil
 api.video
-Instaloader
+instaloader
 waitress
