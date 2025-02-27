@@ -1,8 +1,7 @@
-# handlers/trim_handlers.py
 import os
 import logging
 from telegram import Update
-from telegram.ext import CallbackContext
+from telegram.ext import CallbackContext, MessageHandler, Filters
 import yt_dlp
 
 from config import DOWNLOAD_DIR
@@ -32,24 +31,30 @@ def download_and_trim_video(youtube_url, start_time, end_time):
         logger.error(f"Error downloading and trimming video: {e}")
         return None
 
-def trim_command(update: Update, context: CallbackContext):
-    """Handles the /trim command."""
+def handle_message(update: Update, context: CallbackContext):
+    """Handles messages to detect and process YouTube trimming commands."""
     try:
-        if len(context.args) < 3:
-            update.message.reply_text("Usage: /trim <youtube_url> <start_time> <end_time>")
-            return
+        message_text = update.message.text
+        parts = message_text.split()
 
-        youtube_url, start_time, end_time = context.args[0], context.args[1], context.args[2]
+        if len(parts) == 3 and parts[0].startswith("http"):
+            youtube_url, start_time, end_time = parts[0], parts[1], parts[2]
 
-        video_filename = download_and_trim_video(youtube_url, start_time, end_time)
+            video_filename = download_and_trim_video(youtube_url, start_time, end_time)
 
-        if video_filename:
-            with open(video_filename, 'rb') as video:
-                update.message.reply_video(video)
-            os.remove(video_filename)  # Clean up after sending
+            if video_filename:
+                with open(video_filename, 'rb') as video:
+                    update.message.reply_video(video)
+                os.remove(video_filename)  # Clean up after sending
+            else:
+                update.message.reply_text("Failed to download and trim the video.")
         else:
-            update.message.reply_text("Failed to download and trim the video.")
+            update.message.reply_text("Usage: <youtube_url> <start_time> <end_time>")
 
     except Exception as e:
-        logger.error(f"Error during trim command: {e}")
+        logger.error(f"Error processing message: {e}")
         update.message.reply_text("An error occurred while processing your request.")
+
+# Add handler for messages
+message_handler = MessageHandler(Filters.text & ~Filters.command, handle_message)
+dispatcher.add_handler(message_handler)
