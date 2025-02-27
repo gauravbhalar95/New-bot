@@ -116,7 +116,7 @@ def log_memory_usage():
 def start(message):  
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
   
-def download_and_send_video(message, url):  
+def download_and_send_video(url):  
     try:  
         if not sanitize_filename(url):  
             bot.reply_to(message, "Invalid or unsupported URL.")  
@@ -163,7 +163,7 @@ def worker():
         message, url = queue.get()  
         if message == "STOP":  
             break  
-        download_and_send_video(message, url)  
+        download_and_send_video(url)  
         queue.task_done()  
   
 @bot.message_handler(func=lambda message: True, content_types=['text'])  
