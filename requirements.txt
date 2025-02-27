@@ -6,3 +6,4 @@ watchdog
 telebot
 psutil
 flask
+dotenv
