@@ -20,7 +20,7 @@ def process_facebook(url, output_dir=DOWNLOAD_DIR):
         os.makedirs(output_dir)
 
     try:
-        with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:  # 👈 Progress ON
+        with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:
             info_dict = ydl.extract_info(url, download=False)
             original_title = info_dict.get("title", "video")
             file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
@@ -49,14 +49,14 @@ def process_facebook(url, output_dir=DOWNLOAD_DIR):
     }
 
     try:
-        # **Download the video**
+        # **Download the video and extract info**
         with yt_dlp.YoutubeDL(options) as ydl:
-            ydl.download([url])  # 👈 Now it will show progress
+            info_dict = ydl.extract_info(url, download=True)  # 👈 FIX: Store info_dict
 
         # **Rename files after downloading**
         rename_files_in_directory(output_dir)
 
-        return f"✅ Video downloaded and renamed successfully in {output_dir}"
+        return f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
 
     except Exception as e:
         return f"❌ Download failed: {str(e)}"
