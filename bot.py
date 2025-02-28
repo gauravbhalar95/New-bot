@@ -8,7 +8,6 @@ import yt_dlp  # Added for streaming link
 from config import API_TOKEN, COOKIES_FILE  
 from handlers.youtube_handler import process_youtube  
 from handlers.instagram_handler import process_instagram
-from handlers.Instagram_image import process_instagram_post
 from handlers.common_handler import process_adult  
 from handlers.x_handler import download_twitter_media  
 from utils.sanitize import sanitize_filename  
@@ -29,7 +28,7 @@ queue = Queue()
 
 SUPPORTED_DOMAINS = {  
     "youtube": (["youtube.com", "youtu.be"], process_youtube),  
-    "instagram": (["instagram.com"], process_instagram, process_instagram_post),  
+    "instagram": (["instagram.com"], process_instagram,),  
     "facebook": (["facebook.com"], process_facebook),  
     "twitter": (["x.com", "twitter.com"], download_twitter_media),  
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),  
