@@ -3,16 +3,18 @@ import gc
 import logging
 import threading
 import requests
-import yt_dlp
 import telebot
 import psutil
 import time
+import ffmpeg
 from queue import Queue
 from requests.exceptions import ConnectionError
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
 
 # Importing project-specific modules
-from config import API_TOKEN, COOKIES_FILE, TELEGRAM_FILE_LIMIT
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, GOOGLE_DRIVE_CREDENTIALS
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -21,129 +23,118 @@ from handlers.x_handler import download_twitter_media
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
+from utils.video_summary import generate_summary
+from utils.cloud_upload import upload_to_mega, upload_to_drive
 
-# Setting up logging
-logger = setup_logging(logging.DEBUG)
+# Setup logging
+logger = setup_logging(logging.INFO)
+
+# Initialize bot
+bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
+
+# Queue for managing downloads
+download_queue = Queue()
 
 # API Key for api.video
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 
-# Initialize bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
-queue = Queue()
-
-# Supported domains mapping
-SUPPORTED_DOMAINS = {
-    "youtube": (["youtube.com", "youtu.be"], process_youtube),
-    "instagram": (["instagram.com"], process_instagram),
-    "facebook": (["facebook.com"], process_facebook),
-    "twitter": (["x.com", "twitter.com"], download_twitter_media),
-    "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),
+# Supported platforms & handlers
+SUPPORTED_PLATFORMS = {
+    "YouTube": (["youtube.com", "youtu.be"], process_youtube),
+    "Instagram": (["instagram.com"], process_instagram),
+    "Facebook": (["facebook.com"], process_facebook),
+    "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
+    "Adult": (
+        ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"],
+        process_adult,
+    ),
 }
 
-# Detect platform from URL
+
+# 🔍 Detect platform from URL
 def detect_platform(url):
-    for platform, values in SUPPORTED_DOMAINS.items():
-        domains, *handlers = values
+    for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():
         if any(domain in url for domain in domains):
-            return platform, handlers
+            return platform, handler
     return None, None
 
-# Upload video to api.video
-def upload_to_api_video(file_path):
-    url = "https://ws.api.video/videos"
-    headers = {"Authorization": f"Bearer {API_VIDEO_KEY}"}
-    files = {'file': open(file_path, 'rb')}
-    data = {'title': os.path.basename(file_path)}
 
-    response = requests.post(url, headers=headers, files=files, data=data)
-    if response.status_code == 201:
-        return response.json()['assets']['player']
-    
-    raise Exception("Failed to upload video to api.video")
-
-# Send request with retries
-def send_request_with_retries(url, payload, retries=5, delay=3):
-    for attempt in range(retries):
-        try:
-            response = requests.post(url, data=payload)
-            if response.status_code == 200:
-                return response
-            logger.error(f"Unexpected status code: {response.status_code}")
-        except ConnectionError as e:
-            logger.error(f"Connection error: {e}")
-            if attempt < retries - 1:
-                logger.info(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-            else:
-                logger.error("Max retries reached. Request failed.")
-    return None
-
-# Download video based on platform
-def download_video(url):
-    platform, handlers = detect_platform(url)
-    if not platform:
-        raise ValueError("Unsupported platform")
-
-    for handler in handlers:
-        if callable(handler):
-            return handler(url)
-    return None
-
-# Log memory usage
+# 🔥 Monitor memory usage
 def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
-# Handle /start command
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")
 
-# Download and send video
-def download_and_send_video(message, url):
+# 🚀 **Optimize Video with FFmpeg**
+def compress_video(input_path, output_path):
     try:
-        if not sanitize_filename(url):
-            bot.reply_to(message, "Invalid or unsupported URL.")
+        (
+            ffmpeg.input(input_path)
+            .output(output_path, vcodec="libx265", crf=28, preset="fast")
+            .run(overwrite_output=True)
+        )
+        return output_path
+    except Exception as e:
+        logger.error(f"Compression failed: {e}")
+        return input_path
+
+
+# 📥 **Background Download Handler**
+def background_download(message, url):
+    try:
+        bot.send_message(message.chat.id, "📥 **Download started in the background. Please wait...**")
+
+        # Detect platform and get handler
+        platform, handler = detect_platform(url)
+        if not handler:
+            bot.send_message(message.chat.id, "⚠️ **Unsupported URL. Please provide a valid link.**")
             return
 
-        bot.reply_to(message, "Downloading video, please wait...")
-        log_memory_usage()
-
-        file_path, file_size, thumbnail_path = download_video(url)
+        # Start download
+        file_path, file_size, thumbnail_path = handler(url)
         if not file_path:
-            bot.reply_to(message, "Error: Video download failed.")
+            bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
             return
 
         log_memory_usage()
 
-        # Send thumbnail if available
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            with open(thumbnail_path, 'rb') as thumb:
-                bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
+        # 🔥 **AI Video Summarization**
+        summary = generate_summary(file_path)
 
-        # Handle large files
+        # 🖼️ **Send Thumbnail**
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            with open(thumbnail_path, "rb") as thumb:
+                bot.send_photo(message.chat.id, thumb, caption=f"✅ **Thumbnail received!**\n\n📝 **Summary:** {summary}")
+
+        # 🏗️ **Handle Large Files**
         if file_size > TELEGRAM_FILE_LIMIT:
-            streaming_link = get_streaming_url(url)
-            if streaming_link:
-                download_button = InlineKeyboardMarkup()
-                download_button.add(
-                    InlineKeyboardButton("🔽 Download Video", url=streaming_link)
-                )
-                bot.send_message(
-                    message.chat.id,
-                    f"⚡ Video is too large for Telegram.\n\n🎥 **Watch it here:** {streaming_link}",
-                    parse_mode="Markdown",
-                    reply_markup=download_button
-                )
-            else:
-                bot.reply_to(message, "Failed to get streaming link.")
+            # 📤 **Upload to Cloud**
+            bot.send_message(message.chat.id, "⏳ **Uploading to Cloud Storage...**")
+            drive_link = upload_to_drive(file_path)
+            mega_link = upload_to_mega(file_path)
+
+            keyboard = InlineKeyboardMarkup()
+            if drive_link:
+                keyboard.add(InlineKeyboardButton("🔗 Google Drive", url=drive_link))
+            if mega_link:
+                keyboard.add(InlineKeyboardButton("🔗 Mega.nz", url=mega_link))
+
+            bot.send_message(
+                message.chat.id,
+                "⚡ **File is too large for Telegram. Download it from the links below:**",
+                reply_markup=keyboard,
+            )
+
         else:
-            with open(file_path, 'rb') as video:
+            # 🎥 **Optimize Video Before Sending**
+            compressed_path = compress_video(file_path, file_path.replace(".mp4", "_compressed.mp4"))
+
+            # 📤 **Send Video**
+            with open(compressed_path, "rb") as video:
                 bot.send_video(message.chat.id, video, supports_streaming=True)
 
-        # Cleanup files
-        for path in [file_path, thumbnail_path]:
+        # 🧹 **Cleanup**
+        for path in [file_path, compressed_path, thumbnail_path]:
             if path and os.path.exists(path):
                 os.remove(path)
 
@@ -152,25 +143,25 @@ def download_and_send_video(message, url):
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        bot.reply_to(message, f"Error occurred: {e}")
+        bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-# Worker function to process download queue
-def worker():
-    while True:
-        message, url = queue.get()
-        if message == "STOP":
-            break
-        download_and_send_video(message, url)
-        queue.task_done()
 
-# Handle text messages
-@bot.message_handler(func=lambda message: True, content_types=['text'])
+# 🏁 **Start Command**
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(
+        message,
+        "👋 **Welcome!** Send me a video link, and I'll download it for you with AI enhancements!",
+    )
+
+
+# ✉️ **Handle Incoming Messages**
+@bot.message_handler(func=lambda message: True, content_types=["text"])
 def handle_message(message):
-    queue.put((message, message.text.strip()))
+    url = message.text.strip()
+    threading.Thread(target=background_download, args=(message, url), daemon=True).start()
 
-# Start worker thread
-threading.Thread(target=worker, daemon=True).start()
 
-# Run bot
+# 🚀 Run the bot
 if __name__ == "__main__":
     bot.infinity_polling()
