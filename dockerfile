@@ -14,9 +14,7 @@ COPY requirements.txt /app/
 
 # Upgrade pip and install dependencies in a single step
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp google-api-python-client
-
+    pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . /app
 
