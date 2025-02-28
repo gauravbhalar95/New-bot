@@ -17,7 +17,8 @@ from queue import Queue
 import psutil  # To monitor memory usage  
 import time  
 import requests  
-from requests.exceptions import ConnectionError  
+from requests.exceptions import ConnectionError
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton  
 
 logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
 
@@ -114,47 +115,57 @@ def log_memory_usage():
 def start(message):  
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
 
-def download_and_send_video(message, url):  
-    try:  
-        if not sanitize_filename(url):  
-            bot.reply_to(message, "Invalid or unsupported URL.")  
-            return  
-        bot.reply_to(message, "Downloading video, please wait...")  
 
-        log_memory_usage()  
+def download_and_send_video(message, url):
+    try:
+        if not sanitize_filename(url):
+            bot.reply_to(message, "Invalid or unsupported URL.")
+            return
+        
+        bot.reply_to(message, "Downloading video, please wait...")
+        log_memory_usage()
 
-        file_path, file_size, thumbnail_path = download_video(url)  
-        if not file_path:  
-            bot.reply_to(message, "Error: Video download failed.")  
-            return  
+        file_path, file_size, thumbnail_path = download_video(url)
+        if not file_path:
+            bot.reply_to(message, "Error: Video download failed.")
+            return
 
-        log_memory_usage()  
+        log_memory_usage()
 
-        if thumbnail_path and os.path.exists(thumbnail_path):  
-            with open(thumbnail_path, 'rb') as thumb:  
-                bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")  
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            with open(thumbnail_path, 'rb') as thumb:
+                bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram  
-            streaming_link = get_streaming_url(url)  
-            if streaming_link:  
-                bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")  
-            else:  
-                bot.reply_to(message, "Failed to get streaming link.")  
-        else:  
-            with open(file_path, 'rb') as video:  
-                bot.send_video(message.chat.id, video)  
+        if file_size > 50 * 1024 * 1024:  # Telegram's 50MB limit
+            streaming_link = get_streaming_url(url)
+            if streaming_link:
+                download_button = InlineKeyboardMarkup()
+                download_button.add(
+                    InlineKeyboardButton("🔽 Download Video", url=streaming_link)
+                )
+                bot.send_message(
+                    message.chat.id,
+                    f"⚡ Video is too large for Telegram.\n\n🎥 **Watch it here:** [Streaming Link]({streaming_link})",
+                    parse_mode="Markdown",
+                    reply_markup=download_button
+                )
+            else:
+                bot.reply_to(message, "Failed to get streaming link.")
+        else:
+            with open(file_path, 'rb') as video:
+                bot.send_video(message.chat.id, video)
 
-        if os.path.exists(file_path):  
-            os.remove(file_path)  
-        if thumbnail_path and os.path.exists(thumbnail_path):  
-            os.remove(thumbnail_path)  
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
 
-        log_memory_usage()  
-        gc.collect()  
+        log_memory_usage()
+        gc.collect()
 
-    except Exception as e:  
-        logger.error(f"Error: {e}")  
-        bot.reply_to(message, f"Error occurred: {e}")  
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        bot.reply_to(message, f"Error occurred: {e}")
 
 def worker():  
     while True:  
