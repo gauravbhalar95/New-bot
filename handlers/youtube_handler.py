@@ -15,7 +15,7 @@ def process_youtube(url):
     """Download video using yt-dlp."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     ydl_opts = {
-        'format': 'bv+ba/b',
+        'format': 'best',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
