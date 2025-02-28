@@ -23,5 +23,3 @@ nest_asyncio
 psutil
 api.video
 Instaloader
-googleapiclient
-google-api-python-client
