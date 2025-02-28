@@ -10,11 +10,9 @@ import ffmpeg
 from queue import Queue
 from requests.exceptions import ConnectionError
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 
 # Importing project-specific modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, GOOGLE_DRIVE_CREDENTIALS
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -24,7 +22,6 @@ from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 from utils.video_summary import generate_summary
-from utils.cloud_upload import upload_to_mega, upload_to_drive
 
 # Setup logging
 logger = setup_logging(logging.INFO)
@@ -108,21 +105,9 @@ def background_download(message, url):
 
         # 🏗️ **Handle Large Files**
         if file_size > TELEGRAM_FILE_LIMIT:
-            # 📤 **Upload to Cloud**
-            bot.send_message(message.chat.id, "⏳ **Uploading to Cloud Storage...**")
-            drive_link = upload_to_drive(file_path)
-            mega_link = upload_to_mega(file_path)
-
-            keyboard = InlineKeyboardMarkup()
-            if drive_link:
-                keyboard.add(InlineKeyboardButton("🔗 Google Drive", url=drive_link))
-            if mega_link:
-                keyboard.add(InlineKeyboardButton("🔗 Mega.nz", url=mega_link))
-
             bot.send_message(
                 message.chat.id,
-                "⚡ **File is too large for Telegram. Download it from the links below:**",
-                reply_markup=keyboard,
+                "⚠️ **File is too large for Telegram (50MB limit). Try downloading a lower-resolution version.**",
             )
 
         else:
