@@ -28,3 +28,22 @@ def upload_to_drive(file_path):
     except Exception as e:
         print(f"Google Drive Upload Error: {e}")
         return None
+
+
+from mega import Mega
+import os
+
+MEGA_EMAIL = "gauravbhalara@hotmail.com"
+MEGA_PASSWORD = "Gaurav74$"
+
+def upload_to_mega(file_path):
+    """Uploads a file to Mega.nz and returns the public link."""
+    try:
+        mega = Mega()
+        m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
+        uploaded_file = m.upload(file_path)
+        link = m.get_upload_link(uploaded_file)
+        return link
+    except Exception as e:
+        print(f"Mega Upload Error: {e}")
+        return None
