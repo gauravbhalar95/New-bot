@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from handlers.Instagram_image import process_instagram_post  # Import Story/Post handler
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
@@ -80,13 +79,3 @@ def cleanup_video(video_path):
     except Exception as e:
         logger.error(f"Failed to clean up {video_path}: {e}")
 
-# Main Instagram Handler
-def handle_instagram_url(url):
-    if is_instagram_video(url):
-        # If it's a Reel or Video, process with yt-dlp
-        logger.info("Detected Instagram Video/Reel. Processing with yt-dlp...")
-        return process_instagram(url)
-    else:
-        # If it's a Post/Story, process with Instagram_image handler
-        logger.info("Detected Instagram Post/Story. Sending to get_instagram_content()...")
-        return process_instagram_post(url)  # Ensure this function returns 3 values as well
