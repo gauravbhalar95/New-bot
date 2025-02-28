@@ -16,7 +16,8 @@ from handlers.facebook_handlers import process_facebook
 from queue import Queue  
 import psutil  # To monitor memory usage  
 import time  
-import requests  
+import requests
+from utils.streaming import get_streaming_url  
 from requests.exceptions import ConnectionError
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton  
 
@@ -42,26 +43,7 @@ def detect_platform(url):
             return platform, handlers  
     return None, None  
 
-def get_streaming_url(url):  
-    """  
-    Fetches a streaming URL without downloading the video.  
-    """  
-    ydl_opts = {  
-        'format': 'best',  
-        'noplaylist': True,  
-        'cookiefile': COOKIES_FILE,  # Include cookies  
-        'headers': {  
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',  
-            'Referer': 'https://x.com/'  
-        }  
-    }  
-    try:  
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  
-            info_dict = ydl.extract_info(url, download=False)  
-            return info_dict.get('url')  
-    except Exception as e:  
-        logger.error(f"Error fetching streaming URL: {e}")  
-        return None  
+
 
 def upload_to_api_video(file_path):  
     url = "https://ws.api.video/videos"  
@@ -116,12 +98,17 @@ def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
 
 
+from config import STREAMING_SIZE_LIMIT
+
+
+# .....
+
 def download_and_send_video(message, url):
     try:
         if not sanitize_filename(url):
             bot.reply_to(message, "Invalid or unsupported URL.")
             return
-        
+
         bot.reply_to(message, "Downloading video, please wait...")
         log_memory_usage()
 
@@ -136,7 +123,7 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > 50 * 1024 * 1024:  # Telegram's 50MB limit
+        if file_size > STREAMING_SIZE_LIMIT:
             streaming_link = get_streaming_url(url)
             if streaming_link:
                 download_button = InlineKeyboardMarkup()
