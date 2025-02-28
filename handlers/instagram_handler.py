@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from handlers.Instagram_image import get_instagram_content  # Import Story/Post handler
+from handlers.Instagram_image import process_instagram_post  # Import Story/Post handler
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
