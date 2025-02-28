@@ -1,32 +1,38 @@
 # Use an official Python runtime as a parent image  
-FROM python:3.12-slim  
+FROM python:3.11-slim  
 
-# Set the working directory in the container  
+# Set the working directory  
 WORKDIR /app  
 
-# Install system dependencies (e.g., ffmpeg) and clean up unnecessary files  
-RUN apt-get update && \  
-    apt-get install -y --no-install-recommends ffmpeg && \  
+# Install system dependencies  
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg supervisor && \
     rm -rf /var/lib/apt/lists/*  
 
-# Copy the requirements file and install Python dependencies  
+# Copy the requirements file  
 COPY requirements.txt /app/  
-RUN pip install --no-cache-dir -r requirements.txt && \  
-    pip install --no-cache-dir --upgrade yt-dlp   
 
-# Copy the rest of the application code into the container  
+# Upgrade pip and install dependencies  
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade yt-dlp google-api-python-client  
+
+# Copy the rest of the application  
 COPY . /app  
 
 # Ensure scripts have execute permissions  
 RUN chmod +x /app/update.sh  
 
-# Expose port 8080 for Flask  
-EXPOSE 9000 
+# Expose port  
+EXPOSE 9000  
 
 # Set environment variables  
-ENV PYTHONUNBUFFERED=1 \  
-    FLASK_ENV=production \  
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production \
     PORT=9000  
 
-# Run update.sh, then start webhook.py and bot.py  
-CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
+# Copy Supervisor config  
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf  
+
+# Run Supervisor  
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
