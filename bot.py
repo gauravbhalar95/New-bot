@@ -122,7 +122,7 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > TELEGRAM_FILE_LIMIT
+        if file_size > TELEGRAM_FILE_LIMIT:
             streaming_link = get_streaming_url(url)
             if streaming_link:
                 download_button = InlineKeyboardMarkup()
