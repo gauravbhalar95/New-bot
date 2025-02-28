@@ -5,7 +5,7 @@ import threading
 import telebot  
 import requests  
 import yt_dlp  # Added for streaming link  
-from config import API_TOKEN, COOKIES_FILE  
+from config import API_TOKEN, COOKIES_FILE, TELEGRAM_FILE_LIMIT  
 from handlers.youtube_handler import process_youtube  
 from handlers.instagram_handler import process_instagram
 from handlers.common_handler import process_adult  
@@ -98,7 +98,6 @@ def start(message):
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
 
 
-from config import STREAMING_SIZE_LIMIT
 
 
 # .....
@@ -123,7 +122,7 @@ def download_and_send_video(message, url):
             with open(thumbnail_path, 'rb') as thumb:
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")
 
-        if file_size > STREAMING_SIZE_LIMIT:
+        if file_size > TELEGRAM_FILE_LIMIT
             streaming_link = get_streaming_url(url)
             if streaming_link:
                 download_button = InlineKeyboardMarkup()
