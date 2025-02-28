@@ -20,17 +20,13 @@ import time
 import requests  
 from requests.exceptions import ConnectionError  
 
-
-
 logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
 
-
- 
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"  
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')  
 logger = setup_logging()  
 queue = Queue()  
-  
+
 SUPPORTED_DOMAINS = {  
     "youtube": (["youtube.com", "youtu.be"], process_youtube),  
     "instagram": (["instagram.com"], process_instagram, process_instagram_post),  
@@ -38,14 +34,14 @@ SUPPORTED_DOMAINS = {
     "twitter": (["x.com", "twitter.com"], download_twitter_media),  
     "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),  
 }  
-  
+
 def detect_platform(url):  
-    for platform, (domains, handler) in SUPPORTED_DOMAINS.items():  
+    for platform, values in SUPPORTED_DOMAINS.items():
+        domains, *handlers = values  # Extracting all handlers as a list
         if any(domain in url for domain in domains):  
-            return platform, handler  
+            return platform, handlers  
     return None, None  
-  
-# Added this function for streaming link using yt-dlp  
+
 def get_streaming_url(url):  
     """  
     Fetches a streaming URL without downloading the video.  
@@ -66,7 +62,7 @@ def get_streaming_url(url):
     except Exception as e:  
         logger.error(f"Error fetching streaming URL: {e}")  
         return None  
-  
+
 def upload_to_api_video(file_path):  
     url = "https://ws.api.video/videos"  
     headers = {  
@@ -83,8 +79,7 @@ def upload_to_api_video(file_path):
         return response.json()['assets']['player']  
     else:  
         raise Exception("Failed to upload video to api.video")  
-  
-  
+
 def send_request_with_retries(url, payload, retries=5, delay=3):  
     for attempt in range(retries):  
         try:  
@@ -101,43 +96,47 @@ def send_request_with_retries(url, payload, retries=5, delay=3):
             else:  
                 logger.error("Max retries reached. Request failed.")  
     return None  
-  
+
 def download_video(url):  
-    platform, handler = detect_platform(url)  
+    platform, handlers = detect_platform(url)  
     if not platform:  
         raise ValueError("Unsupported platform")  
-    return handler(url)  
-  
+
+    for handler in handlers:
+        if callable(handler):
+            return handler(url)  
+    return None  
+
 def log_memory_usage():  
     memory = psutil.virtual_memory()  
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")  
-  
+
 @bot.message_handler(commands=['start'])  
 def start(message):  
     bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
-  
+
 def download_and_send_video(message, url):  
     try:  
         if not sanitize_filename(url):  
             bot.reply_to(message, "Invalid or unsupported URL.")  
             return  
         bot.reply_to(message, "Downloading video, please wait...")  
-  
+
         log_memory_usage()  
-  
+
         file_path, file_size, thumbnail_path = download_video(url)  
         if not file_path:  
             bot.reply_to(message, "Error: Video download failed.")  
             return  
-  
+
         log_memory_usage()  
-  
+
         if thumbnail_path and os.path.exists(thumbnail_path):  
             with open(thumbnail_path, 'rb') as thumb:  
                 bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")  
-  
+
         if file_size > 50 * 1024 * 1024:  # 50MB limit for Telegram  
-            streaming_link = get_streaming_url(url)  # Used yt-dlp for streaming link  
+            streaming_link = get_streaming_url(url)  
             if streaming_link:  
                 bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")  
             else:  
@@ -145,19 +144,19 @@ def download_and_send_video(message, url):
         else:  
             with open(file_path, 'rb') as video:  
                 bot.send_video(message.chat.id, video)  
-  
+
         if os.path.exists(file_path):  
             os.remove(file_path)  
         if thumbnail_path and os.path.exists(thumbnail_path):  
             os.remove(thumbnail_path)  
-  
+
         log_memory_usage()  
         gc.collect()  
-  
+
     except Exception as e:  
         logger.error(f"Error: {e}")  
         bot.reply_to(message, f"Error occurred: {e}")  
-  
+
 def worker():  
     while True:  
         message, url = queue.get()  
@@ -165,11 +164,11 @@ def worker():
             break  
         download_and_send_video(message, url)  
         queue.task_done()  
-  
+
 @bot.message_handler(func=lambda message: True, content_types=['text'])  
 def handle_message(message):  
     queue.put((message, message.text.strip()))  
-  
+
 threading.Thread(target=worker, daemon=True).start()
 
 if __name__ == "__main__":
