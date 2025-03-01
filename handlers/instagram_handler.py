@@ -40,7 +40,7 @@ def download_progress_hook(d):
         logger.success(f"Download finished: {d['filename']}")  
 
 # Async Instagram Video Download  
-async def process_instagram(url):  
+await def process_instagram(url):  
     ydl_opts = {  
         'format': 'bv+ba/b',  
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),  
@@ -66,7 +66,7 @@ async def process_instagram(url):
         return None, 0, str(e)
 
 # Send Video to User  
-async def send_video_to_user(bot, chat_id, video_path):  
+await def send_video_to_user(bot, chat_id, video_path):  
     try:  
         with open(video_path, 'rb') as video:  
             await bot.send_video(chat_id, video)  
