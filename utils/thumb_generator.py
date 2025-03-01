@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from PIL import Image
-from moviepy import VideoFileClip
+from moviepy.editor import VideoFileClip
 from utils.logger import setup_logging
 
 # ✅ Logger Initialization
@@ -22,16 +22,16 @@ async def generate_thumbnail(video_path, size=(3840, 2160)):
     """
     try:
         loop = asyncio.get_running_loop()
-        
+
         # ✅ Load video asynchronously
         clip = await loop.run_in_executor(None, VideoFileClip, video_path)
-        
+
         # ✅ Capture frame at 5s (or first frame if shorter)
         frame = await loop.run_in_executor(None, clip.get_frame, min(5, clip.duration))
-        
+
         # ✅ Convert frame to image
         thumb_path = os.path.join(THUMBNAIL_DIR, os.path.basename(video_path) + ".jpg")
-        
+
         img = await loop.run_in_executor(None, Image.fromarray, frame)
 
         # ✅ Resize asynchronously
@@ -46,15 +46,3 @@ async def generate_thumbnail(video_path, size=(3840, 2160)):
     except Exception as e:
         logger.error(f"⚠️ Failed to generate thumbnail: {e}")
         return None
-
-# ✅ Async Main Function for Testing
-async def main():
-    video_path = "sample_video.mp4"  # Change to your video path
-    thumbnail = await generate_thumbnail(video_path)
-    if thumbnail:
-        print(f"✅ Thumbnail Generated: {thumbnail}")
-    else:
-        print("❌ Thumbnail generation failed!")
-
-if __name__ == "__main__":
-    asyncio.run(main())  # Run the async function
