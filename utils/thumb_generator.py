@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from PIL import Image
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 from utils.logger import setup_logging
 
 # ✅ Logger Initialization
