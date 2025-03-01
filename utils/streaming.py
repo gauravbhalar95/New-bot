@@ -7,18 +7,19 @@ logger = logging.getLogger(__name__)
 
 async def get_streaming_url(url):
     """
-    Asynchronously fetches a streaming URL without downloading the video.
+    Asynchronously fetches a streaming URL (MP4 format only) without downloading the video.
     """
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
-        'format': 'best',
+        'format': 'best[ext=mp4]/best',  # ✅ Ensure MP4 Streaming URL
         'noplaylist': True,
-        'cookiefile': COOKIES_FILE,  # Include cookies for login-protected videos
-        'quiet': True,  # Prevent unnecessary logs
+        'cookiefile': COOKIES_FILE,  # ✅ Include cookies for login-protected videos
+        'quiet': True,  # ✅ Prevent unnecessary logs
+        'nocheckcertificate': True,  # ✅ Ignore SSL Errors
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
+            'Referer': url  # ✅ Set Referer for Restricted Websites
         }
     }
 
@@ -28,7 +29,7 @@ async def get_streaming_url(url):
                 info_dict = ydl.extract_info(url, download=False)
                 return info_dict.get('url')
         except Exception as e:
-            logger.error(f"Error fetching streaming URL: {e}")
+            logger.error(f"⚠️ Error fetching streaming URL: {e}")
             return None
 
     return await loop.run_in_executor(None, fetch)
