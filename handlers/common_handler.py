@@ -31,6 +31,11 @@ async def process_adult(url):
         }
     }
 
+    # ✅ Initialize variables to prevent access errors
+    file_path = None
+    file_size = 0
+    compressed_path = None  # 🔴 This was missing!
+
     try:
         loop = asyncio.get_running_loop()
 
@@ -49,15 +54,16 @@ async def process_adult(url):
         file_path = info_dict["requested_downloads"][0]["filepath"]
 
         # ✅ Check if file exists before getting size
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        if file_path and os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
 
-        # ✅ Generate thumbnail asynchronously
-        thumbnail_path = await generate_thumbnail(file_path) if file_path else None
+            # ✅ Generate thumbnail asynchronously
+            compressed_path = await generate_thumbnail(file_path)
 
         logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-        logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+        logger.info(f"✅ Thumbnail generated: {compressed_path}")
 
-        return file_path, file_size, thumbnail_path
+        return file_path, file_size, compressed_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
