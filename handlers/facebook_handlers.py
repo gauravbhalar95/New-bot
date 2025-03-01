@@ -1,10 +1,14 @@
 import yt_dlp
 import os
 import re
+import asyncio
 from config import FACEBOOK_FILE, DOWNLOAD_DIR
 from utils.renamer import rename_files_in_directory
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
+
+# Initialize logger
+logger = setup_logging()
 
 # **Limit Filename Length to Prevent Errors**
 def truncate_filename(filename, max_length=100):
@@ -13,19 +17,22 @@ def truncate_filename(filename, max_length=100):
         return filename[:max_length].rsplit(' ', 1)[0]  # Avoid truncating in the middle of a word
     return filename
 
-def process_facebook(url, output_dir=DOWNLOAD_DIR):
+# **Async function to process Facebook video download**
+async def process_facebook(url, output_dir=DOWNLOAD_DIR):
     """Downloads a Facebook video using cookies and saves it in the specified directory."""
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
             original_title = info_dict.get("title", "video")
             file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
     except Exception as e:
-        return f"❌ Error extracting info: {str(e)}"
+        logger.error(f"❌ Error extracting info: {str(e)}")
+        return None, f"❌ Error extracting info: {str(e)}"
 
     # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
@@ -49,14 +56,16 @@ def process_facebook(url, output_dir=DOWNLOAD_DIR):
     }
 
     try:
-        # **Download the video and extract info**
+        # **Download the video asynchronously**
         with yt_dlp.YoutubeDL(options) as ydl:
-            info_dict = ydl.extract_info(url, download=True)  # 👈 FIX: Store info_dict
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)  # 👈 FIX: Store info_dict
 
-        # **Rename files after downloading**
-        rename_files_in_directory(output_dir)
+        # **Rename files after downloading asynchronously**
+        await asyncio.to_thread(rename_files_in_directory, output_dir)
 
-        return f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
+        logger.info(f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}")
+        return filename, f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
 
     except Exception as e:
-        return f"❌ Download failed: {str(e)}"
+        logger.error(f"❌ Download failed: {str(e)}")
+        return None, f"❌ Download failed: {str(e)}"
