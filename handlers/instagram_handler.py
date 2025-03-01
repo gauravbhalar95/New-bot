@@ -9,7 +9,7 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename  
 from utils.logger import setup_logging
 
-logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
 
 # Loguru Logger Setup  
 logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
@@ -40,7 +40,7 @@ def download_progress_hook(d):
         logger.success(f"Download finished: {d['filename']}")  
 
 # Async Instagram Video Download  
-await def process_instagram(url):  
+async def process_instagram(url):  # Fixed `await def` -> `async def`
     ydl_opts = {  
         'format': 'bv+ba/b',  
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),  
@@ -66,7 +66,7 @@ await def process_instagram(url):
         return None, 0, str(e)
 
 # Send Video to User  
-await def send_video_to_user(bot, chat_id, video_path):  
+async def send_video_to_user(bot, chat_id, video_path):  # Fixed `await def` -> `async def`
     try:  
         with open(video_path, 'rb') as video:  
             await bot.send_video(chat_id, video)  
