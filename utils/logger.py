@@ -1,26 +1,25 @@
-import logging
+from loguru import logger
 import os
 
-def setup_logging(log_level=logging.INFO):
-    """Sets up the logging configuration."""
+def setup_logging(log_level="INFO"):
+    """Sets up Loguru logging configuration."""
     # Create 'logs' directory if it doesn't exist
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
+    if not os.path.exists("logs"):
+        os.makedirs("logs")
 
-    logger = logging.getLogger("bot_logger")  # Use a unique name
+    log_file = "logs/bot.log"
 
-    if not logger.hasHandlers():  # Prevent duplicate handlers
-        logger.setLevel(log_level)  # Set log level from parameter
+    # Remove default logger to avoid duplicate logs
+    logger.remove()
 
-        file_handler = logging.FileHandler("logs/bot.log")
-        stream_handler = logging.StreamHandler()
-
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(formatter)
-        stream_handler.setFormatter(formatter)
-
-        logger.addHandler(file_handler)
-        logger.addHandler(stream_handler)
+    # Add file and console handlers
+    logger.add(log_file, format="{time} - {level} - {message}", level=log_level)
+    logger.add(lambda msg: print(msg, end=""), format="{time} - {level} - {message}", level=log_level)
 
     return logger
 
+# Example usage
+logger = setup_logging()
+logger.info("Bot logging initialized successfully!")
+logger.warning("This is a warning message")
+logger.error("This is an error message")
