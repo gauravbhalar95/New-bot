@@ -82,7 +82,7 @@ async def background_download(message, url):
             return
 
         # Start download
-        file_path, file_size, thumbnail_path = handler(url)
+        file_path, file_size, thumbnail_path = await handler(url)
         if not file_path:
             await bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
             return
