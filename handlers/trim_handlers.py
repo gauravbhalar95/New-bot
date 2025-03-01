@@ -81,5 +81,3 @@ async def main():
     else:
         print("❌ Failed to process the video.")
 
-if __name__ == "__main__":
-    asyncio.run(main())
