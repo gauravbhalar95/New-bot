@@ -7,10 +7,10 @@ from config import DOWNLOAD_DIR
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 
-# Initialize logger
-logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
+# ✅ Initialize logger
+logger = setup_logging(logging.DEBUG)
 
-# Async function for downloading videos
+# ✅ Async function for downloading videos
 async def process_adult(url):
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -33,29 +33,37 @@ async def process_adult(url):
 
     try:
         loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
-            
-            if not info_dict or "requested_downloads" not in info_dict:
-                logger.error("❌ No video found.")
-                return None, None, None
 
-            file_path = info_dict["requested_downloads"][0]["filepath"]
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            
-            # Generate thumbnail asynchronously
-            thumbnail_path = await asyncio.to_thread(generate_thumbnail, file_path)
+        # ✅ Run yt_dlp in a separate thread
+        def download_video():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
 
-            logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+        info_dict = await loop.run_in_executor(None, download_video)
 
-            return file_path, file_size, thumbnail_path
+        if not info_dict or "requested_downloads" not in info_dict:
+            logger.error("❌ No video found.")
+            return None, None, None
+
+        # ✅ Get file path safely
+        file_path = info_dict["requested_downloads"][0]["filepath"]
+
+        # ✅ Check if file exists before getting size
+        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
+        # ✅ Generate thumbnail asynchronously
+        thumbnail_path = await generate_thumbnail(file_path) if file_path else None
+
+        logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
+        logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+
+        return file_path, file_size, thumbnail_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
     finally:
-        gc.collect()  # Ensure garbage collection
+        gc.collect()  # ✅ Ensure garbage collection
 
     return None, None, None
