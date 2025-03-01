@@ -16,3 +16,4 @@ telebot
 telethon
 nest_asyncio
 Instaloader
+ffmpeg
