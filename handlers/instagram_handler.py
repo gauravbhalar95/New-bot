@@ -10,8 +10,7 @@ from utils.logger import setup_logging
 
 logger = setup_logging()
 
-
-# Loguru Logger SetUp  
+# Loguru Logger Setup  
 logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
 # Supported Domains  
@@ -48,7 +47,6 @@ async def process_instagram(url):
         'socket_timeout': 10,  
         'retries': 5,  
         'progress_hooks': [download_progress_hook],  
-        'logger': logger,  
         'verbose': True,  
     }  
 
@@ -56,9 +54,12 @@ async def process_instagram(url):
         loop = asyncio.get_running_loop()  
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:  
             info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)  
-            video_path = ydl.prepare_filename(info_dict)  
-            file_size = info_dict.get('filesize', 0)  
-            return video_path, file_size, None  
+            if info_dict:
+                video_path = ydl.prepare_filename(info_dict)  
+                file_size = info_dict.get('filesize', 0)  
+                return video_path, file_size, None  
+            else:
+                return None, 0, "Failed to extract info"
     except Exception as e:  
         logger.error(f"Error downloading Instagram video: {e}")  
         return None, 0, str(e)
