@@ -7,7 +7,7 @@ async def get_file_extension(file_path):
     """Asynchronously get the correct file extension based on MIME type."""
     loop = asyncio.get_running_loop()
     mime_type, _ = await loop.run_in_executor(None, mimetypes.guess_type, file_path)
-    
+
     if mime_type:
         return mimetypes.guess_extension(mime_type) or ''
 
@@ -46,16 +46,3 @@ async def rename_files_in_directory(directory):
 
     await asyncio.gather(*tasks)  # Run all rename operations concurrently
     return renamed_files
-
-# ✅ Async Main Function for Testing
-async def main():
-    directory = "downloads"  # Change this to your directory path
-    renamed_files = await rename_files_in_directory(directory)
-
-    if renamed_files:
-        print(f"✅ Renamed Files: {renamed_files}")
-    else:
-        print("❌ No files renamed!")
-
-if __name__ == "__main__":
-    asyncio.run(main())  # Run the async function
