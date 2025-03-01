@@ -105,14 +105,3 @@ def handle_xvideos(url):
         print("❌ Error: Invalid Xvideos URL.")
         return None, None, None
 
-# Example Usage
-if __name__ == "__main__":
-    test_url = "https://www.xvideos.com/video39694211/russian_girl_fuck_with_indian_hunter"
-    result = handle_xvideos(test_url)
-
-    if result[0]:
-        print(f"✅ Video saved at {result[0]}")
-    elif result[2]:
-        print(f"🎥 Watch using this link: {result[2]}")
-    else:
-        print("❌ Failed to download video.")
