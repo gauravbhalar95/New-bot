@@ -53,15 +53,15 @@ async def process_instagram(url):
     }  
 
     try:  
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()  
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:  
-            info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))  
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)  
             video_path = ydl.prepare_filename(info_dict)  
             file_size = info_dict.get('filesize', 0)  
             return video_path, file_size, None  
     except Exception as e:  
         logger.error(f"Error downloading Instagram video: {e}")  
-        return None, 0, str(e)  
+        return None, 0, str(e)
 
 # Send Video to User  
 async def send_video_to_user(bot, chat_id, video_path):  
