@@ -1,18 +1,16 @@
 import os
-import subprocess
+import asyncio
 import yt_dlp
 import logging
-from utils.sanitize import sanitize_filename  # Sanitization utility
+from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
-from utils.renamer import rename_files_in_directory
 from utils.logger import setup_logging
 
 # Initialize logger
-logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
+logger = setup_logging(logging.DEBUG)
 
-
-def process_youtube(url):
-    """Download video using yt-dlp."""
+async def process_youtube(url):
+    """Download video using yt-dlp asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     ydl_opts = {
         'format': 'bv+ba/b',
@@ -24,19 +22,22 @@ def process_youtube(url):
         'verbose': True,
     }
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict:
-                logger.error("No info_dict returned. Download failed.")
+                logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
-            file_size = info_dict.get('filesize', 0) or 0
-            return ydl.prepare_filename(info_dict), file_size, None  # Fixed: Added third value
+
+            file_path = ydl.prepare_filename(info_dict)
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            return file_path, file_size, None
     except Exception as e:
-        logger.error(f"Error downloading video: {e}")
+        logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
 
-def extract_audio(url):
-    """Download and extract audio from a YouTube video using yt-dlp."""
+async def extract_audio(url):
+    """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     audio_opts = {
         'format': 'bestaudio/best',
@@ -51,16 +52,16 @@ def extract_audio(url):
         'verbose': True,
     }
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(audio_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict:
-                logger.error("No info_dict returned. Audio download failed.")
+                logger.error("❌ No info_dict returned. Audio download failed.")
                 return None, 0
+
             audio_filename = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
             file_size = os.path.getsize(audio_filename) if os.path.exists(audio_filename) else 0
             return audio_filename, file_size
     except Exception as e:
-        logger.error(f"Error extracting audio: {e}")
-        return None, 0, None
-
-
+        logger.error(f"⚠️ Error extracting audio: {e}")
+        return None, 0
