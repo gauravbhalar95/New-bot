@@ -3,9 +3,10 @@ import os
 import logging
 import gc
 import asyncio
-from config import DOWNLOAD_DIR
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
+from utils.streaming_utils import get_streaming_url  # ✅ Import streaming logic
 
 # ✅ Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -31,10 +32,11 @@ async def process_adult(url):
         }
     }
 
-    # ✅ Initialize variables to prevent access errors
+    # ✅ Initialize variables
     file_path = None
     file_size = 0
-    streaming_url = None  # 🔴 This will store fallback streaming URL
+    streaming_url = None  
+    compressed_path = None  
 
     try:
         loop = asyncio.get_running_loop()
@@ -57,41 +59,32 @@ async def process_adult(url):
         if file_path and os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
 
+            # ✅ Check Telegram's limit from config
+            if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
+                streaming_url = await get_streaming_url(url)  # ✅ Use streaming utils
+                return None, None, streaming_url
+
             # ✅ Generate thumbnail asynchronously
-            thumbnail_path = await generate_thumbnail(file_path)
+            try:
+                compressed_path = await generate_thumbnail(file_path)
+            except Exception as thumb_error:
+                logger.error(f"⚠️ Thumbnail generation failed: {thumb_error}")
+                compressed_path = None  
 
             logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            logger.info(f"✅ Thumbnail generated: {compressed_path}")
 
-            return file_path, file_size, thumbnail_path
+            return file_path, file_size, compressed_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
 
-        # ✅ If download fails, try fetching the streaming URL
-        try:
-            def get_stream_url():
-                stream_opts = {
-                    'format': 'bv+ba/b',
-                    'noplaylist': True,
-                    'nocheckcertificate': True,
-                    'headers': {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                        'Referer': 'https://x.com/'
-                    }
-                }
-                with yt_dlp.YoutubeDL(stream_opts) as ydl:
-                    return ydl.extract_info(url, download=False)
-
-            stream_info = await loop.run_in_executor(None, get_stream_url)
-
-            if stream_info and 'url' in stream_info:
-                streaming_url = stream_info['url']
-                logger.info(f"✅ Streaming URL fetched: {streaming_url}")
-                return None, None, streaming_url  # 🔴 Returning streaming URL instead
-
-        except Exception as stream_error:
-            logger.error(f"⚠️ Failed to fetch streaming URL: {stream_error}")
+        # ✅ Use streaming_utils for fallback
+        streaming_url = await get_streaming_url(url)
+        if streaming_url:
+            logger.info(f"✅ Streaming URL fetched: {streaming_url}")
+            return None, None, streaming_url
 
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
