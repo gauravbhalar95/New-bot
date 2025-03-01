@@ -45,6 +45,6 @@ SUPPORTED_DOMAINS = [
 ]
 
 # Telegram file size limit (2GB)
-TELEGRAM_FILE_LIMIT = 50 * 1024 * 1024 # 2GB in bytes
+MAX_FILE_SIZE_MB = 50 * 1024 * 1024 # 2GB in bytes
 
 MAX_FILE_SIZE = 50 * 1024 * 1024 # 50 MB limit
