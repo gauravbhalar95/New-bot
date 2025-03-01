@@ -34,7 +34,7 @@ async def process_adult(url):
     # ✅ Initialize variables to prevent access errors
     file_path = None
     file_size = 0
-    compressed_path = None  # 🔴 This was missing!
+    streaming_url = None  # 🔴 This will store fallback streaming URL
 
     try:
         loop = asyncio.get_running_loop()
@@ -58,15 +58,41 @@ async def process_adult(url):
             file_size = os.path.getsize(file_path)
 
             # ✅ Generate thumbnail asynchronously
-            compressed_path = await generate_thumbnail(file_path)
+            thumbnail_path = await generate_thumbnail(file_path)
 
-        logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-        logger.info(f"✅ Thumbnail generated: {compressed_path}")
+            logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
 
-        return file_path, file_size, compressed_path
+            return file_path, file_size, thumbnail_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
+
+        # ✅ If download fails, try fetching the streaming URL
+        try:
+            def get_stream_url():
+                stream_opts = {
+                    'format': 'bv+ba/b',
+                    'noplaylist': True,
+                    'nocheckcertificate': True,
+                    'headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Referer': 'https://x.com/'
+                    }
+                }
+                with yt_dlp.YoutubeDL(stream_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            stream_info = await loop.run_in_executor(None, get_stream_url)
+
+            if stream_info and 'url' in stream_info:
+                streaming_url = stream_info['url']
+                logger.info(f"✅ Streaming URL fetched: {streaming_url}")
+                return None, None, streaming_url  # 🔴 Returning streaming URL instead
+
+        except Exception as stream_error:
+            logger.error(f"⚠️ Failed to fetch streaming URL: {stream_error}")
+
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
     finally:
