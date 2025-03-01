@@ -1,17 +1,15 @@
 import os
 import gc
 import logging
-import threading
+import asyncio
 import requests
 import telebot
 import psutil
-import time
 import ffmpeg
 from queue import Queue
-from requests.exceptions import ConnectionError
+from telebot.async_telebot import AsyncTeleBot  # Async TeleBot Import
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Import project-specific modules
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
@@ -25,8 +23,8 @@ from utils.streaming import get_streaming_url
 # Setup logging
 logger = setup_logging(logging.DEBUG)
 
-# Initialize bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
+# Initialize Async bot
+bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 
 # Queue for managing downloads
 download_queue = Queue()
@@ -59,7 +57,7 @@ def log_memory_usage():
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
 # 🚀 Optimize Video with FFmpeg
-def compress_video(input_path, output_path):
+async def compress_video(input_path, output_path):
     try:
         (
             ffmpeg.input(input_path)
@@ -71,22 +69,22 @@ def compress_video(input_path, output_path):
         logger.error(f"Compression failed: {e}")
         return input_path
 
-# 📥 Background Download Handler
-def background_download(message, url):
+# 📥 Background Download Handler (Async)
+async def background_download(message, url):
     try:
-        bot.send_message(message.chat.id, "📥 **Download started. Please wait...**")
+        await bot.send_message(message.chat.id, "📥 **Download started. Please wait...**")
         logger.info(f"Processing URL: {url}")
 
         # Detect platform and get handler
         platform, handler = detect_platform(url)
         if not handler:
-            bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")
+            await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
         # Start download
         file_path, file_size, thumbnail_path = handler(url)
         if not file_path:
-            bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
+            await bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
             return
 
         log_memory_usage()
@@ -94,21 +92,21 @@ def background_download(message, url):
         # 🖼️ Send Thumbnail
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, "rb") as thumb:
-                bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
+                await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
         # 🏗️ Handle Large Files
         if file_size > TELEGRAM_FILE_LIMIT:
-            bot.send_message(
+            await bot.send_message(
                 message.chat.id,
                 "⚠️ **File is too large for Telegram (50MB limit). Try a lower-resolution version.**",
             )
         else:
             # 🎥 Optimize Video Before Sending
-            compressed_path = compress_video(file_path, file_path.replace(".mp4", "_compressed.mp4"))
+            compressed_path = await compress_video(file_path, file_path.replace(".mp4", "_compressed.mp4"))
 
             # 📤 Send Video
             with open(compressed_path, "rb") as video:
-                bot.send_video(message.chat.id, video, supports_streaming=True)
+                await bot.send_video(message.chat.id, video, supports_streaming=True)
 
         # 🧹 Cleanup
         for path in [file_path, compressed_path, thumbnail_path]:
@@ -120,27 +118,30 @@ def background_download(message, url):
 
     except Exception as e:
         logger.error(f"Error: {e}")
-        bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+        await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
 # 🏁 Start Command
 @bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "👋 **Welcome!** Send me a video link, and I'll download it for you!")
+async def start(message):
+    await bot.reply_to(message, "👋 **Welcome!** Send me a video link, and I'll download it for you!")
     logger.info(f"User {message.chat.id} started the bot.")
 
 # ✉️ Handle Incoming Messages
 @bot.message_handler(func=lambda message: True, content_types=["text"])
-def handle_message(message):
+async def handle_message(message):
     url = message.text.strip()
     logger.info(f"Received message from {message.chat.id}: {url}")
 
     # Debugging response
-    bot.send_message(message.chat.id, f"🔍 Checking URL: {url}")
+    await bot.send_message(message.chat.id, f"🔍 Checking URL: {url}")
 
-    # Run in a separate thread to avoid blocking
-    threading.Thread(target=background_download, args=(message, url), daemon=True).start()
+    # Run in a separate async task
+    asyncio.create_task(background_download(message, url))
 
 # 🚀 Run the bot
-if __name__ == "__main__":
+async def main():
     logger.info("Bot is starting...")
-    bot.infinity_polling()
+    await bot.infinity_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
