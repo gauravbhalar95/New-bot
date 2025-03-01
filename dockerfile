@@ -1,32 +1,25 @@
-# Use an official Python runtime as a parent image  
-FROM python:3.12-slim  
+# Use a smaller base image
+FROM python:3.12-alpine
 
-# Set the working directory in the container  
-WORKDIR /app  
+# Set the working directory
+WORKDIR /app
 
-# Install system dependencies (e.g., ffmpeg) and clean up unnecessary files  
-RUN apt-get update && \  
-    apt-get install -y --no-install-recommends ffmpeg && \  
-    rm -rf /var/lib/apt/lists/*  
+# Install only necessary system dependencies
+RUN apk add --no-cache ffmpeg bash
 
-# Copy the requirements file and install Python dependencies  
-COPY requirements.txt /app/  
-RUN pip install --no-cache-dir -r requirements.txt && \  
-    pip install --no-cache-dir --upgrade yt-dlp   
+# Copy and install Python dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade yt-dlp
 
-# Copy the rest of the application code into the container  
-COPY . /app  
+# Copy application files
+COPY . /app
 
-# Ensure scripts have execute permissions  
-RUN chmod +x /app/update.sh  
+# Ensure scripts have execute permissions
+RUN chmod +x /app/update.sh
 
-# Expose port 8080 for Flask  
-EXPOSE 9000 
+# Expose port 9000
+EXPOSE 9000
 
-# Set environment variables  
-ENV PYTHONUNBUFFERED=1 \  
-    FLASK_ENV=production \  
-    PORT=9000  
-
-# Run update.sh, then start webhook.py and bot.py  
-CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
+# Use Supervisor for better process management
+CMD ["supervisord", "-c", "/app/supervisord.conf"]
