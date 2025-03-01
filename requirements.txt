@@ -23,5 +23,3 @@ nest_asyncio
 psutil
 api.video
 Instaloader
-whisper
-openai-whisper
