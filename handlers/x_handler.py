@@ -47,7 +47,7 @@ async def download_twitter_media(url):
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            thumbnail_path = generate_thumbnail(file_path)
+            thumbnail_path = await generate_thumbnail(file_path)
 
             logger.info(f"✅ Download completed: {file_path}")
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
