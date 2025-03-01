@@ -1,13 +1,14 @@
 import yt_dlp
 import logging
 import asyncio
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import COOKIES_FILE
 
 logger = logging.getLogger(__name__)
 
 async def get_streaming_url(url):
     """
-    Asynchronously fetches a streaming URL (MP4 format only) without downloading the video.
+    Asynchronously fetches a streaming URL (MP4 format only) with a Download Option.
     """
     loop = asyncio.get_running_loop()
 
@@ -33,3 +34,21 @@ async def get_streaming_url(url):
             return None
 
     return await loop.run_in_executor(None, fetch)
+
+async def send_streaming_options(bot, chat_id, video_url):
+    """
+    Sends Streaming URL with a 'Download' button.
+    """
+    if not video_url:
+        await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
+        return
+
+    # 🎥 Streaming URL Message
+    stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})"
+
+    # 📥 Download Button
+    keyboard = InlineKeyboardMarkup()
+    download_button = InlineKeyboardButton("📥 Download", url=video_url)
+    keyboard.add(download_button)
+
+    await bot.send_message(chat_id, stream_message, reply_markup=keyboard, parse_mode="Markdown")
