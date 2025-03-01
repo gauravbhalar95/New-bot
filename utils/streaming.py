@@ -32,18 +32,3 @@ async def get_streaming_url(url):
             return None
 
     return await loop.run_in_executor(None, fetch)
-
-# ✅ Async Main Function for Testing
-async def main():
-    urls = [
-        "https://www.youtube.com/watch?v=abcd1234",
-        "https://www.youtube.com/watch?v=wxyz5678"
-    ]
-
-    results = await asyncio.gather(*[get_streaming_url(url) for url in urls])
-
-    for url, stream in zip(urls, results):
-        print(f"📹 Original URL: {url}  →  ✅ Streaming URL: {stream}")
-
-if __name__ == "__main__":
-    asyncio.run(main())  # Run async function
