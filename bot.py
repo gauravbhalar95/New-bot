@@ -21,7 +21,6 @@ from handlers.x_handler import download_twitter_media
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-from utils.video_summary import generate_summary
 
 # Setup logging
 logger = setup_logging(logging.INFO)
@@ -95,13 +94,10 @@ def background_download(message, url):
 
         log_memory_usage()
 
-        # 🔥 **AI Video Summarization**
-        summary = generate_summary(file_path)
-
         # 🖼️ **Send Thumbnail**
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, "rb") as thumb:
-                bot.send_photo(message.chat.id, thumb, caption=f"✅ **Thumbnail received!**\n\n📝 **Summary:** {summary}")
+                bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
         # 🏗️ **Handle Large Files**
         if file_size > TELEGRAM_FILE_LIMIT:
@@ -136,7 +132,7 @@ def background_download(message, url):
 def start(message):
     bot.reply_to(
         message,
-        "👋 **Welcome!** Send me a video link, and I'll download it for you with AI enhancements!",
+        "👋 **Welcome!** Send me a video link, and I'll download it for you!",
     )
 
 
