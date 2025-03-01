@@ -22,7 +22,8 @@ asyncio
 nest_asyncio
 psutil
 api.video
-Instaloader
+instaloader
 loguru
 aiohttp
 quart
+python-dotenv
