@@ -8,7 +8,7 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename  
 from utils.logger import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
 
 # Loguru Logger Setup  
 logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
