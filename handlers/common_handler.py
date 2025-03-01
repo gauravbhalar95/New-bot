@@ -6,7 +6,7 @@ import asyncio
 from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
-from utils.streaming_utils import get_streaming_url  # ✅ Import streaming logic
+from utils.streaming import get_streaming_url  # ✅ Import streaming logic
 
 # ✅ Initialize logger
 logger = setup_logging(logging.DEBUG)
