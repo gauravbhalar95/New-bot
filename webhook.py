@@ -12,7 +12,7 @@ load_dotenv()
 
 
 
-logger = setup_logging
+logger = setup_logging(logging.INFO)
 
 def create_app():
     app = Flask(__name__)
