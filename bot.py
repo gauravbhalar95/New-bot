@@ -5,7 +5,6 @@ import asyncio
 import requests
 import telebot
 import psutil
-import ffmpeg
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot  # Async TeleBot Import
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -18,7 +17,7 @@ from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
+from utils.streaming import get_streaming_url  # ✅ Streaming Module Use
 
 # Setup logging
 logger = setup_logging(logging.DEBUG)
@@ -56,19 +55,6 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
-# 🚀 Optimize Video with FFmpeg
-async def compress_video(input_path, output_path):
-    try:
-        (
-            ffmpeg.input(input_path)
-            .output(output_path, vcodec="libx265", crf=28, preset="fast")
-            .run(overwrite_output=True)
-        )
-        return output_path
-    except Exception as e:
-        logger.error(f"Compression failed: {e}")
-        return input_path
-
 # 📥 Background Download Handler (Async)
 async def background_download(message, url):
     try:
@@ -83,8 +69,18 @@ async def background_download(message, url):
 
         # Start download
         file_path, file_size, thumbnail_path = await handler(url)
-        if not file_path:
-            await bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
+        
+        # ✅ Handle Large Files - Use Streaming
+        if not file_path or file_size > TELEGRAM_FILE_LIMIT:
+            streaming_url = await get_streaming_url(url)
+            if streaming_url:
+                await bot.send_message(
+                    message.chat.id,
+                    f"⚡ **File is too large for Telegram. Watch it online:** [Click Here]({streaming_url})",
+                    disable_web_page_preview=True
+                )
+            else:
+                await bot.send_message(message.chat.id, "❌ **Download failed. Try again later.**")
             return
 
         log_memory_usage()
@@ -94,22 +90,12 @@ async def background_download(message, url):
             with open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
-        # 🏗️ Handle Large Files
-        if file_size > TELEGRAM_FILE_LIMIT:
-            await bot.send_message(
-                message.chat.id,
-                "⚠️ **File is too large for Telegram (50MB limit). Try a lower-resolution version.**",
-            )
-        else:
-            # 🎥 Optimize Video Before Sending
-            compressed_path = await compress_video(file_path, file_path.replace(".mp4", "_compressed.mp4"))
-
-            # 📤 Send Video
-            with open(compressed_path, "rb") as video:
-                await bot.send_video(message.chat.id, video, supports_streaming=True)
+        # 📤 Send Video
+        with open(file_path, "rb") as video:
+            await bot.send_video(message.chat.id, video, supports_streaming=True)
 
         # 🧹 Cleanup
-        for path in [file_path, compressed_path, thumbnail_path]:
+        for path in [file_path, thumbnail_path]:
             if path and os.path.exists(path):
                 os.remove(path)
 
