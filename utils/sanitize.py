@@ -18,7 +18,7 @@ async def sanitize_filename(filename, max_length=250):
     def clean():
         # ✅ Replace invalid characters with an underscore
         clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename)
-        
+
         # ✅ Remove leading and trailing whitespace
         clean_name = clean_name.strip()
 
@@ -32,18 +32,3 @@ async def sanitize_filename(filename, max_length=250):
         return base + ext
 
     return await loop.run_in_executor(None, clean)
-
-# ✅ Async Main Function for Testing
-async def main():
-    filenames = [
-        "Hello:World?.mp4", "Invalid|File<Name>.jpg", "Test  File   Name   .png",
-        "अनुच्छेद_123.pdf", "   Trim This Filename    .mp3"
-    ]
-    
-    sanitized = await asyncio.gather(*[sanitize_filename(f) for f in filenames])
-
-    for original, cleaned in zip(filenames, sanitized):
-        print(f"📂 Original: {original}  →  ✅ Sanitized: {cleaned}")
-
-if __name__ == "__main__":
-    asyncio.run(main())  # Run async function
