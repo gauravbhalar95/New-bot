@@ -10,13 +10,13 @@ from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
-# ✅ Fast Logging Setup
+# ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
 
 # ✅ ThreadPool for Faster Execution
 executor = ThreadPoolExecutor(max_workers=5)
 
-# ✅ Fast Async Function for Downloading Videos
+# ✅ Async Function for Downloading Videos
 async def process_adult(url):
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -54,7 +54,13 @@ async def process_adult(url):
             logger.error("❌ No video found.")
             return None, None, None, None, None
 
-        file_path = info_dict["requested_downloads"][0]["filepath"]
+        # ✅ Check for requested_downloads properly
+        downloads = info_dict.get("requested_downloads", [])
+        if not downloads:
+            logger.error("❌ No downloads found in response.")
+            return None, None, None, None, None
+
+        file_path = downloads[0].get("filepath")
 
         if file_path and os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
@@ -109,10 +115,11 @@ async def download_best_clip(file_path, file_size):
     return None
 
 
+# ✅ Function to Send Streaming & Download Options
 async def send_streaming_options(bot, chat_id, url):
     """Handles streaming, thumbnail, and clip sending."""
 
-    # ✅ Correct unpacking (5 values instead of 3)
+    # ✅ Correct unpacking with 5 values
     file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
 
     if streaming_url:
