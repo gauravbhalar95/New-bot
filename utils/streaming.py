@@ -3,7 +3,6 @@ import logging
 import asyncio
 import os
 import subprocess
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import COOKIES_FILE
 
 logger = logging.getLogger(__name__)
@@ -55,20 +54,14 @@ async def download_best_clip(video_url, duration):
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
 
 async def send_streaming_options(bot, chat_id, video_url, clip_path):
-    """Sends streaming URL, direct download button, and a 1-minute clip."""
+    """Sends streaming URL and a 1-minute clip (No keyboard button)."""
     if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    # 🎥 Streaming URL Message
+    # 🎥 Streaming URL Message (No buttons)
     stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})"
-
-    # 📥 Direct Download Button
-    keyboard = InlineKeyboardMarkup()
-    download_button = InlineKeyboardButton("📥 Download", url=video_url)
-    keyboard.add(download_button)
-
-    await bot.send_message(chat_id, stream_message, reply_markup=keyboard, parse_mode="Markdown")
+    await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
     # 🎞 Send Best Scene Clip
     if clip_path:
