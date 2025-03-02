@@ -26,14 +26,52 @@ async def process_facebook(url, output_dir=DOWNLOAD_DIR):
 
     try:
         loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
-            original_title = info_dict.get("title", "video")
-            file_ext = info_dict.get("ext", "mp4")  # Default to 'mp4' if missing
+
+        def fetch_info():
+            with yt_dlp.YoutubeDL({"noprogress": True}) as ydl:
+                return ydl.extract_info(url, False)
+
+        info_dict = await loop.run_in_executor(None, fetch_info)  # ✅ Correct way
+        original_title = info_dict.get("title", "video")
+        file_ext = info_dict.get("ext", "mp4")
+
     except Exception as e:
         logger.error(f"❌ Error extracting info: {str(e)}")
         return None, f"❌ Error extracting info: {str(e)}"
 
+    # **Sanitize and Truncate the Filename**
+    safe_title = sanitize_filename(original_title)
+    truncated_title = truncate_filename(safe_title, 100)
+    filename = f"{truncated_title}.{file_ext}"
+    filename = re.sub(r'[\/\\:*?"<>|]', "_", filename)
+
+    # **Set yt-dlp options**
+    options = {
+        "outtmpl": os.path.join(output_dir, filename),
+        "format": "bv+ba/b",
+        "cookiefile": FACEBOOK_FILE,
+        "merge_output_format": "mp4",
+        "noprogress": False,
+        "postprocessors": [{
+            "key": "FFmpegVideoConvertor",
+            "preferedformat": "mp4",
+        }]
+    }
+
+    try:
+        def download_video():
+            with yt_dlp.YoutubeDL(options) as ydl:
+                return ydl.extract_info(url, True)
+
+        info_dict = await loop.run_in_executor(None, download_video)  # ✅ Correct way
+
+        await asyncio.to_thread(rename_files_in_directory, output_dir)
+        logger.info(f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}")
+        return filename, f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
+
+    except Exception as e:
+        logger.error(f"❌ Download failed: {str(e)}")
+        return None, f"❌ Download failed: {str(e)}"
     # **Sanitize and Truncate the Filename**
     safe_title = sanitize_filename(original_title)
     truncated_title = truncate_filename(safe_title, 100)  # Limit to 100 chars
