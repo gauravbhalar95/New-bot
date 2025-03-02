@@ -1,52 +1,42 @@
 import os
-import aiohttp
-import asyncio
+import time
+import logging
 from mega import Mega
 
-class MegaNZ:
+class MegaNZHandler:
     def __init__(self):
-        """Initialize MegaNZ client with optional login."""
-        self.mega = Mega()
         self.client = None
 
-    async def login(self, username, password):
-        """Logs into Mega.nz asynchronously."""
+    def login(self, username=None, password=None):
+        """Logs into Mega.nz using given credentials or anonymously."""
         try:
-            self.client = await asyncio.to_thread(self.mega.login, username, password)
-            return "✅ Login Successful!"
+            mega = Mega()
+            if username and password:
+                self.client = mega.login(username, password)
+                return "✅ Successfully logged in to Mega.nz!"
+            else:
+                self.client = mega.login()  # Anonymous login
+                return "✅ Logged in to Mega.nz anonymously!"
         except Exception as e:
-            return f"❌ Login Failed: {str(e)}"
+            return f"❌ Login failed: {str(e)}"
 
-    async def download_from_url(self, url, folder_name="downloads"):
-        """Asynchronously downloads a file from a URL."""
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-
-        file_name = url.split("/")[-1]
-        file_path = os.path.join(folder_name, file_name)
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        with open(file_path, "wb") as file:
-                            while chunk := await response.content.read(1024):
-                                file.write(chunk)
-            return file_path, f"✅ Downloaded: {file_name} to {folder_name}"
-        except Exception as e:
-            return None, f"❌ Download Failed: {str(e)}"
-
-    async def upload_to_mega(self, file_path):
-        """Uploads a file to Mega.nz asynchronously and returns the link."""
-        if not self.client:
-            return None, "❌ Please login first using /meganz <username> <password>"
+    def upload_to_mega(self, file_path, folder_name=None):
+        """Uploads a file to Mega.nz and returns the public link."""
+        if self.client is None:
+            return None, "❌ Mega.nz is not logged in. Use /meganz <username> <password> to log in."
 
         if not os.path.exists(file_path):
             return None, "❌ File not found!"
 
         try:
-            uploaded_file = await asyncio.to_thread(self.client.upload, file_path)
-            link = await asyncio.to_thread(self.client.get_upload_link, uploaded_file)
+            folder = None
+            if folder_name:
+                folder = self.client.find(folder_name)
+                if folder:
+                    folder = folder[0]
+
+            uploaded_file = self.client.upload(file_path, folder) if folder else self.client.upload(file_path)
+            link = self.client.get_upload_link(uploaded_file)
             return link, f"✅ File uploaded: {link}"
         except Exception as e:
             return None, f"❌ Upload Failed: {str(e)}"
