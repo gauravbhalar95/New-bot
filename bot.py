@@ -5,6 +5,7 @@ import asyncio
 import requests
 import telebot
 import psutil
+import subprocess
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -16,7 +17,6 @@ from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from handlers.mega_handlers import MegaNZ  
-from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
@@ -27,9 +27,6 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 mega = MegaNZ()
 download_queue = Queue()
-
-# API Key for external video processing
-API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
@@ -55,6 +52,21 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
+# Function to download a 1-minute best scene clip
+async def download_best_clip(video_url, duration):
+    clip_path = "best_scene.mp4"
+    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
+    command = [
+        "ffmpeg", "-i", video_url, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0 and os.path.exists(clip_path):
+        return clip_path
+    return None
+
 # Background download function
 async def background_download(message, url):
     try:
@@ -69,13 +81,21 @@ async def background_download(message, url):
         file_path, file_size, thumbnail_path = await handler(url)
 
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            streaming_url = await get_streaming_url(url)
-            if streaming_url:
+            video_url, duration = await get_streaming_url(url)
+            if video_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Watch here:** [Click]({streaming_url})",
+                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
                     disable_web_page_preview=True
                 )
+
+                # Download best 1-minute clip
+                clip_path = await download_best_clip(video_url, duration)
+                if clip_path:
+                    with open(clip_path, "rb") as clip:
+                        await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+                    os.remove(clip_path)
+
             else:
                 await bot.send_message(message.chat.id, "❌ **Download failed.**")
             return
@@ -100,36 +120,6 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-# Mega.nz login command
-@bot.message_handler(commands=["meganz"])
-async def login_mega(message):
-    args = message.text.split()[1:]
-    if len(args) < 2:
-        await bot.send_message(message.chat.id, "❌ Usage: `/meganz <username> <password>`")
-        return
-
-    username, password = args
-    msg = await mega.login(username, password)  
-    await bot.send_message(message.chat.id, msg)
-
-# Mega.nz upload command
-@bot.message_handler(commands=["mega"])
-async def mega_upload(message):
-    args = message.text.split()[1:]
-    if len(args) < 1:
-        await bot.send_message(message.chat.id, "❌ Usage: `/mega <url> [folder]`")
-        return
-
-    url = args[0]
-    folder = args[1] if len(args) > 1 else None
-
-    file_path, msg = await mega.download_from_url(url, folder)
-    await bot.send_message(message.chat.id, msg)
-
-    if file_path:
-        link, msg = await mega.upload_to_mega(file_path)
-        await bot.send_message(message.chat.id, f"✅ Uploaded to Mega.nz: {link}")
-
 # Start command
 @bot.message_handler(commands=["start"])
 async def start(message):
@@ -143,7 +133,7 @@ async def start(message):
 async def handle_message(message):
     url = message.text.strip()
     logger.info(f"Received message from {message.chat.id}: {url}")
-    
+
     await bot.send_message(message.chat.id, f"🔍 Checking URL: {url}")
     asyncio.create_task(background_download(message, url))
 
