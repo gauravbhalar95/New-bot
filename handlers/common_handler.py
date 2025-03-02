@@ -119,25 +119,36 @@ async def download_best_clip(file_path, file_size):
 async def send_streaming_options(bot, chat_id, url):
     """Handles streaming, thumbnail, and clip sending."""
 
-    # ✅ Correct unpacking with 5 values
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
+    try:
+        # ✅ Ensure Correct Unpacking (5 values)
+        result = await process_adult(url)
 
-    if streaming_url:
-        stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
-        await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
+        if result is None:
+            await bot.send_message(chat_id, "⚠️ **Error occurred while fetching the video.**")
+            return
 
-    elif file_path:
-        if thumbnail_path:
-            with open(thumbnail_path, "rb") as thumb:
-                await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
+        file_path, file_size, streaming_url, thumbnail_path, clip_path = result
 
-        if clip_path:
-            with open(clip_path, "rb") as clip:
-                await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-            os.remove(clip_path)
+        if streaming_url:
+            stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
+            await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
-        with open(file_path, "rb") as video:
-            await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
+        elif file_path:
+            if thumbnail_path:
+                with open(thumbnail_path, "rb") as thumb:
+                    await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
 
-    else:
-        await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
+            if clip_path:
+                with open(clip_path, "rb") as clip:
+                    await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+                os.remove(clip_path)
+
+            with open(file_path, "rb") as video:
+                await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
+
+        else:
+            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
+
+    except Exception as e:
+        logger.error(f"⚠️ Error in send_streaming_options: {e}")
+        await bot.send_message(chat_id, "⚠️ **An error occurred while processing your request.**")
