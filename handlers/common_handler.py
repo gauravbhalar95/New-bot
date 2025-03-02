@@ -8,7 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url  
+from utils.streaming import get_streaming_url
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ✅ Fast Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -38,7 +39,7 @@ async def process_adult(url):
         }
     }
 
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None  
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
 
     try:
         loop = asyncio.get_running_loop()
@@ -86,7 +87,7 @@ async def process_adult(url):
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
     finally:
-        gc.collect()  
+        gc.collect()
 
     return None, None, None, None, None
 
@@ -96,7 +97,7 @@ async def download_best_clip(file_path, file_size):
     """Downloads a 1-minute best scene clip from the video."""
     clip_path = file_path.replace(".mp4", "_clip.mp4")
 
-    start_time = max(0, (file_size // 4) // (1024 * 1024))  
+    start_time = max(0, (file_size // 4) // (1024 * 1024))
     command = [
         "ffmpeg", "-i", file_path, "-ss", str(start_time),
         "-t", "60", "-c:v", "libx264", "-c:a", "aac",
@@ -130,11 +131,10 @@ async def send_streaming_options(bot, chat_id, url):
         if clip_path:
             with open(clip_path, "rb") as clip:
                 await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-            os.remove(clip_path)  
+            os.remove(clip_path)
 
         with open(file_path, "rb") as video:
             await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
 
     else:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
-Error"❌ **An error occurred:** `too many values to unpack (expected 3)`"
