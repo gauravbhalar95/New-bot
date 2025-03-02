@@ -92,7 +92,6 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-# 🏁 Mega.nz Login Command
 @bot.message_handler(commands=["meganz"])
 async def login_mega(message):
     args = message.text.split()[1:]
@@ -101,24 +100,25 @@ async def login_mega(message):
         return
 
     username, password = args
-    msg = await mega.login(username, password)
+    msg = await mega.login(username, password)  # Async login function
     await bot.send_message(message.chat.id, msg)
 
-# 📥 Mega.nz Upload Command
 @bot.message_handler(commands=["mega"])
 async def mega_upload(message):
     args = message.text.split()[1:]
-    if len(args) < 2:
-        await bot.send_message(message.chat.id, "❌ Usage: `/mega <url> <folder>`")
+    if len(args) < 1:
+        await bot.send_message(message.chat.id, "❌ Usage: `/mega <url> [folder]`")
         return
 
-    url, folder = args
+    url = args[0]
+    folder = args[1] if len(args) > 1 else None
+
     file_path, msg = await mega.download_from_url(url, folder)
     await bot.send_message(message.chat.id, msg)
 
     if file_path:
         link, msg = await mega.upload_to_mega(file_path)
-        await bot.send_message(message.chat.id, msg)
+        await bot.send_message(message.chat.id, f"✅ Uploaded to Mega.nz: {link}")
 
 @bot.message_handler(commands=["start"])
 async def start(message):
