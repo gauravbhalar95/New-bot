@@ -25,9 +25,5 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=9000
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD curl --fail http://localhost:9000/ || exit 1
-
-RUN adduser -D myuser
-USER myuser
 
 CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:9000 webhook:app & python bot.py && tail -f /dev/null"]
