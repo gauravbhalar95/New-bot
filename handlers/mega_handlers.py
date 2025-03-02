@@ -2,7 +2,6 @@ import os
 import aiohttp
 import asyncio
 from mega import Mega
-from config import MEGA_USERNAME, MEGA_PASSWORD
 
 class MegaNZ:
     def __init__(self):
@@ -12,10 +11,8 @@ class MegaNZ:
 
     async def login(self, username, password):
         """Logs into Mega.nz asynchronously."""
-        global MEGA_USERNAME, MEGA_PASSWORD
         try:
             self.client = await asyncio.to_thread(self.mega.login, username, password)
-            MEGA_USERNAME, MEGA_PASSWORD = username, password
             return "✅ Login Successful!"
         except Exception as e:
             return f"❌ Login Failed: {str(e)}"
@@ -48,9 +45,7 @@ class MegaNZ:
             return None, "❌ File not found!"
 
         try:
-            # Upload file
             uploaded_file = await asyncio.to_thread(self.client.upload, file_path)
-            # Get the file link
             link = await asyncio.to_thread(self.client.get_upload_link, uploaded_file)
             return link, f"✅ File uploaded: {link}"
         except Exception as e:
