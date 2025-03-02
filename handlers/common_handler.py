@@ -38,7 +38,7 @@ async def process_adult(url):
         }
     }
 
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, streaming_url, thumbnail_path, clip_path
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
 
     try:
         loop = asyncio.get_running_loop()
@@ -127,7 +127,7 @@ async def send_streaming_options(bot, chat_id, url):
             await bot.send_message(chat_id, "⚠️ **Error occurred while fetching the video.**")
             return
 
-        file_path, file_size, streaming_url, thumbnail_path, clip_path = result
+        file_path, file_size, streaming_url, thumbnail_path, clip_path = await result
 
         # ✅ Send Streaming Link First
         if streaming_url:
