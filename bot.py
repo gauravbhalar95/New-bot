@@ -8,7 +8,6 @@ import psutil
 import subprocess
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
@@ -134,7 +133,6 @@ async def handle_message(message):
     url = message.text.strip()
     logger.info(f"Received message from {message.chat.id}: {url}")
 
-    await bot.send_message(message.chat.id, f"🔍 Checking URL: {url}")
     asyncio.create_task(background_download(message, url))
 
 # Main async function
