@@ -6,13 +6,12 @@ from config import MEGA_USERNAME, MEGA_PASSWORD
 
 class MegaNZ:
     def __init__(self):
+        """Initialize MegaNZ client with optional login."""
         self.mega = Mega()
         self.client = None
-        if MEGA_USERNAME and MEGA_PASSWORD:
-            self.client = self.mega.login(MEGA_USERNAME, MEGA_PASSWORD)
 
     async def login(self, username, password):
-        """Logs into Mega.nz and saves credentials."""
+        """Logs into Mega.nz asynchronously."""
         global MEGA_USERNAME, MEGA_PASSWORD
         try:
             self.client = await asyncio.to_thread(self.mega.login, username, password)
@@ -36,13 +35,12 @@ class MegaNZ:
                         with open(file_path, "wb") as file:
                             while chunk := await response.content.read(1024):
                                 file.write(chunk)
-
             return file_path, f"✅ Downloaded: {file_name} to {folder_name}"
         except Exception as e:
             return None, f"❌ Download Failed: {str(e)}"
 
     async def upload_to_mega(self, file_path):
-        """Asynchronously uploads a file to Mega.nz and returns the link."""
+        """Uploads a file to Mega.nz asynchronously and returns the link."""
         if not self.client:
             return None, "❌ Please login first using /meganz <username> <password>"
 
@@ -50,7 +48,9 @@ class MegaNZ:
             return None, "❌ File not found!"
 
         try:
+            # Upload file
             uploaded_file = await asyncio.to_thread(self.client.upload, file_path)
+            # Get the file link
             link = await asyncio.to_thread(self.client.get_upload_link, uploaded_file)
             return link, f"✅ File uploaded: {link}"
         except Exception as e:
