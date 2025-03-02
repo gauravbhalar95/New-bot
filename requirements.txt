@@ -27,4 +27,3 @@ loguru
 aiohttp
 quart
 python-dotenv
-pycrypto
