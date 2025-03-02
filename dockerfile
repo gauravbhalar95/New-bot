@@ -15,7 +15,6 @@ COPY requirements.txt /app/
 # Install dependencies and handle tenacity version issue
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --upgrade yt-dlp && \
-    pip install --no-cache-dir --upgrade tenacity || pip install --no-cache-dir tenacity==8.2.3 && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
