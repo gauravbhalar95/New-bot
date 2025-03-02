@@ -27,5 +27,4 @@ loguru
 aiohttp
 quart
 python-dotenv
-tenacity>=8.2.3
 pycrypto
