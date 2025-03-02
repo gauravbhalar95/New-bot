@@ -109,9 +109,10 @@ async def download_best_clip(file_path, file_size):
     return None
 
 
-# ✅ Fast Function to Send Streaming & Download Options
 async def send_streaming_options(bot, chat_id, url):
     """Handles streaming, thumbnail, and clip sending."""
+    
+    # ✅ Correct unpacking (5 values instead of 3)
     file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
 
     if streaming_url:
