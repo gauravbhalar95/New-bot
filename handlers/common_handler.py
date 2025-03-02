@@ -3,17 +3,16 @@ import os
 import logging
 import gc
 import asyncio
-import subprocess
 from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url  # ✅ Streaming logic
+from utils.streaming import get_streaming_url  
 
 # ✅ Initialize logger
 logger = setup_logging(logging.DEBUG)
 
+# ✅ Async function for downloading videos, streaming, and generating clips
 async def process_adult(url):
-    """Downloads video, fetches streaming URL, and extracts a 1-min clip."""
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
@@ -36,14 +35,23 @@ async def process_adult(url):
     # ✅ Initialize variables
     file_path = None
     file_size = 0
-    streaming_url = None
-    compressed_path = None
-    best_scene_clip = None
+    streaming_url = None  
+    thumbnail_path = None  
+    clip_path = None  
 
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Run yt_dlp in a separate thread
+        # ✅ Fetch Streaming URL
+        def fetch_stream():
+            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+                return info.get('url') if info else None  
+
+        streaming_url = await loop.run_in_executor(None, fetch_stream)
+        logger.info(f"✅ Streaming URL Found: {streaming_url}")
+
+        # ✅ Run yt_dlp in a separate thread for downloading video
         def download_video():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -64,34 +72,26 @@ async def process_adult(url):
             # ✅ Check Telegram's limit from config
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
                 logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
-                streaming_url = await get_streaming_url(url)  # ✅ Use streaming utils
                 return None, None, streaming_url, None, None
 
             # ✅ Generate thumbnail asynchronously
             try:
-                compressed_path = await generate_thumbnail(file_path)
+                thumbnail_path = await generate_thumbnail(file_path)
             except Exception as thumb_error:
                 logger.error(f"⚠️ Thumbnail generation failed: {thumb_error}")
-                compressed_path = None  
+                thumbnail_path = None  
 
-            # ✅ Extract 1-minute best scene clip
-            video_duration = info_dict.get("duration", 0)
-            best_scene_clip = await extract_best_scene(file_path, video_duration)
+            # ✅ Generate a 1-minute clip
+            clip_path = await generate_clip(file_path, duration=60)
 
             logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-            logger.info(f"✅ Thumbnail generated: {compressed_path}")
-            logger.info(f"✅ Best 1-min scene extracted: {best_scene_clip}")
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            logger.info(f"✅ 1-minute Clip generated: {clip_path}")
 
-            return file_path, file_size, streaming_url, compressed_path, best_scene_clip
+            return file_path, file_size, streaming_url, thumbnail_path, clip_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
-
-        # ✅ Use streaming_utils for fallback
-        streaming_url = await get_streaming_url(url)
-        if streaming_url:
-            logger.info(f"✅ Streaming URL fetched: {streaming_url}")
-            return None, None, streaming_url, None, None
 
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
@@ -100,19 +100,16 @@ async def process_adult(url):
 
     return None, None, None, None, None
 
-async def extract_best_scene(video_path, duration):
-    """Extracts a 1-minute scene from the best part of the video."""
-    if not os.path.exists(video_path) or duration <= 60:
-        return None  # Skip if duration is too short
-
-    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
-    clip_path = os.path.join(DOWNLOAD_DIR, "best_scene.mp4")
-
-    command = [
-        "ffmpeg", "-i", video_path, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
-    ]
-
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
+# ✅ Function to create a 1-minute clip
+async def generate_clip(video_path, duration=60):
+    """Generate a 1-minute clip from the downloaded video."""
+    try:
+        clip_output = video_path.replace(".mp4", "_clip.mp4")
+        cmd = f"ffmpeg -i \"{video_path}\" -t {duration} -c copy \"{clip_output}\""
+        os.system(cmd)
+        
+        if os.path.exists(clip_output):
+            return clip_output
+    except Exception as e:
+        logger.error(f"⚠️ Clip generation failed: {e}")
+    return None
