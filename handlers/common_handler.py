@@ -3,21 +3,22 @@ import os
 import logging
 import gc
 import asyncio
-from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB
+import subprocess
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url  
+from utils.streaming import get_streaming_url  # ✅ Streaming function import
 
-# ✅ Initialize logger
+# ✅ Set up logging
 logger = setup_logging(logging.DEBUG)
 
-# ✅ Async function for downloading videos, streaming, and generating clips
+# ✅ Async function for downloading videos
 async def process_adult(url):
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bv+ba/best[ext=mp4]/best',
+        'format': 'bv+ba/b',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 5,
@@ -26,6 +27,7 @@ async def process_adult(url):
         'buffer_size': '16K',
         'no_part': True,
         'nocheckcertificate': True,
+        'cookiefile': COOKIES_FILE,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://x.com/'
@@ -33,25 +35,12 @@ async def process_adult(url):
     }
 
     # ✅ Initialize variables
-    file_path = None
-    file_size = 0
-    streaming_url = None  
-    thumbnail_path = None  
-    clip_path = None  
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None  
 
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Fetch Streaming URL
-        def fetch_stream():
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(url, download=False)
-                return info.get('url') if info else None  
-
-        streaming_url = await loop.run_in_executor(None, fetch_stream)
-        logger.info(f"✅ Streaming URL Found: {streaming_url}")
-
-        # ✅ Run yt_dlp in a separate thread for downloading video
+        # ✅ Run yt_dlp in a separate thread
         def download_video():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -72,6 +61,7 @@ async def process_adult(url):
             # ✅ Check Telegram's limit from config
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
                 logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
+                streaming_url = await get_streaming_url(url)  # ✅ Use streaming function
                 return None, None, streaming_url, None, None
 
             # ✅ Generate thumbnail asynchronously
@@ -81,17 +71,27 @@ async def process_adult(url):
                 logger.error(f"⚠️ Thumbnail generation failed: {thumb_error}")
                 thumbnail_path = None  
 
-            # ✅ Generate a 1-minute clip
-            clip_path = await generate_clip(file_path, duration=60)
+            # ✅ Download 1-minute best scene clip
+            try:
+                clip_path = await download_best_clip(file_path, file_size)
+            except Exception as clip_error:
+                logger.error(f"⚠️ Clip download failed: {clip_error}")
+                clip_path = None
 
             logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
             logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-            logger.info(f"✅ 1-minute Clip generated: {clip_path}")
+            logger.info(f"✅ Best clip downloaded: {clip_path}")
 
-            return file_path, file_size, streaming_url, thumbnail_path, clip_path
+            return file_path, file_size, None, thumbnail_path, clip_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
+
+        # ✅ Use streaming_utils for fallback
+        streaming_url = await get_streaming_url(url)
+        if streaming_url:
+            logger.info(f"✅ Streaming URL fetched: {streaming_url}")
+            return None, None, streaming_url, None, None
 
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
@@ -100,16 +100,57 @@ async def process_adult(url):
 
     return None, None, None, None, None
 
-# ✅ Function to create a 1-minute clip
-async def generate_clip(video_path, duration=60):
-    """Generate a 1-minute clip from the downloaded video."""
-    try:
-        clip_output = video_path.replace(".mp4", "_clip.mp4")
-        cmd = f"ffmpeg -i \"{video_path}\" -t {duration} -c copy \"{clip_output}\""
-        os.system(cmd)
-        
-        if os.path.exists(clip_output):
-            return clip_output
-    except Exception as e:
-        logger.error(f"⚠️ Clip generation failed: {e}")
+
+# ✅ Function to Download Best 1-Minute Scene Clip
+async def download_best_clip(file_path, file_size):
+    """Downloads a 1-minute best scene clip from the video."""
+    clip_path = "best_scene.mp4"
+
+    start_time = max(0, (file_size // 3) // (1024 * 1024))  # Start at 1/3rd of the video
+    command = [
+        "ffmpeg", "-i", file_path, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0 and os.path.exists(clip_path):
+        return clip_path
     return None
+
+
+# ✅ Function to Send Streaming & Download Options in Telegram
+async def send_streaming_options(bot, chat_id, url):
+    """Handles streaming, thumbnail, and clip sending."""
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
+
+    if streaming_url:
+        # 📡 **Streaming URL Message**
+        stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
+
+        # 📥 **Download Button**
+        keyboard = InlineKeyboardMarkup()
+        download_button = InlineKeyboardButton("📥 Download", url=streaming_url)
+        keyboard.add(download_button)
+
+        await bot.send_message(chat_id, stream_message, reply_markup=keyboard, parse_mode="Markdown")
+
+    elif file_path:
+        # 🖼 **Send Thumbnail if Available**
+        if thumbnail_path:
+            with open(thumbnail_path, "rb") as thumb:
+                await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
+
+        # 🎞 **Send Best 1-Minute Scene Clip if Available**
+        if clip_path:
+            with open(clip_path, "rb") as clip:
+                await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+
+            os.remove(clip_path)  # Cleanup file
+
+        # 📂 **Send Full Video**
+        with open(file_path, "rb") as video:
+            await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
+
+    else:
+        await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
