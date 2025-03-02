@@ -15,7 +15,7 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.meganz_handler import MegaNZ  # ✅ Mega.nz Import
+from handlers.meganz_handlers import MegaNZ  # ✅ Mega.nz Import
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
