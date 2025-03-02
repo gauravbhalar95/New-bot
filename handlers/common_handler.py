@@ -115,9 +115,9 @@ async def download_best_clip(file_path, file_size):
     return None
 
 
-# ✅ Function to Send Streaming & Download Options
+# ✅ Function to Send Streaming First, Then Thumbnail, Clip, and Video
 async def send_streaming_options(bot, chat_id, url):
-    """Handles streaming, thumbnail, and clip sending."""
+    """Handles streaming, thumbnail, clip, and full video sending in order."""
 
     try:
         # ✅ Ensure Correct Unpacking (5 values)
@@ -129,24 +129,28 @@ async def send_streaming_options(bot, chat_id, url):
 
         file_path, file_size, streaming_url, thumbnail_path, clip_path = result
 
+        # ✅ Send Streaming Link First
         if streaming_url:
             stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
             await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
-        elif file_path:
-            if thumbnail_path:
-                with open(thumbnail_path, "rb") as thumb:
-                    await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
+        # ✅ Send Thumbnail Next
+        if thumbnail_path:
+            with open(thumbnail_path, "rb") as thumb:
+                await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
 
-            if clip_path:
-                with open(clip_path, "rb") as clip:
-                    await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-                os.remove(clip_path)
+        # ✅ Send Best Clip Next
+        if clip_path:
+            with open(clip_path, "rb") as clip:
+                await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+            os.remove(clip_path)  # ✅ Delete Clip After Sending
 
+        # ✅ Send Full Video Last
+        if file_path:
             with open(file_path, "rb") as video:
                 await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
 
-        else:
+        if not streaming_url and not file_path:
             await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
 
     except Exception as e:
