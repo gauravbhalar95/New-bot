@@ -38,7 +38,7 @@ async def process_adult(url):
         }
     }
 
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, streaming_url, thumbnail_path, clip_path
 
     try:
         loop = asyncio.get_running_loop()
