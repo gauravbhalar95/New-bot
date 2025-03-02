@@ -27,3 +27,4 @@ loguru
 aiohttp
 quart
 python-dotenv
+telegram
