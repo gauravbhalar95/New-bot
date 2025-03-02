@@ -52,13 +52,13 @@ async def process_adult(url):
 
         if not info_dict or "requested_downloads" not in info_dict:
             logger.error("❌ No video found.")
-            return None, None, None, None, None
+            return None, 0, None, None, None
 
         # ✅ Check for requested_downloads properly
         downloads = info_dict.get("requested_downloads", [])
         if not downloads:
             logger.error("❌ No downloads found in response.")
-            return None, None, None, None, None
+            return None, 0, None, None, None
 
         file_path = downloads[0].get("filepath")
 
@@ -68,7 +68,7 @@ async def process_adult(url):
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
                 logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
                 streaming_url = await get_streaming_url(url)
-                return None, None, streaming_url, None, None
+                return None, 0, streaming_url, None, None
 
             # ✅ Run Thumbnail & Clip in Parallel
             thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
@@ -85,16 +85,15 @@ async def process_adult(url):
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
         streaming_url = await get_streaming_url(url)
-        if streaming_url:
-            logger.info(f"✅ Streaming URL fetched: {streaming_url}")
-            return None, None, streaming_url, None, None
+        return None, 0, streaming_url, None, None
 
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
+
     finally:
         gc.collect()
 
-    return None, None, None, None, None
+    return None, 0, None, None, None  # ✅ Ensure function always returns 5 values
 
 
 # ✅ Fast Function for 1-Minute Best Clip
@@ -121,13 +120,11 @@ async def send_streaming_options(bot, chat_id, url):
 
     try:
         # ✅ Ensure Correct Unpacking (5 values)
-        result = await process_adult(url)
+        file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
 
-        if result is None:
-            await bot.send_message(chat_id, "⚠️ **Error occurred while fetching the video.**")
+        if not file_path and not streaming_url:
+            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
             return
-
-        file_path, file_size, streaming_url, thumbnail_path, clip_path = await result
 
         # ✅ Send Streaming Link First
         if streaming_url:
@@ -135,23 +132,20 @@ async def send_streaming_options(bot, chat_id, url):
             await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
         # ✅ Send Thumbnail Next
-        if thumbnail_path:
+        if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
 
         # ✅ Send Best Clip Next
-        if clip_path:
+        if clip_path and os.path.exists(clip_path):
             with open(clip_path, "rb") as clip:
                 await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
             os.remove(clip_path)  # ✅ Delete Clip After Sending
 
         # ✅ Send Full Video Last
-        if file_path:
+        if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as video:
                 await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
-
-        if not streaming_url and not file_path:
-            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
 
     except Exception as e:
         logger.error(f"⚠️ Error in send_streaming_options: {e}")
