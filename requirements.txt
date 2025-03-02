@@ -27,4 +27,3 @@ loguru
 aiohttp
 quart
 python-dotenv
-python==3.10
