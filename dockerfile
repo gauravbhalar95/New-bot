@@ -1,33 +1,36 @@
-# Use an official Python runtime as a parent image  
+# Use an official Python runtime as a parent image
 FROM python:3.13
 
+# Set the working directory in the container
+WORKDIR /app
 
-# Set the working directory in the container  
-WORKDIR /app  
+# Install system dependencies and clean up unnecessary files
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies (e.g., ffmpeg) and clean up unnecessary files  
-RUN apt-get update && \  
-    apt-get install -y --no-install-recommends ffmpeg && \  
-    rm -rf /var/lib/apt/lists/*  
+# Copy the requirements file and install Python dependencies
+COPY requirements.txt /app/
 
-# Copy the requirements file and install Python dependencies  
-COPY requirements.txt /app/  
-RUN pip install --no-cache-dir -r requirements.txt && \  
-    pip install --no-cache-dir --upgrade yt-dlp   
+# Install dependencies and handle tenacity version issue
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --upgrade yt-dlp && \
+    pip install --no-cache-dir --upgrade tenacity || pip install --no-cache-dir tenacity==8.2.3 && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container  
-COPY . /app  
+# Copy the rest of the application code into the container
+COPY . /app
 
-# Ensure scripts have execute permissions  
-RUN chmod +x /app/update.sh  
+# Ensure scripts have execute permissions
+RUN chmod +x /app/update.sh
 
-# Expose port 8080 for Flask  
-EXPOSE 9000 
+# Expose port 9000 for Flask
+EXPOSE 9000
 
-# Set environment variables  
-ENV PYTHONUNBUFFERED=1 \  
-    FLASK_ENV=production \  
-    PORT=9000  
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production \
+    PORT=9000
 
-# Run update.sh, then start webhook.py and bot.py  
+# Run update.sh, then start webhook.py and bot.py
 CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
