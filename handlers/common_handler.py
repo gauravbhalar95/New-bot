@@ -111,7 +111,7 @@ async def download_best_clip(file_path, file_size):
 
 async def send_streaming_options(bot, chat_id, url):
     """Handles streaming, thumbnail, and clip sending."""
-    
+
     # ✅ Correct unpacking (5 values instead of 3)
     file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(url)
 
@@ -137,3 +137,4 @@ async def send_streaming_options(bot, chat_id, url):
 
     else:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
+Error"❌ **An error occurred:** `too many values to unpack (expected 3)`"
