@@ -15,18 +15,23 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.mega_handlers import MegaNZ  # ✅ Mega.nz Import
+from handlers.mega_handlers import MegaNZ  
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
+# Logging setup
 logger = setup_logging(logging.DEBUG)
+
+# Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 mega = MegaNZ()
 download_queue = Queue()
 
+# API Key for external video processing
 API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"
 
+# Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
     "YouTube": (["youtube.com", "youtu.be"], process_youtube),
     "Instagram": (["instagram.com"], process_instagram),
@@ -38,16 +43,19 @@ SUPPORTED_PLATFORMS = {
     ),
 }
 
+# Detect platform from URL
 def detect_platform(url):
     for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
 
+# Log memory usage
 def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")
 
+# Background download function
 async def background_download(message, url):
     try:
         await bot.send_message(message.chat.id, "📥 **Download started...**")
@@ -92,6 +100,7 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
+# Mega.nz login command
 @bot.message_handler(commands=["meganz"])
 async def login_mega(message):
     args = message.text.split()[1:]
@@ -100,9 +109,10 @@ async def login_mega(message):
         return
 
     username, password = args
-    msg = await mega.login(username, password)  # Async login function
+    msg = await mega.login(username, password)  
     await bot.send_message(message.chat.id, msg)
 
+# Mega.nz upload command
 @bot.message_handler(commands=["mega"])
 async def mega_upload(message):
     args = message.text.split()[1:]
@@ -120,21 +130,28 @@ async def mega_upload(message):
         link, msg = await mega.upload_to_mega(file_path)
         await bot.send_message(message.chat.id, f"✅ Uploaded to Mega.nz: {link}")
 
+# Start command
 @bot.message_handler(commands=["start"])
 async def start(message):
-    await bot.reply_to(message, "👋 **Welcome!** Send me a video link or use `/meganz` to login to Mega.nz.")
+    user_name = message.from_user.first_name or "User"
+    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
+    await bot.reply_to(message, welcome_text)
     logger.info(f"User {message.chat.id} started the bot.")
 
+# Handle incoming URLs
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
     url = message.text.strip()
     logger.info(f"Received message from {message.chat.id}: {url}")
+    
     await bot.send_message(message.chat.id, f"🔍 Checking URL: {url}")
     asyncio.create_task(background_download(message, url))
 
+# Main async function
 async def main():
     logger.info("Bot is starting...")
     await bot.infinity_polling()
 
+# Run bot
 if __name__ == "__main__":
     asyncio.run(main())
