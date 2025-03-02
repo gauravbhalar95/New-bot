@@ -9,7 +9,6 @@ from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ✅ Fast Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -118,10 +117,7 @@ async def send_streaming_options(bot, chat_id, url):
 
     if streaming_url:
         stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
-        keyboard = InlineKeyboardMarkup()
-        download_button = InlineKeyboardButton("📥 Download", url=streaming_url)
-        keyboard.add(download_button)
-        await bot.send_message(chat_id, stream_message, reply_markup=keyboard, parse_mode="Markdown")
+        await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
     elif file_path:
         if thumbnail_path:
