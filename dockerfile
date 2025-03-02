@@ -1,35 +1,33 @@
-# Use an official Python runtime as a parent image
 FROM python:3.9
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies and clean up unnecessary files
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file and install Python dependencies
 COPY requirements.txt /app/
 
-# Install dependencies and handle tenacity version issue
+RUN python -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --upgrade yt-dlp && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code into the container
-COPY . /app
+COPY . /app/
 
-# Ensure scripts have execute permissions
 RUN chmod +x /app/update.sh
 
-# Expose port 9000 for Flask
 EXPOSE 9000
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=9000
 
-# Run update.sh, then start webhook.py and bot.py
-CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD curl --fail http://localhost:9000/ || exit 1
+
+RUN adduser -D myuser
+USER myuser
+
+CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:9000 webhook:app & python bot.py && tail -f /dev/null"]
