@@ -15,7 +15,7 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
-from handlers.x_handler import download_twitter_media
+from handlers.x_handler import get_twitter_video_url
 from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
@@ -33,7 +33,7 @@ SUPPORTED_PLATFORMS = {
     "YouTube": (["youtube.com", "youtu.be"], process_youtube),
     "Instagram": (["instagram.com"], process_instagram),
     "Facebook": (["facebook.com"], process_facebook),
-    "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
+    "Twitter/X": (["x.com", "twitter.com"], get_twitter_video_url),
     "Adult": (
         ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"],
         process_adult,  # ✅ Only this platform will use thumbnails & clip download
