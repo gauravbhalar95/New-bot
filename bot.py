@@ -15,7 +15,7 @@ from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
-from handlers.x_handler import async download_twitter_media
+from handlers.x_handler import download_twitter_media
 from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
