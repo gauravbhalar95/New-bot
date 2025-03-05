@@ -17,7 +17,7 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
 twitter_api = tweepy.API(auth)
 
-def get_twitter_video_url(tweet_url):
+def get_twitter_video_url(url):
     """
     Extracts the highest-quality video URL from a given tweet.
     """
@@ -40,7 +40,7 @@ def get_twitter_video_url(tweet_url):
 
     return None
 
-def download_twitter_video(video_url):
+def download_twitter_video(url):
     """
     Downloads a Twitter video and returns (file_path, file_size, thumbnail_path).
     """
