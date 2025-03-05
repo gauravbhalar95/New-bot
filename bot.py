@@ -3,14 +3,13 @@ import gc
 import logging
 import asyncio
 import aiofiles
-import requests
-import telebot
-import psutil
+import aiohttp
 import subprocess
+import psutil
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, MAX_WORKERS
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -161,8 +160,11 @@ async def handle_message(message):
 # Main async function
 async def main():
     logger.info("Bot is starting...")
-    worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
-    await asyncio.gather(bot.infinity_polling(), worker_task)
+    
+    # Start multiple workers for concurrent downloads
+    workers = [asyncio.create_task(worker()) for _ in range(MAX_WORKERS)]
+
+    await asyncio.gather(bot.infinity_polling(), *workers)
 
 # Run bot
 if __name__ == "__main__":
