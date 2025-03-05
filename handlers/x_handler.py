@@ -29,7 +29,7 @@ async def download_twitter_media(url):
         'cookiefile': X_FILE,
         'continuedl': True,
         'http_chunk_size': 1048576,  # 1 MB chunk size
-        'quiet': False,
+        'quiet': True,
         'nocheckcertificate': True,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
