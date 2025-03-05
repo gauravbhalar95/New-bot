@@ -4,6 +4,11 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+TWITTER_API_KEY = "4jcgHUTmydQn8FtqmdRykzt5Y"
+TWITTER_API_SECRET = "T80hNuFTulTSzUED9hVCaNPyJUEss05wLgxhiidaTjk4sNyJkP"
+TWITTER_ACCESS_TOKEN = "1816668057991024640-mJvLMo1zl3DTglCm0Y4yI34vzJWiFO"
+TWITTER_ACCESS_SECRET = "zuIlYSOr2H0zxc5lOP5zcpAQL5v9seUnBHc5KDEOk89cj"
+
 MAX_WORKERS = 3  # Number of concurrent downloads
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
