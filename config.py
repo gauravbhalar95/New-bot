@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-MAX_WORKERS = 10  # Number of concurrent downloads
+MAX_WORKERS = 3  # Number of concurrent downloads
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
