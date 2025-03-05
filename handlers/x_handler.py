@@ -3,6 +3,7 @@ import asyncio
 import yt_dlp
 import telebot
 import logging
+import concurrent.futures
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
@@ -28,8 +29,11 @@ async def download_twitter_media(url):
         'fragment_retries': 10,
         'cookiefile': X_FILE,
         'continuedl': True,
-        'http_chunk_size': 1048576,  # 1 MB chunk size
-        'quiet': False,
+        'http_chunk_size': 2097152,  # 2 MB chunk size for faster downloads
+        'noprogress': True,  # Hide progress bar to optimize CPU
+        'quiet': True,  # Minimize logs for performance
+        'concurrent_fragments': 5,  # Increase concurrent fragment downloads
+        'cache-dir': os.path.join(DOWNLOAD_DIR, 'yt_cache'),  # Enable caching
         'nocheckcertificate': True,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -68,6 +72,31 @@ async def download_twitter_media(url):
         logger.error(f"⚠️ Unexpected error: {e}")
 
     return None, None, None
+
+async def send_video(chat_id, file_path, thumbnail_path):
+    """
+    Sends video to Telegram with a thumbnail.
+    """
+    with open(file_path, "rb") as video:
+        thumb = open(thumbnail_path, "rb") if thumbnail_path else None
+        await bot.send_video(
+            chat_id,
+            video,
+            thumb=thumb,
+            supports_streaming=True,
+            timeout=100  # Increased timeout for large files
+        )
+
+async def download_and_send(chat_id, url):
+    """
+    Handles the entire download and send process.
+    """
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        file_path, file_size, thumb = await loop.run_in_executor(pool, download_twitter_media, url)
+
+    if file_path:
+        await send_video(chat_id, file_path, thumb)
 
 async def get_streaming_url(url):
     """
