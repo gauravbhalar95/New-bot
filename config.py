@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+MAX_WORKERS = 10  # Number of concurrent downloads
+
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
