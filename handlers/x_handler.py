@@ -1,11 +1,11 @@
 import os
-import asyncio
-import yt_dlp
+import tweepy
+import requests
 import telebot
 import logging
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
-from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
+from config import DOWNLOAD_DIR, API_TOKEN, TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -13,80 +13,55 @@ logger = setup_logging(logging.DEBUG)
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-async def download_twitter_media(url):
-    """
-    Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).
-    """
-    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+# Initialize Twitter API client
+auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+twitter_api = tweepy.API(auth)
 
-    ydl_opts = {
-        'outtmpl': output_path,
-        'format': 'bv+ba/b',
-        'noplaylist': True,
-        'socket_timeout': 30,
-        'retries': 10,
-        'fragment_retries': 10,
-        'cookiefile': X_FILE,
-        'continuedl': True,
-        'http_chunk_size': 1048576,  # 1 MB chunk size
-        'quiet': False,
-        'nocheckcertificate': True,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
-        }
-    }
-
+def get_twitter_video_url(tweet_url):
+    """
+    Extracts the highest-quality video URL from a given tweet.
+    """
     try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
-            if not info_dict or "requested_downloads" not in info_dict:
-                logger.error("❌ No video found.")
-                return None, None, None
+        tweet_id = tweet_url.split("/")[-1]
+        tweet = twitter_api.get_status(tweet_id, tweet_mode="extended")
 
-            file_path = info_dict["requested_downloads"][0]["filepath"]
+        if "extended_entities" in tweet._json and "media" in tweet._json["extended_entities"]:
+            for media in tweet._json["extended_entities"]["media"]:
+                if media["type"] == "video":
+                    variants = media["video_info"]["variants"]
+                    highest_quality = max(variants, key=lambda v: v.get("bitrate", 0))
+                    return highest_quality["url"]
 
-            # Check if file exists before getting size
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-
-            # ✅ Await async function & check for None
-            thumbnail_path = await generate_thumbnail(file_path)
-
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-            else:
-                logger.warning("⚠️ Thumbnail generation failed.")
-
-            logger.info(f"✅ Download completed: {file_path}")
-
-            return file_path, file_size, thumbnail_path
-
-    except yt_dlp.DownloadError as e:
-        logger.error(f"⚠️ Download failed: {e}")
+        logger.error("❌ No video found in tweet.")
+    except tweepy.TweepError as e:
+        logger.error(f"⚠️ Twitter API error: {e}")
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
 
-    return None, None, None
+    return None
 
-async def get_streaming_url(url):
+def download_twitter_video(video_url):
     """
-    Fetches a streaming URL without downloading the video.
+    Downloads a Twitter video and returns (file_path, file_size, thumbnail_path).
     """
-    ydl_opts = {
-        'format': 'bv+ba/b',
-        'noplaylist': True,
-        'cookiefile': X_FILE,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
-        }
-    }
     try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
-            return info_dict.get('url')
+        response = requests.get(video_url, stream=True)
+        if response.status_code != 200:
+            logger.error("⚠️ Failed to download video.")
+            return None, None, None
+
+        file_name = os.path.join(DOWNLOAD_DIR, "twitter_video.mp4")
+        with open(file_name, "wb") as file:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                file.write(chunk)
+
+        file_size = os.path.getsize(file_name)
+        thumbnail_path = generate_thumbnail(file_name)
+
+        logger.info(f"✅ Download completed: {file_name}")
+        return file_name, file_size, thumbnail_path
+
     except Exception as e:
-        logger.error(f"⚠️ Error fetching streaming URL: {e}")
-        return None
+        logger.error(f"⚠️ Unexpected error during download: {e}")
+    
+    return None, None, None
