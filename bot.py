@@ -1,169 +1,172 @@
-import os
-import gc
-import logging
-import asyncio
-import aiofiles
-import requests
-import telebot
-import psutil
-import subprocess
-from queue import Queue
-from telebot.async_telebot import AsyncTeleBot
+import os  
+import gc  
+import logging  
+import threading  
+import telebot  
+import requests  
+import yt_dlp  # Added for streaming link  
+from config import API_TOKEN, COOKIES_FILE  
+from handlers.youtube_handler import process_youtube  
+from handlers.instagram_handler import process_instagram  
+from handlers.common_handler import process_adult  
+from handlers.x_handler import download_twitter_media  
+from utils.sanitize import sanitize_filename  
+from utils.logger import setup_logging  
+from handlers.facebook_handlers import process_facebook  
+from queue import Queue  
+import psutil  # To monitor memory usage  
+import time  
+import requests  
+from requests.exceptions import ConnectionError  
 
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
-from handlers.youtube_handler import process_youtube
-from handlers.instagram_handler import process_instagram
-from handlers.facebook_handlers import process_facebook
-from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
-from handlers.x_handler import download_twitter_media
-from handlers.mega_handlers import MegaNZ  
-from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
 
-# Logging setup
-logger = setup_logging(logging.DEBUG)
 
-# Async Telegram bot setup
-bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
-mega = MegaNZ()
-download_queue = asyncio.Queue()
+logger = setup_logging(logging.DEBUG) #Example of setting to debug level.
 
-# Supported platforms and handlers
-SUPPORTED_PLATFORMS = {
-    "YouTube": (["youtube.com", "youtu.be"], process_youtube),
-    "Instagram": (["instagram.com"], process_instagram),
-    "Facebook": (["facebook.com"], process_facebook),
-    "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
-    "Adult": (
-        ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"],
-        process_adult,  # ✅ Only this platform will use thumbnails & clip download
-    ),
-}
 
-def detect_platform(url):
-    """Detects the platform of the given URL and returns the corresponding handler function."""
-    for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():
-        if any(domain in url for domain in domains):
-            return platform, handler
-    return None, None
-
-# Log memory usage
-def log_memory_usage():
-    memory = psutil.virtual_memory()
-    logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
-
-# Function to download a 1-minute best scene clip (Used only in `process_adult`)
-async def download_best_clip(video_url, duration):
-    """Extracts a 1-minute highlight scene from the video using FFmpeg."""
-    clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
-    command = [
-        "ffmpeg", "-i", video_url, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "ultrafast", "-threads", "4", "-y", clip_path
-    ]
-
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await process.communicate()
-
-    if process.returncode == 0 and os.path.exists(clip_path):
-        return clip_path
-    return None
-
-# Background download function
-async def background_download(message, url):
-    """Handles the entire download process and sends the video to Telegram."""
-    try:
-        await bot.send_message(message.chat.id, "📥 **Download started...**")
-        logger.info(f"Processing URL: {url}")
-
-        platform, handler = detect_platform(url)
-        if not handler:
-            await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")
-            return
-
-        task = asyncio.create_task(handler(url))
-        result = await task
-
-        if isinstance(result, tuple) and len(result) >= 3:
-            file_path, file_size, streaming_url = result[:3]
-            thumbnail_path = result[3] if len(result) > 3 else None
-        else:
-            await bot.send_message(message.chat.id, "❌ **Error processing video.**")
-            return
-
-        # If file is too large, generate a streaming link instead
-        if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            video_url, duration = await get_streaming_url(url)
-            if video_url:
-                await bot.send_message(
-                    message.chat.id,
-                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
-                    disable_web_page_preview=True
-                )
-
-                # ✅ Only extract best 1-minute clip if it's an adult video
-                if handler == process_adult:
-                    clip_path = await download_best_clip(video_url, duration)
-                    if clip_path:
-                        async with aiofiles.open(clip_path, "rb") as clip:
-                            await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-                        os.remove(clip_path)
-            else:
-                await bot.send_message(message.chat.id, "❌ **Download failed.**")
-            return
-
-        log_memory_usage()
-
-        # ✅ Only send thumbnail if it's an adult video
-        if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):
-            async with aiofiles.open(thumbnail_path, "rb") as thumb:
-                await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
-
-        # Send video file
-        async with aiofiles.open(file_path, "rb") as video:
-            await bot.send_video(message.chat.id, video, supports_streaming=True)
-
-        # Cleanup
-        for path in [file_path, thumbnail_path]:
-            if path and os.path.exists(path):
-                os.remove(path)
-
-        log_memory_usage()
-        gc.collect()
-
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
-
-# Worker function for parallel downloads
-async def worker():
-    while True:
-        message, url = await download_queue.get()
-        await background_download(message, url)
-        download_queue.task_done()
-
-# Start command
-@bot.message_handler(commands=["start"])
-async def start(message):
-    user_name = message.from_user.first_name or "User"
-    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
-    await bot.reply_to(message, welcome_text)
-    logger.info(f"User {message.chat.id} started the bot.")
-
-# Handle incoming URLs
-@bot.message_handler(func=lambda message: True, content_types=["text"])
-async def handle_message(message):
-    url = message.text.strip()
-    await download_queue.put((message, url))
-    await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
-
-# Main async function
-async def main():
-    logger.info("Bot is starting...")
-    worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
-    await asyncio.gather(bot.infinity_polling(), worker_task)
-
-# Run bot
-if __name__ == "__main__":
-    asyncio.run(main())
+ 
+API_VIDEO_KEY = "pbppSfejR10BOokTVRkTyEdPO9mAGsheJNF8dtbVtqt"  
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')  
+logger = setup_logging()  
+queue = Queue()  
+  
+SUPPORTED_DOMAINS = {  
+    "youtube": (["youtube.com", "youtu.be"], process_youtube),  
+    "instagram": (["instagram.com"], process_instagram),  
+    "facebook": (["facebook.com"], process_facebook),  
+    "twitter": (["x.com", "twitter.com"], download_twitter_media),  
+    "adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),  
+}  
+  
+def detect_platform(url):  
+    for platform, (domains, handler) in SUPPORTED_DOMAINS.items():  
+        if any(domain in url for domain in domains):  
+            return platform, handler  
+    return None, None  
+  
+# Added this function for streaming link using yt-dlp  
+def get_streaming_url(url):  
+    """  
+    Fetches a streaming URL without downloading the video.  
+    """  
+    ydl_opts = {  
+        'format': 'best',  
+        'noplaylist': True,  
+        'cookiefile': COOKIES_FILE,  # Include cookies  
+        'headers': {  
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',  
+            'Referer': 'https://x.com/'  
+        }  
+    }  
+    try:  
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  
+            info_dict = ydl.extract_info(url, download=False)  
+            return info_dict.get('url')  
+    except Exception as e:  
+        logger.error(f"Error fetching streaming URL: {e}")  
+        return None  
+  
+def upload_to_api_video(file_path):  
+    url = "https://ws.api.video/videos"  
+    headers = {  
+        "Authorization": f"Bearer {API_VIDEO_KEY}"  
+    }  
+    files = {  
+        'file': open(file_path, 'rb')  
+    }  
+    data = {  
+        'title': os.path.basename(file_path)  
+    }  
+    response = requests.post(url, headers=headers, files=files, data=data)  
+    if response.status_code == 201:  
+        return response.json()['assets']['player']  
+    else:  
+        raise Exception("Failed to upload video to api.video")  
+  
+  
+def send_request_with_retries(url, payload, retries=5, delay=3):  
+    for attempt in range(retries):  
+        try:  
+            response = requests.post(url, data=payload)  
+            if response.status_code == 200:  
+                return response  
+            else:  
+                logger.error(f"Received unexpected status code {response.status_code}")  
+        except ConnectionError as e:  
+            logger.error(f"Connection error: {e}")  
+            if attempt < retries - 1:  
+                logger.info(f"Retrying in {delay} seconds...")  
+                time.sleep(delay)  
+            else:  
+                logger.error("Max retries reached. Request failed.")  
+    return None  
+  
+def download_video(url):  
+    platform, handler = detect_platform(url)  
+    if not platform:  
+        raise ValueError("Unsupported platform")  
+    return handler(url)  
+  
+def log_memory_usage():  
+    memory = psutil.virtual_memory()  
+    logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024)} MB")  
+  
+@bot.message_handler(commands=['start'])  
+def start(message):  
+    bot.reply_to(message, "Welcome! Send me a video link to download or stream.")  
+  
+def download_and_send_video(message, url):  
+    try:  
+        if not sanitize_filename(url):  
+            bot.reply_to(message, "Invalid or unsupported URL.")  
+            return  
+        bot.reply_to(message, "Downloading video, please wait...")  
+  
+        log_memory_usage()  
+  
+        file_path, file_size, thumbnail_path = download_video(url)  
+        if not file_path:  
+            bot.reply_to(message, "Error: Video download failed.")  
+            return  
+  
+        log_memory_usage()  
+  
+        if thumbnail_path and os.path.exists(thumbnail_path):  
+            with open(thumbnail_path, 'rb') as thumb:  
+                bot.send_photo(message.chat.id, thumb, caption="✅ Here's the thumbnail!")  
+  
+        if file_size > 2 * 1024 * 1024 * 1024:  # 50MB limit for Telegram  
+            streaming_link = get_streaming_url(url)  # Used yt-dlp for streaming link  
+            if streaming_link:  
+                bot.reply_to(message, f"Video too large for Telegram. Stream here:\n{streaming_link}")  
+            else:  
+                bot.reply_to(message, "Failed to get streaming link.")  
+        else:  
+            with open(file_path, 'rb') as video:  
+                bot.send_video(message.chat.id, video)  
+  
+        if os.path.exists(file_path):  
+            os.remove(file_path)  
+        if thumbnail_path and os.path.exists(thumbnail_path):  
+            os.remove(thumbnail_path)  
+  
+        log_memory_usage()  
+        gc.collect()  
+  
+    except Exception as e:  
+        logger.error(f"Error: {e}")  
+        bot.reply_to(message, f"Error occurred: {e}")  
+  
+def worker():  
+    while True:  
+        message, url = queue.get()  
+        if message == "STOP":  
+            break  
+        download_and_send_video(message, url)  
+        queue.task_done()  
+  
+@bot.message_handler(func=lambda message: True, content_types=['text'])  
+def handle_message(message):  
+    queue.put((message, message.text.strip()))  
+  
+threading.Thread(target=worker, daemon=True).start()
