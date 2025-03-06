@@ -1,10 +1,11 @@
 import os
+import asyncio
 import yt_dlp
 import telebot
 import logging
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
+from utils.streaming import get_streaming_url  # Streaming import added
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -12,7 +13,7 @@ logger = setup_logging(logging.DEBUG)
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-def download_twitter_media(url):
+async def download_twitter_media(url):
     """
     Downloads a Twitter/X video in HD and returns (file_path, file_size).
     """
@@ -20,7 +21,7 @@ def download_twitter_media(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bv+ba/b',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
@@ -28,7 +29,7 @@ def download_twitter_media(url):
         'cookiefile': X_FILE,
         'continuedl': True,
         'http_chunk_size': 1048576,  # 1 MB chunk size
-        'quiet': True,
+        'quiet': False,
         'nocheckcertificate': True,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -37,13 +38,16 @@ def download_twitter_media(url):
     }
 
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)  # ✅ Remove `await`
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
                 return None, None
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
+
+            # Check if file exists before getting size
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
             logger.info(f"✅ Download completed: {file_path}")
