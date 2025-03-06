@@ -1,19 +1,19 @@
-import yt_dlp
 import os
+import asyncio
+import yt_dlp
 import telebot
 import logging
 from utils.logger import setup_logging
-from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 from utils.thumb_generator import generate_thumbnail
+from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 
 # Initialize logger
-logger = setup_logging(logging.DEBUG)  # Example of setting to debug level.
-
+logger = setup_logging(logging.DEBUG)
 
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-def download_twitter_media(url):
+async def download_twitter_media(url):
     """
     Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).
     """
@@ -26,7 +26,7 @@ def download_twitter_media(url):
         'socket_timeout': 30,
         'retries': 10,
         'fragment_retries': 10,
-        'cookiefile': X_FILE,  # Use the cookies from X_FILE
+        'cookiefile': X_FILE,
         'continuedl': True,
         'http_chunk_size': 1048576,  # 1 MB chunk size
         'quiet': False,
@@ -38,18 +38,27 @@ def download_twitter_media(url):
     }
 
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
                 return None, None, None
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
+
+            # Check if file exists before getting size
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            thumbnail_path = generate_thumbnail(file_path)
+
+            # ✅ Await async function & check for None
+            thumbnail_path = await generate_thumbnail(file_path)
+
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            else:
+                logger.warning("⚠️ Thumbnail generation failed.")
 
             logger.info(f"✅ Download completed: {file_path}")
-            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
 
             return file_path, file_size, thumbnail_path
 
@@ -60,24 +69,24 @@ def download_twitter_media(url):
 
     return None, None, None
 
-def get_streaming_url(url):
+async def get_streaming_url(url):
     """
     Fetches a streaming URL without downloading the video.
     """
     ydl_opts = {
         'format': 'bv+ba/b',
         'noplaylist': True,
-        'cookiefile': X_FILE,  # Include cookies
+        'cookiefile': X_FILE,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://x.com/'
         }
     }
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
             return info_dict.get('url')
     except Exception as e:
-        logger.error(f"Error fetching streaming URL: {e}")
+        logger.error(f"⚠️ Error fetching streaming URL: {e}")
         return None
-
