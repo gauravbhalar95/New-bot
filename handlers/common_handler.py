@@ -29,7 +29,7 @@ def extract_valid_url(text):
     return None
 
 # ✅ Async Function for Downloading Videos
-async def process_video(text):
+async def process_adult(text):
     url = extract_valid_url(text)
     if not url:
         logger.error("❌ Invalid URL provided.")
