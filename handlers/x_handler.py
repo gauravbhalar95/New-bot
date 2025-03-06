@@ -1,10 +1,9 @@
 import os
-import asyncio
 import yt_dlp
 import telebot
 import logging
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url  # ✅ Import streaming function
+from utils.streaming import get_streaming_url
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
 
 # Initialize logger
@@ -21,7 +20,7 @@ def download_twitter_media(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bv+ba/b',
+        'format': 'bestvideo+bestaudio/best',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
