@@ -7,7 +7,6 @@ RUN apt-get update && \
     ffmpeg libavcodec-extra && \
     rm -rf /var/lib/apt/lists/*
 
-
 COPY requirements.txt /app/
 
 RUN python -m venv /app/venv
@@ -27,5 +26,4 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=8080
 
-
-CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:8080 webhook:app & python bot.py && tail -f /dev/null"]
+CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
