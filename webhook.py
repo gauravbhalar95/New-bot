@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+from utils.logger import setup_logging
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import telebot
@@ -9,6 +10,9 @@ from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # Load environment variables
 load_dotenv()
+
+# Load config from environment or config.py
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -20,13 +24,19 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 # Flask app for webhook
 app = Flask(__name__)
 
+@app.route("/", methods=["GET"])
+def home():
+    """Simple route to check if the server is running."""
+    return jsonify({"status": "running", "message": "Webhook server is up!"})
+
 @app.route('/' + API_TOKEN, methods=['POST'])
 async def webhook():
     """Handles incoming Telegram updates asynchronously."""
     try:
         data = request.get_data().decode("utf-8")
+        logger.info(f"Received update: {data}")  # Log incoming data
         update = telebot.types.Update.de_json(data)
-        await bot.process_new_updates([update])  # Await this async function
+        await bot.process_new_updates([update])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error processing update: {e}")
@@ -35,10 +45,10 @@ async def webhook():
 async def set_webhook():
     """Asynchronously sets the Telegram webhook."""
     try:
-        await bot.remove_webhook()  # Await async method
-        success = await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
+        await bot.remove_webhook()
+        success = await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}")
         if success:
-            logger.info("Webhook set successfully")
+            logger.info(f"Webhook set successfully at {WEBHOOK_URL}/{API_TOKEN}")
         else:
             logger.error("Failed to set webhook")
     except Exception as e:
@@ -46,9 +56,11 @@ async def set_webhook():
 
 if __name__ == '__main__':
     logger.info(f"Starting Flask webhook server on port {PORT}...")
-    
-    # Ensure webhook is set before starting Flask
-    asyncio.run(set_webhook())  
 
-    # Run Flask in a separate thread (since Flask is not async)
-    app.run(host='0.0.0.0', port=PORT)
+    # Create event loop for async webhook setup
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(set_webhook())
+
+    # Start Flask app
+    app.run(host='0.0.0.0', port=PORT, debug=True)
