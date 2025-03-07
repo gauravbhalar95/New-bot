@@ -23,12 +23,13 @@ async def get_streaming_url(url):
     def fetch():
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=False)  # No need to download
+                info_dict = ydl.extract_info(url, download=False)
+                if not info_dict:
+                    return None, None, None
+
                 video_url = info_dict.get('url')
                 duration = info_dict.get('duration', 0)
-                download_url = info_dict.get('url')  # Get the best direct URL
-
-                return video_url, duration, download_url if video_url else (None, None, None)
+                return video_url, duration, video_url  # Download URL is the same
         except Exception as e:
             logger.error(f"⚠️ Error fetching streaming/download URL: {e}")
             return None, None, None
@@ -43,10 +44,12 @@ async def download_best_clip(video_url, duration):
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
         "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+        "-b:a", "128k", "-preset", "fast", "-y", clip_path
     ]
 
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    await process.communicate()
+
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
 
 async def send_streaming_options(bot, chat_id, video_url, clip_path, download_url):
@@ -55,15 +58,13 @@ async def send_streaming_options(bot, chat_id, video_url, clip_path, download_ur
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    # 🎥 Streaming & Download URL Message  
     message = (
         f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})\n\n"
         f"📥 **Download in High Quality:**\n[🔗 Download Video]({download_url})"
     )
     await bot.send_message(chat_id, message, parse_mode="Markdown")
 
-    # 🎞 Send Best Scene Clip  
     if clip_path:
-        with open(clip_path, "rb") as clip:
+        async with aiofiles.open(clip_path, "rb") as clip:
             await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
         os.remove(clip_path)  # Cleanup file
