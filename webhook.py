@@ -11,9 +11,6 @@ from config import API_TOKEN, WEBHOOK_URL, PORT
 # Load environment variables
 load_dotenv()
 
-# Load config from environment or config.py
-
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,13 +51,11 @@ async def set_webhook():
     except Exception as e:
         logger.error(f"Webhook setup failed: {e}")
 
-if __name__ == '__main__':
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
+# Run webhook setup before Gunicorn starts
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+loop.run_until_complete(set_webhook())
 
-    # Create event loop for async webhook setup
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(set_webhook())
-
-    # Start Flask app
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+# Gunicorn will use this app instance
+if __name__ != "__main__":
+    logger.info(f"Flask app initialized, ready for Gunicorn.")
