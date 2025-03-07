@@ -101,6 +101,7 @@ async def download_best_clip(file_path, file_size):
 
 async def send_media(bot, chat_id, text):
     try:
+        # ✅ આ લાઇન સુધારી અને અહીં મૂકો
         file_path, file_size, streaming_url, thumbnail_path, clip_path, download_url = await process_adult(text)
 
         if not streaming_url and not download_url:
