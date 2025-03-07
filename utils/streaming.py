@@ -8,7 +8,7 @@ from config import COOKIES_FILE
 logger = logging.getLogger(__name__)
 
 async def get_streaming_url(url):
-    """Fetches a direct MP4 streaming & download URL."""
+    """Fetches a direct MP4 streaming URL and gets video duration."""
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
@@ -24,15 +24,18 @@ async def get_streaming_url(url):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
-                if not info_dict:
-                    return None, None, None
-
                 video_url = info_dict.get('url')
                 duration = info_dict.get('duration', 0)
-                return video_url, duration, video_url  # Download URL is the same
+
+                if video_url:
+                    print(f"✅ Extracted Video URL: {video_url}")
+                else:
+                    print("❌ Failed to extract MP4 URL.")
+
+                return video_url, duration if video_url else (None, None)
         except Exception as e:
-            logger.error(f"⚠️ Error fetching streaming/download URL: {e}")
-            return None, None, None
+            logger.error(f"⚠️ Error fetching streaming URL: {e}")
+            return None, None
 
     return await loop.run_in_executor(None, fetch)
 
@@ -44,27 +47,24 @@ async def download_best_clip(video_url, duration):
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
         "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "fast", "-y", clip_path
+        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
     ]
 
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await process.communicate()
-
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
 
-async def send_streaming_options(bot, chat_id, video_url, clip_path, download_url):
-    """Sends streaming URL, high-quality download link, and a 1-minute clip."""
+async def send_streaming_options(bot, chat_id, video_url, clip_path):
+    """Sends streaming URL and a 1-minute clip (No keyboard button)."""
     if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    message = (
-        f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})\n\n"
-        f"📥 **Download in High Quality:**\n[🔗 Download Video]({download_url})"
-    )
-    await bot.send_message(chat_id, message, parse_mode="Markdown")
+    # 🎥 Streaming URL Message (No buttons)
+    stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})"
+    await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
+    # 🎞 Send Best Scene Clip
     if clip_path:
-        async with aiofiles.open(clip_path, "rb") as clip:
+        with open(clip_path, "rb") as clip:
             await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
         os.remove(clip_path)  # Cleanup file
