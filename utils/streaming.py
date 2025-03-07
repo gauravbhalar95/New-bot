@@ -8,7 +8,7 @@ from config import COOKIES_FILE
 logger = logging.getLogger(__name__)
 
 async def get_streaming_url(url):
-    """Fetches a direct MP4 streaming URL and gets video duration."""
+    """Fetches a direct MP4 streaming & download URL."""
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
@@ -23,19 +23,15 @@ async def get_streaming_url(url):
     def fetch():
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=True)
+                info_dict = ydl.extract_info(url, download=False)  # No need to download
                 video_url = info_dict.get('url')
                 duration = info_dict.get('duration', 0)
+                download_url = info_dict.get('url')  # Get the best direct URL
 
-                if video_url:
-                    print(f"✅ Extracted Video URL: {video_url}")
-                else:
-                    print("❌ Failed to extract MP4 URL.")
-
-                return video_url, duration if video_url else (None, None)
+                return video_url, duration, download_url if video_url else (None, None, None)
         except Exception as e:
-            logger.error(f"⚠️ Error fetching streaming URL: {e}")
-            return None, None
+            logger.error(f"⚠️ Error fetching streaming/download URL: {e}")
+            return None, None, None
 
     return await loop.run_in_executor(None, fetch)
 
@@ -53,17 +49,20 @@ async def download_best_clip(video_url, duration):
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
 
-async def send_streaming_options(bot, chat_id, video_url, clip_path):
-    """Sends streaming URL and a 1-minute clip (No keyboard button)."""
+async def send_streaming_options(bot, chat_id, video_url, clip_path, download_url):
+    """Sends streaming URL, high-quality download link, and a 1-minute clip."""
     if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    # 🎥 Streaming URL Message (No buttons)
-    stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})"
-    await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
+    # 🎥 Streaming & Download URL Message  
+    message = (
+        f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})\n\n"
+        f"📥 **Download in High Quality:**\n[🔗 Download Video]({download_url})"
+    )
+    await bot.send_message(chat_id, message, parse_mode="Markdown")
 
-    # 🎞 Send Best Scene Clip
+    # 🎞 Send Best Scene Clip  
     if clip_path:
         with open(clip_path, "rb") as clip:
             await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
