@@ -2,6 +2,8 @@ import yt_dlp
 import logging
 import asyncio
 from config import COOKIES_FILE
+from utils.logger import setup_logging
+
 
 logger = logging.getLogger(__name__)
 
