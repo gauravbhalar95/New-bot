@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from utils.logger import setup_logging
+import aiohttp
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import telebot
@@ -41,6 +41,7 @@ async def webhook():
 
 async def set_webhook():
     """Asynchronously sets the Telegram webhook."""
+    session = aiohttp.ClientSession()  # Explicitly create a session
     try:
         await bot.remove_webhook()
         success = await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}")
@@ -50,11 +51,8 @@ async def set_webhook():
             logger.error("Failed to set webhook")
     except Exception as e:
         logger.error(f"Webhook setup failed: {e}")
-
-# Run webhook setup before Gunicorn starts
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-loop.run_until_complete(set_webhook())
+    finally:
+        await session.close()  # Ensure the session is properly closed
 
 # Gunicorn will use this app instance
 if __name__ != "__main__":
