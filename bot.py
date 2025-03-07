@@ -164,6 +164,3 @@ async def main():
     worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
     await asyncio.gather(bot.infinity_polling(), worker_task)
 
-# Run bot
-if __name__ == "__main__":
-    asyncio.run(main())
