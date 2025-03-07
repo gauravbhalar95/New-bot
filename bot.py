@@ -7,7 +7,6 @@ import requests
 import telebot
 import psutil
 import subprocess
-from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
@@ -85,9 +84,9 @@ async def background_download(message, url):
         task = asyncio.create_task(handler(url))
         result = await task
 
-        if isinstance(result, tuple) and len(result) >= 3:
-            file_path, file_size, streaming_url = result[:3]
-            thumbnail_path = result[3] if len(result) > 3 else None
+        if isinstance(result, tuple) and len(result) >= 4:
+            file_path, file_size, streaming_url, download_url = result[:4]  # ✅ Now includes download URL
+            thumbnail_path = result[4] if len(result) > 4 else None
         else:
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
@@ -96,9 +95,15 @@ async def background_download(message, url):
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
             video_url, duration = await get_streaming_url(url)
             if video_url:
+                text = f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})\n"
+                
+                # ✅ **Add download link if available**
+                if download_url:
+                    text += f"⬇️ **Download Link:** [Click Here]({download_url})"
+
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
+                    text,
                     disable_web_page_preview=True
                 )
 
