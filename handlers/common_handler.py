@@ -29,6 +29,7 @@ def extract_valid_url(text):
     return None
 
 # ✅ Async Function for Downloading Videos
+# ✅ Async Function for Downloading Videos
 async def process_adult(text):
     url = extract_valid_url(text)
     if not url:
@@ -36,7 +37,7 @@ async def process_adult(text):
         return None, 0, None, None, None
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
-    
+
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'bv+ba/b',
@@ -84,7 +85,9 @@ async def process_adult(text):
             if file_path and os.path.exists(file_path):
                 file_size = os.path.getsize(file_path)
 
-                if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                # ✅ 2GB (MAX_FILE_SIZE_BYTES) ચેક
+                if file_size > MAX_FILE_SIZE_BYTES:
+                    logger.error("❌ File size exceeds 2GB limit.")
                     return None, 0, streaming_url, None, None
 
                 thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
