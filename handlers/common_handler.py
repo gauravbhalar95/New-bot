@@ -122,7 +122,7 @@ async def download_best_clip(file_path, file_size):
 # ✅ Function to Send Streaming, Thumbnail, Clip, and Video
 async def send_media(bot, chat_id, text):
     try:
-        file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_video(text)
+        file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(text)
 
         if not file_path and not streaming_url:
             await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
