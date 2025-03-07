@@ -23,7 +23,7 @@ async def get_streaming_url(url):
     def fetch():
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=False)
+                info_dict = ydl.extract_info(url, download=True)
                 video_url = info_dict.get('url')
                 duration = info_dict.get('duration', 0)
 
