@@ -65,7 +65,7 @@ async def process_adult(text):
         loop = asyncio.get_running_loop()
 
         # ✅ Try fetching the streaming URL first
-        streaming_url = await get_streaming_url(url)
+        streaming_url, download_url = await get_streaming_url(url)
 
         # ✅ If no streaming URL, proceed with downloading
         if not streaming_url:
@@ -87,7 +87,7 @@ async def process_adult(text):
             file_path = downloads[0].get("filepath")
 
             if file_path and os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
+                file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
                 # ✅ Check if file is too large for Telegram
                 if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
@@ -115,13 +115,17 @@ async def process_adult(text):
 
     return file_path, file_size, streaming_url, thumbnail_path, clip_path  # ✅ Ensure function always returns 5 values
 
-
 # ✅ Function for 1-Minute Best Clip
 async def download_best_clip(file_path, file_size):
     """Downloads a 1-minute best scene clip from the video."""
     clip_path = file_path.replace(".mp4", "_clip.mp4")
 
-    start_time = max(0, (file_size // 4) // (1024 * 1024))
+    # Ensure file_size is an integer
+    file_size = int(file_size) if isinstance(file_size, (int, float)) else 0
+
+    # ✅ Fix: Convert file_size to int before division
+    start_time = max(0, file_size // 4 // (1024 * 1024))
+
     command = [
         "ffmpeg", "-i", file_path, "-ss", str(start_time),
         "-t", "60", "-c:v", "libx264", "-c:a", "aac",
@@ -132,7 +136,6 @@ async def download_best_clip(file_path, file_size):
     if process.returncode == 0 and os.path.exists(clip_path):
         return clip_path
     return None
-
 
 # ✅ Function to Send Streaming, Thumbnail, Clip, and Video
 async def send_streaming_options(bot, chat_id, text):
