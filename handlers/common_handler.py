@@ -3,15 +3,14 @@ import os
 import logging
 import gc
 import asyncio
+import subprocess
 import re
-from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-import requests
+from concurrent.futures import ThreadPoolExecutor
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
+from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-
-# ✅ API.video API Key
-API_VIDEO_KEY = "KbUlPQcDyxCa7mIDesewp0TUSgpWro2013bIoIvEfpE"
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -19,67 +18,24 @@ logger = setup_logging(logging.DEBUG)
 # ✅ ThreadPool for Faster Execution
 executor = ThreadPoolExecutor(max_workers=5)
 
-
 # ✅ Function to Extract and Validate URL
 def extract_valid_url(text):
-    """Extracts a valid URL from the given text."""
-    url_match = re.search(r"https?://[^\s]+", text)
-    if not url_match:
-        logger.error("❌ No valid URL detected.")
-        return None
-    url = url_match.group(0)
-    logger.info(f"✅ Extracted URL: {url}")
-    return url
-
-
-# ✅ Upload to API.video & Get Streaming & Download Link
-def upload_to_apivideo(file_path):
-    """Uploads the video to API.video and returns streaming & download links."""
-    try:
-        url = "https://ws.api.video/videos"
-        headers = {"Authorization": f"Bearer {API_VIDEO_KEY}", "Content-Type": "application/json"}
-
-        # Step 1: Create video container
-        video_data = {"title": os.path.basename(file_path)}
-        response = requests.post(url, json=video_data, headers=headers)
-        response_data = response.json()
-
-        if "videoId" not in response_data:
-            logger.error("❌ Failed to create video container.")
-            return None, None
-
-        video_id = response_data["videoId"]
-
-        # Step 2: Upload the file
-        upload_url = f"https://ws.api.video/videos/{video_id}/source"
-        with open(file_path, "rb") as f:
-            upload_response = requests.post(upload_url, files={"file": f}, headers=headers)
-
-        if upload_response.status_code != 200:
-            logger.error("❌ Video upload failed.")
-            return None, None
-
-        # Step 3: Get streaming & download URLs
-        streaming_url = f"https://embed.api.video/vod/{video_id}"
-        download_link = f"https://cdn.api.video/vod/{video_id}/mp4"
-
-        logger.info(f"✅ Video uploaded successfully: {streaming_url}")
-        return streaming_url, download_link
-
-    except Exception as e:
-        logger.error(f"❌ api.video upload failed: {e}", exc_info=True)
-        return None, None
-
+    url_match = re.search(r"https?://[^\s]+", text)  # Extract URL using regex
+    if url_match:
+        url = url_match.group(0)
+        parsed_url = urlparse(url)
+        if parsed_url.scheme and parsed_url.netloc:
+            return url  # Return only valid URLs
+    return None
 
 # ✅ Async Function for Downloading Videos
 async def process_adult(text):
-    """Processes the given URL: fetches streaming and full download links."""
-
     url = extract_valid_url(text)
     if not url:
-        return None, None  # Returning (streaming_url, download_link)
+        logger.error("❌ Invalid URL provided.")
+        return None, 0, None, None, None
 
-    output_path = os.path.join("downloads", "%(title)s.%(ext)s")
+    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': output_path,
@@ -103,16 +59,13 @@ async def process_adult(text):
         }]
     }
 
-    file_path, streaming_url, download_link = None, None, None
+    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
 
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Fetch Streaming URL First
-        try:
-            streaming_url, download_url = await get_streaming_url(url)
-        except Exception as e:
-            logger.warning(f"⚠️ Streaming URL retrieval failed: {e}")
+        # ✅ Try fetching the streaming URL first
+        streaming_url = await get_streaming_url(url)
 
         # ✅ If no streaming URL, proceed with downloading
         if not streaming_url:
@@ -124,64 +77,96 @@ async def process_adult(text):
 
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
-                return None, None
+                return None, 0, None, None, None
 
             downloads = info_dict.get("requested_downloads", [])
             if not downloads:
                 logger.error("❌ No downloads found in response.")
-                return None, None
+                return None, 0, None, None, None
 
             file_path = downloads[0].get("filepath")
 
             if file_path and os.path.exists(file_path):
-                logger.info(f"✅ File downloaded successfully: {file_path}")
+                file_size = os.path.getsize(file_path)
 
-                # ✅ Upload to api.video & Get Streaming & Download Link
-                streaming_url, download_link = upload_to_apivideo(file_path)
+                # ✅ Check if file is too large for Telegram
+                if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                    logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
+                    return None, 0, streaming_url, None, None
 
-                if streaming_url and download_link:
-                    logger.info(f"✅ Video uploaded: {streaming_url} | {download_link}")
-                else:
-                    logger.error("❌ api.video upload failed!")
+                # ✅ Generate Thumbnail & Best Clip in Parallel
+                thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
+                clip_task = asyncio.create_task(download_best_clip(file_path, file_size))
 
-            else:
-                logger.error("❌ Downloaded file not found!")
+                thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
 
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"⚠️ yt_dlp download failed: {e}", exc_info=True)
+                logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
+                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+                logger.info(f"✅ Best clip downloaded: {clip_path}")
+
+    except yt_dlp.DownloadError as e:
+        logger.error(f"⚠️ Download failed: {e}")
 
     except Exception as e:
-        logger.error(f"⚠️ Unexpected error: {e}", exc_info=True)
+        logger.error(f"⚠️ Unexpected error: {e}")
 
     finally:
         gc.collect()
 
-    return streaming_url, download_link  # ✅ Always returns streaming & download link
+    return file_path, file_size, streaming_url, thumbnail_path, clip_path  # ✅ Ensure function always returns 5 values
 
 
-# ✅ Function to Send Streaming & Full Video Download Link
+# ✅ Function for 1-Minute Best Clip
+async def download_best_clip(file_path, file_size):
+    """Downloads a 1-minute best scene clip from the video."""
+    clip_path = file_path.replace(".mp4", "_clip.mp4")
+
+    start_time = max(0, (file_size // 4) // (1024 * 1024))
+    command = [
+        "ffmpeg", "-i", file_path, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "ultrafast", clip_path, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0 and os.path.exists(clip_path):
+        return clip_path
+    return None
+
+
+# ✅ Function to Send Streaming, Thumbnail, Clip, and Video
 async def send_streaming_options(bot, chat_id, text):
-    """Handles streaming and full video download link sending."""
+    """Handles streaming, thumbnail, clip, and full video sending in order."""
 
     try:
-        streaming_url, download_link = await process_adult(text)
+        # ✅ Ensure Correct Unpacking (5 values)
+        file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(text)
 
-        if not streaming_url and not download_link:
-            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or download link. Try again!**")
+        if not file_path and not streaming_url:
+            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
             return
-
-        message = ""
 
         # ✅ Send Streaming Link First (If Available)
         if streaming_url:
-            message += f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})\n\n"
+            stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
+            await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
-        # ✅ Send Full Video Download Link (If Available)
-        if download_link:
-            message += f"📥 **Download Link:**\n[⬇ Click Here to Download]({download_link})"
+        # ✅ Send Thumbnail Next (If Available)
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            with open(thumbnail_path, "rb") as thumb:
+                await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
 
-        await bot.send_message(chat_id, message, parse_mode="Markdown")
+        # ✅ Send Best Clip Next (If Available)
+        if clip_path and os.path.exists(clip_path):
+            with open(clip_path, "rb") as clip:
+                await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+            os.remove(clip_path)  # ✅ Delete Clip After Sending
+
+        # ✅ Send Full Video Last (If Available)
+        if file_path and os.path.exists(file_path):
+            with open(file_path, "rb") as video:
+                await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
 
     except Exception as e:
-        logger.error(f"⚠️ Error in send_streaming_options: {e}", exc_info=True)
+        logger.error(f"⚠️ Error in send_streaming_options: {e}")
         await bot.send_message(chat_id, "⚠️ **An error occurred while processing your request.**")
