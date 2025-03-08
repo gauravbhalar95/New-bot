@@ -78,7 +78,7 @@ async def process_adult(text):
             logger.info(f"✅ Streaming Link Found: {streaming_url}")
             
             # ✅ Fetch the best 1-minute clip from `api.video`
-            clip_path = await download_best_clip_from_api_video(download_url)
+            clip_path = await download_best_clip(download_url)
             
             return None, 0, streaming_url, download_url, None, clip_path
 
