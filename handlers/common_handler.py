@@ -3,15 +3,16 @@ import os
 import logging
 import gc
 import asyncio
-import subprocess
 import re
-from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
+from mega import Mega  # ✅ Added Mega for cloud upload
+
+# Importing configuration and utility functions
 from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-from mega import Mega  # ✅ Added Mega for cloud upload
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -21,17 +22,22 @@ executor = ThreadPoolExecutor(max_workers=5)
 
 # ✅ Mega.nz Login (Replace with your credentials)
 mega = Mega()
-mega_email = "gauravbhalara95@gmail.com"
-mega_password = "Gaurav74$"
-m = mega.login(mega_email, mega_password)
+MEGA_EMAIL = "gauravbhalara95@gmail.com"
+MEGA_PASSWORD = "Gaurav74$"
+m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
+
 
 # ✅ Function to Extract and Validate URL
 def extract_valid_url(text):
+    """Extracts a valid URL from the given text."""
     url_match = re.search(r"https?://[^\s]+", text)
     return url_match.group(0) if url_match else None
 
+
 # ✅ Async Function for Downloading Videos
 async def process_adult(text):
+    """Processes the given URL: fetches streaming and full download links."""
+    
     url = extract_valid_url(text)
     if not url:
         logger.error("❌ Invalid URL provided.")
@@ -107,10 +113,11 @@ async def process_adult(text):
 
     return streaming_url, download_link  # ✅ Ensure function always returns streaming & full download link
 
+
 # ✅ Function to Send Streaming & Full Video Download Link
 async def send_streaming_options(bot, chat_id, text):
     """Handles streaming and full video download link sending."""
-
+    
     try:
         streaming_url, download_link = await process_adult(text)
 
