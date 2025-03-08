@@ -8,7 +8,7 @@ import telebot
 import psutil
 import subprocess
 from telebot.async_telebot import AsyncTeleBot
-from handlers.mega_handlers import meganz as m  
+from handlers.mega_handlers import login, download_from_url, upload_to_mega
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
