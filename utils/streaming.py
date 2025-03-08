@@ -6,6 +6,8 @@ import asyncio
 from config import COOKIES_FILE
 from utils.logger import setup_logging
 
+# Setup logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 async def get_streaming_url(url):
@@ -22,23 +24,23 @@ async def get_streaming_url(url):
     }
 
     def fetch():
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            print(info_dict)  # Debugging: Print the extracted info to see its structure
-            
-            video_url = info_dict.get('url')
-            download_url = info_dict.get('webpage_url')
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=False)
+                print(info_dict)  # Debugging: Print the extracted info to see its structure
 
-            if video_url:
-                print(f"✅ Streaming URL: {video_url}")
-            else:
-                print("❌ Failed to extract MP4 URL.")
+                video_url = info_dict.get('url')
+                download_url = info_dict.get('webpage_url')
 
-            return (video_url, download_url) if video_url else (None, None)
-    except Exception as e:
-        logger.error(f"⚠️ Error fetching streaming URL: {e}")
-        return None, None
+                if video_url:
+                    print(f"✅ Streaming URL: {video_url}")
+                else:
+                    print("❌ Failed to extract MP4 URL.")
+
+                return (video_url, download_url) if video_url else (None, None)
+        except Exception as e:
+            logger.error(f"⚠️ Error fetching streaming URL: {e}")
+            return None, None
 
     return await loop.run_in_executor(None, fetch)
 
@@ -48,8 +50,10 @@ async def send_streaming_options(bot, chat_id, video_url, download_url):
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    message = f"🎬 **Streaming & Download Links:**\n\n"
-    message += f"▶ **[Watch Online]({video_url})**\n"
-    message += f"⬇️ **[Download Video]({download_url})**"
+    message = (
+        "🎬 **Streaming & Download Links:**\n\n"
+        f"▶ **[Watch Online]({video_url})**\n"
+        f"⬇️ **[Download Video]({download_url})**"
+    )
 
     await bot.send_message(chat_id, message, parse_mode="Markdown")
