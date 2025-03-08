@@ -56,7 +56,16 @@ def log_memory_usage():
 async def download_best_clip(video_url, duration):
     """Extracts a 1-minute highlight scene from the video using FFmpeg."""
     clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
+
+    # ✅ Convert duration to int safely
+    try:
+        duration = int(duration)
+    except ValueError:
+        logger.error("Invalid duration value received.")
+        return None  # Skip if duration is invalid
+
+    start_time = max(0, duration // 3)  # ✅ No error since duration is now an int
+
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
         "-t", "60", "-c:v", "libx264", "-c:a", "aac",
@@ -95,6 +104,13 @@ async def background_download(message, url):
         # If file is too large, generate a streaming link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
             video_url, duration = await get_streaming_url(url)
+
+            # ✅ Ensure duration is an integer
+            try:
+                duration = int(duration)
+            except ValueError:
+                duration = 0  # Default to 0 if conversion fails
+
             if video_url:
                 await bot.send_message(
                     message.chat.id,
