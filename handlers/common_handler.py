@@ -11,7 +11,7 @@ from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
 # ✅ API.video API Key
-API_VIDEO_KEY = "your_api_video_key"
+API_VIDEO_KEY = "KbUlPQcDyxCa7mIDesewp0TUSgpWro2013bIoIvEfpE"
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
