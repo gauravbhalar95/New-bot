@@ -12,6 +12,7 @@ from utils.logger import setup_logging
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
+from mega import Mega
 
 # ✅ Import Mega instance from handlers
 from handlers.mega_handlers import MegaNZ
