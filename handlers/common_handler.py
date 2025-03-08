@@ -6,16 +6,12 @@ import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-from utils.logger import setup_logging
-
-# Importing configuration and utility functions
-from config import DOWNLOAD_DIR, COOKIES_FILE
+import requests
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-from mega import Mega
 
-# ✅ Import Mega instance from handlers
-from handlers.mega_handlers import MegaNZ
+# ✅ API.video API Key
+API_VIDEO_KEY = "your_api_video_key"
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -36,6 +32,45 @@ def extract_valid_url(text):
     return url
 
 
+# ✅ Upload to API.video & Get Streaming & Download Link
+def upload_to_apivideo(file_path):
+    """Uploads the video to API.video and returns streaming & download links."""
+    try:
+        url = "https://ws.api.video/videos"
+        headers = {"Authorization": f"Bearer {API_VIDEO_KEY}", "Content-Type": "application/json"}
+
+        # Step 1: Create video container
+        video_data = {"title": os.path.basename(file_path)}
+        response = requests.post(url, json=video_data, headers=headers)
+        response_data = response.json()
+
+        if "videoId" not in response_data:
+            logger.error("❌ Failed to create video container.")
+            return None, None
+
+        video_id = response_data["videoId"]
+
+        # Step 2: Upload the file
+        upload_url = f"https://ws.api.video/videos/{video_id}/source"
+        with open(file_path, "rb") as f:
+            upload_response = requests.post(upload_url, files={"file": f}, headers=headers)
+
+        if upload_response.status_code != 200:
+            logger.error("❌ Video upload failed.")
+            return None, None
+
+        # Step 3: Get streaming & download URLs
+        streaming_url = f"https://embed.api.video/vod/{video_id}"
+        download_link = f"https://cdn.api.video/vod/{video_id}/mp4"
+
+        logger.info(f"✅ Video uploaded successfully: {streaming_url}")
+        return streaming_url, download_link
+
+    except Exception as e:
+        logger.error(f"❌ api.video upload failed: {e}", exc_info=True)
+        return None, None
+
+
 # ✅ Async Function for Downloading Videos
 async def process_adult(text):
     """Processes the given URL: fetches streaming and full download links."""
@@ -44,7 +79,7 @@ async def process_adult(text):
     if not url:
         return None, None  # Returning (streaming_url, download_link)
 
-    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    output_path = os.path.join("downloads", "%(title)s.%(ext)s")
 
     ydl_opts = {
         'outtmpl': output_path,
@@ -101,16 +136,14 @@ async def process_adult(text):
             if file_path and os.path.exists(file_path):
                 logger.info(f"✅ File downloaded successfully: {file_path}")
 
-                # ✅ Upload to Mega & Get Download Link
-                try:
-                    file = m.upload(file_path)
-                    public_url = m.get_upload_link(file)
+                # ✅ Upload to api.video & Get Streaming & Download Link
+                streaming_url, download_link = upload_to_apivideo(file_path)
 
-                    logger.info(f"✅ Video uploaded: {public_url}")
-                    download_link = public_url
-                except Exception as e:
-                    logger.error(f"❌ Mega upload failed: {e}", exc_info=True)
-                    download_link = None
+                if streaming_url and download_link:
+                    logger.info(f"✅ Video uploaded: {streaming_url} | {download_link}")
+                else:
+                    logger.error("❌ api.video upload failed!")
+
             else:
                 logger.error("❌ Downloaded file not found!")
 
