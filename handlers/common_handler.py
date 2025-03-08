@@ -6,11 +6,10 @@ import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-from mega import Mega  # ✅ Added Mega for cloud upload
+from mega import Mega  # ✅ Mega cloud upload
 
 # Importing configuration and utility functions
-from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
-from utils.thumb_generator import generate_thumbnail
+from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
@@ -31,7 +30,12 @@ m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
 def extract_valid_url(text):
     """Extracts a valid URL from the given text."""
     url_match = re.search(r"https?://[^\s]+", text)
-    return url_match.group(0) if url_match else None
+    if not url_match:
+        logger.error("❌ No valid URL detected.")
+        return None
+    url = url_match.group(0)
+    logger.info(f"✅ Extracted URL: {url}")
+    return url
 
 
 # ✅ Async Function for Downloading Videos
@@ -40,7 +44,6 @@ async def process_adult(text):
     
     url = extract_valid_url(text)
     if not url:
-        logger.error("❌ Invalid URL provided.")
         return None, None  # Returning (streaming_url, download_link)
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
@@ -73,7 +76,10 @@ async def process_adult(text):
         loop = asyncio.get_running_loop()
 
         # ✅ Fetch Streaming URL First
-        streaming_url, download_url = await get_streaming_url(url)
+        try:
+            streaming_url, download_url = await get_streaming_url(url)
+        except Exception as e:
+            logger.warning(f"⚠️ Streaming URL retrieval failed: {e}")
 
         # ✅ If no streaming URL, proceed with downloading
         if not streaming_url:
@@ -95,23 +101,31 @@ async def process_adult(text):
             file_path = downloads[0].get("filepath")
 
             if file_path and os.path.exists(file_path):
+                logger.info(f"✅ File downloaded successfully: {file_path}")
+
                 # ✅ Upload to Mega & Get Download Link
-                file = m.upload(file_path)
-                public_url = m.get_upload_link(file)
+                try:
+                    file = m.upload(file_path)
+                    public_url = m.get_upload_link(file)
 
-                logger.info(f"✅ Video uploaded: {public_url}")
-                download_link = public_url
+                    logger.info(f"✅ Video uploaded: {public_url}")
+                    download_link = public_url
+                except Exception as e:
+                    logger.error(f"❌ Mega upload failed: {e}", exc_info=True)
+                    download_link = None
+            else:
+                logger.error("❌ Downloaded file not found!")
 
-    except yt_dlp.DownloadError as e:
-        logger.error(f"⚠️ Download failed: {e}")
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"⚠️ yt_dlp download failed: {e}", exc_info=True)
 
     except Exception as e:
-        logger.error(f"⚠️ Unexpected error: {e}")
+        logger.error(f"⚠️ Unexpected error: {e}", exc_info=True)
 
     finally:
         gc.collect()
 
-    return streaming_url, download_link  # ✅ Ensure function always returns streaming & full download link
+    return streaming_url, download_link  # ✅ Always returns streaming & download link
 
 
 # ✅ Function to Send Streaming & Full Video Download Link
@@ -138,5 +152,5 @@ async def send_streaming_options(bot, chat_id, text):
         await bot.send_message(chat_id, message, parse_mode="Markdown")
 
     except Exception as e:
-        logger.error(f"⚠️ Error in send_streaming_options: {e}")
+        logger.error(f"⚠️ Error in send_streaming_options: {e}", exc_info=True)
         await bot.send_message(chat_id, "⚠️ **An error occurred while processing your request.**")
