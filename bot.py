@@ -9,7 +9,7 @@ import psutil
 import subprocess
 from telebot.async_telebot import AsyncTeleBot
 from handlers.mega_handlers import MegaNZ
-
+from mega import Mega
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
