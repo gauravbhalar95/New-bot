@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Replace with your actual API key
+API_VIDEO_KEY = "KbUlPQcDyxCa7mIDesewp0TUSgpWro2013bIoIvEfpE"
+
+
 TWITTER_API_KEY = "4jcgHUTmydQn8FtqmdRykzt5Y"
 TWITTER_API_SECRET = "T80hNuFTulTSzUED9hVCaNPyJUEss05wLgxhiidaTjk4sNyJkP"
 TWITTER_ACCESS_TOKEN = "1816668057991024640-mJvLMo1zl3DTglCm0Y4yI34vzJWiFO"
