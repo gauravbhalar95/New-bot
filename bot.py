@@ -7,15 +7,16 @@ import requests
 import telebot
 import psutil
 import subprocess
+from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
-from handlers.mega_handlers import MegaNZ
-from mega import Mega
+
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
-from handlers.common_handler import process_adult
+from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
 from handlers.x_handler import download_twitter_media
+from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
@@ -24,11 +25,8 @@ logger = setup_logging(logging.DEBUG)
 
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
+mega = MegaNZ()
 download_queue = asyncio.Queue()
-
-# Mega.nz instance
-mega = Mega()
-mega_client = None  # Stores logged-in Mega account
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
@@ -38,7 +36,7 @@ SUPPORTED_PLATFORMS = {
     "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
     "Adult": (
         ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"],
-        process_adult,  
+        process_adult,  # ✅ Only this platform will use thumbnails & clip download
     ),
 }
 
@@ -54,79 +52,27 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
-# Handle Mega.nz login
-@bot.message_handler(commands=["meganz"])
-async def meganz_login(message):
-    global mega_client
-    try:
-        args = message.text.split()
-        if len(args) != 3:
-            await bot.send_message(message.chat.id, "⚠️ **Usage:** `/meganz <email> <password>`")
-            return
+# Function to download a 1-minute best scene clip (Used only in `process_adult`)
+async def download_best_clip(video_url, duration):
+    """Extracts a 1-minute highlight scene from the video using FFmpeg."""
+    clip_path = "best_scene.mp4"
+    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
+    command = [
+        "ffmpeg", "-i", video_url, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "ultrafast", "-threads", "4", "-y", clip_path
+    ]
 
-        email, password = args[1], args[2]
-        mega_client = mega.login(email, password)
+    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    await process.communicate()
 
-        if mega_client:
-            await bot.send_message(message.chat.id, "✅ **Mega.nz Login Successful!**")
-        else:
-            await bot.send_message(message.chat.id, "❌ **Mega.nz Login Failed!** Check credentials.")
-
-    except Exception as e:
-        logger.error(f"Mega.nz Login Error: {e}")
-        await bot.send_message(message.chat.id, f"❌ **Error:** `{e}`")
-
-# Handle Mega.nz upload
-@bot.message_handler(commands=["mega"])
-async def mega_upload(message):
-    global mega_client
-    try:
-        if not mega_client:
-            await bot.send_message(message.chat.id, "❌ **Please login first using** `/meganz <email> <password>`")
-            return
-
-        args = message.text.split()
-        if len(args) != 3:
-            await bot.send_message(message.chat.id, "⚠️ **Usage:** `/mega <file_url> <folder_name>`")
-            return
-
-        file_url, folder_name = args[1], args[2]
-        file_name = file_url.split("/")[-1]
-
-        # Download file from the given URL
-        file_path = f"./{file_name}"
-        response = requests.get(file_url, stream=True)
-
-        if response.status_code == 200:
-            with open(file_path, "wb") as file:
-                for chunk in response.iter_content(chunk_size=1024):
-                    file.write(chunk)
-
-            # Upload to Mega.nz
-            mega_folder = mega_client.find(folder_name)
-            if not mega_folder:
-                mega_folder = mega_client.create_folder(folder_name)
-
-            uploaded_file = mega_client.upload(file_path, mega_folder[0])
-            file_link = mega_client.get_upload_link(uploaded_file)
-
-            await bot.send_message(
-                message.chat.id, 
-                f"✅ **File Uploaded Successfully!**\n📥 **Download Link:** {file_link}"
-            )
-
-            # Cleanup
-            os.remove(file_path)
-
-        else:
-            await bot.send_message(message.chat.id, "❌ **Failed to download file.**")
-
-    except Exception as e:
-        logger.error(f"Mega.nz Upload Error: {e}")
-        await bot.send_message(message.chat.id, f"❌ **Error:** `{e}`")
+    if process.returncode == 0 and os.path.exists(clip_path):
+        return clip_path
+    return None
 
 # Background download function
 async def background_download(message, url):
+    """Handles the entire download process and sends the video to Telegram."""
     try:
         await bot.send_message(message.chat.id, "📥 **Download started...**")
         logger.info(f"Processing URL: {url}")
@@ -143,33 +89,42 @@ async def background_download(message, url):
             file_path, file_size, streaming_url = result[:3]
             thumbnail_path = result[3] if len(result) > 3 else None
         else:
-            await bot.send_message(message.chat.id, "❌ **Error processing video. Check handler output.**") #Changed error message
-            logger.error(f"Error processing video in handler for URL: {url}. Result: {result}") #Added log
+            await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
 
-        file_size = int(file_size) if file_size.isdigit() else 0
-
+        # If file is too large, generate a streaming link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            video_url, _ = await get_streaming_url(url)
+            video_url, duration = await get_streaming_url(url)
             if video_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large. Watch here:** [Click]({video_url})",
+                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
                     disable_web_page_preview=True
                 )
+
+                # ✅ Only extract best 1-minute clip if it's an adult video
+                if handler == process_adult:
+                    clip_path = await download_best_clip(video_url, duration)
+                    if clip_path:
+                        async with aiofiles.open(clip_path, "rb") as clip:
+                            await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+                        os.remove(clip_path)
             else:
-                await bot.send_message(message.chat.id, "❌ **Download failed. Streaming URL not found.**") #changed error message
+                await bot.send_message(message.chat.id, "❌ **Download failed.**")
             return
 
         log_memory_usage()
 
+        # ✅ Only send thumbnail if it's an adult video
         if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):
             async with aiofiles.open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
+        # Send video file
         async with aiofiles.open(file_path, "rb") as video:
             await bot.send_video(message.chat.id, video, supports_streaming=True)
 
+        # Cleanup
         for path in [file_path, thumbnail_path]:
             if path and os.path.exists(path):
                 os.remove(path)
@@ -178,9 +133,8 @@ async def background_download(message, url):
         gc.collect()
 
     except Exception as e:
-        logger.error(f"Error: {e}, URL: {url}") #Added URL to error log
+        logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
-
 
 # Worker function for parallel downloads
 async def worker():
@@ -193,7 +147,7 @@ async def worker():
 @bot.message_handler(commands=["start"])
 async def start(message):
     user_name = message.from_user.first_name or "User"
-    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend a video link or use `/meganz` to login to Mega.nz."
+    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
     await bot.reply_to(message, welcome_text)
     logger.info(f"User {message.chat.id} started the bot.")
 
@@ -203,12 +157,11 @@ async def handle_message(message):
     url = message.text.strip()
     await download_queue.put((message, url))
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
-    logger.info(f"URL added to queue: {url}") #Added log
 
 # Main async function
 async def main():
     logger.info("Bot is starting...")
-    worker_task = asyncio.create_task(worker())  
+    worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
     await asyncio.gather(bot.infinity_polling(), worker_task)
 
 # Run bot
