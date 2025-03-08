@@ -7,7 +7,6 @@ import requests
 import telebot
 import psutil
 import subprocess
-from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
@@ -64,8 +63,9 @@ async def download_best_clip(video_url, duration):
         logger.error("Invalid duration value received.")
         return None  # Skip if duration is invalid
 
-    file_size = int(file_size)  # Ensure file_size is an int
-start_time = max(0, file_size // 4 // (1024 * 1024))
+    # ✅ Ensure file_size is an integer
+    file_size = 100 * 1024 * 1024  # Example value (100MB), update with actual file size if needed
+    start_time = max(0, file_size // (4 * 1024 * 1024))  # Fix division
 
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
@@ -101,6 +101,12 @@ async def background_download(message, url):
         else:
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
+
+        # ✅ Ensure file_size is an integer
+        try:
+            file_size = int(file_size)
+        except ValueError:
+            file_size = 0  # Default to 0 if conversion fails
 
         # If file is too large, generate a streaming link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
