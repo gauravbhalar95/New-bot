@@ -53,34 +53,71 @@ def log_memory_usage():
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
 
+# Background download function
 async def background_download(message, url):
-    """Handles downloading and sending adult videos (streaming & best clip only)."""
+    """Handles the entire download process and sends the video to Telegram."""
     try:
-        await bot.send_message(message.chat.id, "📥 **Processing your video...**")
+        await bot.send_message(message.chat.id, "📥 **Download started...**")
         logger.info(f"Processing URL: {url}")
 
-        result = await process_adult(url) # get the result
-        if result is None:
-            await bot.send_message(message.chat.id, "❌ **Could not retrieve data from the URL.**")
+        platform, handler = detect_platform(url)
+        if not handler:
+            await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
-        _, _, streaming_url, best_clip_path = result
 
-        if streaming_url:
-            await bot.send_message(
-                message.chat.id,
-                f"🎬 **Streaming Link:** [Click here]({streaming_url})",
-                disable_web_page_preview=True
-            )
+        task = asyncio.create_task(handler(url))
+        result = await task
 
-        if best_clip_path:
-            async with aiofiles.open(best_clip_path, "rb") as clip:
-                await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-            os.remove(best_clip_path)
+        if isinstance(result, tuple) and len(result) >= 3:
+            file_path, file_size, streaming_url = result[:3]
+            thumbnail_path = result[3] if len(result) > 3 else None
+        else:
+            await bot.send_message(message.chat.id, "❌ **Error processing video.**")
+            return
+
+        # If file is too large, generate a streaming link instead
+        if not file_path or file_size > TELEGRAM_FILE_LIMIT:
+            video_url, duration = await get_streaming_url(url)
+            if video_url:
+                await bot.send_message(
+                    message.chat.id,
+                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
+                    disable_web_page_preview=True
+                )
+
+                # ✅ Only extract best 1-minute clip if it's an adult video
+                if handler == process_adult:
+                    clip_path = await download_best_clip(video_url, duration)
+                    if clip_path:
+                        async with aiofiles.open(clip_path, "rb") as clip:
+                            await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+                        os.remove(clip_path)
+            else:
+                await bot.send_message(message.chat.id, "❌ **Download failed.**")
+            return
+
+        log_memory_usage()
+
+        # ✅ Only send thumbnail if it's an adult video
+        if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):
+            async with aiofiles.open(thumbnail_path, "rb") as thumb:
+                await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
+
+        # Send video file
+        async with aiofiles.open(file_path, "rb") as video:
+            await bot.send_video(message.chat.id, video, supports_streaming=True)
+
+        # Cleanup
+        for path in [file_path, thumbnail_path]:
+            if path and os.path.exists(path):
+                os.remove(path)
+
+        log_memory_usage()
+        gc.collect()
 
     except Exception as e:
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
-
 
 
 # Worker function for parallel downloads
