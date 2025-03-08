@@ -124,8 +124,7 @@ async def download_best_clip(file_path, file_size):
     file_size = int(file_size) if isinstance(file_size, (int, float)) else 0
 
     # ✅ Fix: Convert file_size to int before division
-    file_size = int(file_size)  # Ensure file_size is an int
-start_time = max(0, file_size // 4 // (1024 * 1024))
+    start_time = max(0, file_size // 4 // (1024 * 1024))
 
     command = [
         "ffmpeg", "-i", file_path, "-ss", str(start_time),
