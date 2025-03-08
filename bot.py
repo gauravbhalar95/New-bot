@@ -53,16 +53,17 @@ def log_memory_usage():
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
 
-from handlers.common_handler import process_adult  
-from utils.streaming import get_streaming_url
-
 async def background_download(message, url):
     """Handles downloading and sending adult videos (streaming & best clip only)."""
     try:
         await bot.send_message(message.chat.id, "📥 **Processing your video...**")
         logger.info(f"Processing URL: {url}")
 
-        _, _, streaming_url, best_clip_path = await process_adult(url)
+        result = await process_adult(url) # get the result
+        if result is None:
+            await bot.send_message(message.chat.id, "❌ **Could not retrieve data from the URL.**")
+            return
+        _, _, streaming_url, best_clip_path = result
 
         if streaming_url:
             await bot.send_message(
@@ -70,7 +71,7 @@ async def background_download(message, url):
                 f"🎬 **Streaming Link:** [Click here]({streaming_url})",
                 disable_web_page_preview=True
             )
-        
+
         if best_clip_path:
             async with aiofiles.open(best_clip_path, "rb") as clip:
                 await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
@@ -79,6 +80,9 @@ async def background_download(message, url):
     except Exception as e:
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
+
+
 # Worker function for parallel downloads
 async def worker():
     while True:
