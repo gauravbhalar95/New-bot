@@ -2,9 +2,9 @@ import asyncio
 import apivideo
 from apivideo.apis import VideosApiAsync
 import logging
+from config import API_VIDEO_KEY
+from utils.logger import setup_logging
 
-# Replace with your actual API key
-API_VIDEO_KEY = "__API_KEY__"
 
 class ApiVideoClient:
     def __init__(self, api_key=API_VIDEO_KEY):
