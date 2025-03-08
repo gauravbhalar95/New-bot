@@ -21,7 +21,7 @@ executor = ThreadPoolExecutor(max_workers=5)
 
 # ✅ Mega.nz Login (Replace with your credentials)
 mega = Mega()
-mega_email = gauravbhalara95@gmail.com"
+mega_email = "gauravbhalara95@gmail.com"
 mega_password = "Gaurav74$"
 m = mega.login(mega_email, mega_password)
 
