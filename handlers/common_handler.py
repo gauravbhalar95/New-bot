@@ -35,7 +35,7 @@ async def process_adult(text):
     url = extract_valid_url(text)
     if not url:
         logger.error("❌ Invalid URL provided.")
-        return None, 0, None, None, None
+        return None, 0, None, None, None, None
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -63,21 +63,26 @@ async def process_adult(text):
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Try fetching streaming & download links from api.video
+        # ✅ Try fetching streaming & download links from `api.video`
         api_client = ApiVideoClient()
         video_links = await api_client.get_video_links()
+        
         for video in video_links:
             if url in video['streaming_link']:
                 streaming_url = video['streaming_link']
                 download_url = video['download_link']
                 break
 
-        # ✅ If api.video provides a streaming URL, no need to download
+        # ✅ If streaming URL is found, use it instead of downloading
         if streaming_url:
             logger.info(f"✅ Streaming Link Found: {streaming_url}")
-            return None, 0, streaming_url, download_url, None, None
+            
+            # ✅ Fetch the best 1-minute clip from `api.video`
+            clip_path = await download_best_clip_from_api_video(download_url)
+            
+            return None, 0, streaming_url, download_url, None, clip_path
 
-        # ✅ Otherwise, fallback to `yt_dlp` download
+        # ✅ Otherwise, download using `yt-dlp`
         def download_video():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -124,61 +129,4 @@ async def process_adult(text):
 
     return file_path, file_size, streaming_url, download_url, thumbnail_path, clip_path
 
-# ✅ Function for 1-Minute Best Clip
-async def download_best_clip(file_path, file_size):
-    """Downloads a 1-minute best scene clip from the video."""
-    clip_path = file_path.replace(".mp4", "_clip.mp4")
-
-    start_time = max(0, (file_size // 4) // (1024 * 1024))
-    command = [
-        "ffmpeg", "-i", file_path, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "ultrafast", clip_path, "-y"
-    ]
-
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if process.returncode == 0 and os.path.exists(clip_path):
-        return clip_path
-    return None
-
-# ✅ Function to Send Streaming & Download Links
-async def send_streaming_options(bot, chat_id, text):
-    """Handles streaming, download link, thumbnail, clip, and full video."""
-
-    try:
-        # ✅ Ensure Correct Unpacking (6 values)
-        file_path, file_size, streaming_url, download_url, thumbnail_path, clip_path = await process_adult(text)
-
-        if not file_path and not streaming_url:
-            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
-            return
-
-        # ✅ Send Streaming Link First (If Available)
-        if streaming_url:
-            stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
-            await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
-
-        # ✅ Send Download Link Next (If Available)
-        if download_url:
-            download_message = f"⬇️ **Download Link:**\n[📥 Download Video]({download_url})"
-            await bot.send_message(chat_id, download_message, parse_mode="Markdown")
-
-        # ✅ Send Thumbnail Next (If Available)
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            with open(thumbnail_path, "rb") as thumb:
-                await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
-
-        # ✅ Send Best Clip Next (If Available)
-        if clip_path and os.path.exists(clip_path):
-            with open(clip_path, "rb") as clip:
-                await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-            os.remove(clip_path)  # ✅ Delete Clip After Sending
-
-        # ✅ Send Full Video Last (If Available)
-        if file_path and os.path.exists(file_path):
-            with open(file_path, "rb") as video:
-                await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
-
-    except Exception as e:
-        logger.error(f"⚠️ Error in send_streaming_options: {e}")
-        await bot.send_message(chat_id, "⚠️ **An error occurred while processing your request.**")
+ 
