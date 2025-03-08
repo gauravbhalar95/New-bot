@@ -64,7 +64,8 @@ async def download_best_clip(video_url, duration):
         logger.error("Invalid duration value received.")
         return None  # Skip if duration is invalid
 
-    start_time = max(0, duration // 3)  # ✅ No error since duration is now an int
+    file_size = int(file_size)  # Ensure file_size is an int
+start_time = max(0, file_size // 4 // (1024 * 1024))
 
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
