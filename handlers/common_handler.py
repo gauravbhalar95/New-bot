@@ -14,8 +14,7 @@ from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
 # ✅ Import Mega instance from handlers
-from handlers.mega_handlers import meganz as m  
-
+from handlers.mega_handlers import login, download_from_url, upload_to_mega
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
 
