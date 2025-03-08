@@ -1,21 +1,14 @@
-import os
-import asyncio
 import yt_dlp
 import logging
-from apivideo import ApiVideoClient
-from config import COOKIES_FILE, API_VIDEO_KEY
-from utils.logger import setup_logging
+import asyncio
+import os
+import subprocess
+from config import COOKIES_FILE
 
-# Setup logging
-setup_logging()
 logger = logging.getLogger(__name__)
 
-# Initialize api.video client
-client = ApiVideoClient(API_VIDEO_KEY)
-videos_api = client.videos()
-
 async def get_streaming_url(url):
-    """Fetches a direct MP4 streaming URL and uploads to api.video."""
+    """Fetches a direct MP4 streaming URL and gets video duration."""
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
@@ -32,42 +25,46 @@ async def get_streaming_url(url):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
                 video_url = info_dict.get('url')
-                download_url = info_dict.get('webpage_url')
+                duration = info_dict.get('duration', 0)
 
                 if video_url:
-                    print(f"✅ Streaming URL: {video_url}")
+                    print(f"✅ Extracted Video URL: {video_url}")
                 else:
                     print("❌ Failed to extract MP4 URL.")
 
-                return video_url, download_url
+                return video_url, duration if video_url else (None, None)
         except Exception as e:
             logger.error(f"⚠️ Error fetching streaming URL: {e}")
             return None, None
 
-    video_url, download_url = await loop.run_in_executor(None, fetch)
+    return await loop.run_in_executor(None, fetch)
 
-    if video_url:
-        try:
-            # Upload to api.video
-            video_response = videos_api.upload(video_url)
-            api_video_link = video_response["assets"]["hls"]  # Get HLS link
+async def download_best_clip(video_url, duration):
+    """Downloads a 1-minute best scene clip from the video."""
+    clip_path = "best_scene.mp4"
+    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
 
-            return api_video_link, download_url
-        except Exception as e:
-            logger.error(f"⚠️ Error uploading to api.video: {e}")
-            return None, None
-    return None, None
+    command = [
+        "ffmpeg", "-i", video_url, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+    ]
 
-async def send_streaming_options(bot, chat_id, streaming_url, download_url):
-    """Sends the streaming link from api.video and original download link."""
-    if not streaming_url:
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
+
+async def send_streaming_options(bot, chat_id, video_url, clip_path):
+    """Sends streaming URL and a 1-minute clip (No keyboard button)."""
+    if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    message = (
-        "🎬 **Streaming & Download Links:**\n\n"
-        f"▶ **[Watch Online]({streaming_url})**\n"
-        f"⬇️ **[Download Video]({download_url})**"
-    )
+    # 🎥 Streaming URL Message (No buttons)
+    stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({video_url})"
+    await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
 
-    await bot.send_message(chat_id, message, parse_mode="Markdown")
+    # 🎞 Send Best Scene Clip
+    if clip_path:
+        with open(clip_path, "rb") as clip:
+            await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+        os.remove(clip_path)  # Cleanup file
