@@ -7,6 +7,8 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 from mega import Mega  # ✅ Mega cloud upload
+from utils.logger import setup_logging
+
 
 # Importing configuration and utility functions
 from config import DOWNLOAD_DIR, COOKIES_FILE
