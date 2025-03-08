@@ -3,7 +3,6 @@ import os
 import logging
 import gc
 import asyncio
-import subprocess
 import re
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
@@ -28,12 +27,12 @@ def extract_valid_url(text):
             return url  # Return only valid URLs
     return None
 
-# ✅ Async Function for Downloading Videos
+# ✅ Async Function for Downloading Videos with Streaming & Download Links
 async def process_adult(text):
     url = extract_valid_url(text)
     if not url:
         logger.error("❌ Invalid URL provided.")
-        return None, 0, None, None, None
+        return None, 0, None, None, None, None
 
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -59,16 +58,32 @@ async def process_adult(text):
         }]
     }
 
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
+    file_path, file_size, streaming_url, download_url, thumbnail_path, clip_path = None, 0, None, None, None, None
 
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Try fetching the streaming URL first
+        # ✅ Fetch Streaming URL First
         streaming_url = await get_streaming_url(url)
 
         # ✅ If no streaming URL, proceed with downloading
         if not streaming_url:
+            def fetch_video_info():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            video_info = await loop.run_in_executor(executor, fetch_video_info)
+            
+            # ✅ Extract direct download URL from video metadata
+            download_url = video_info.get("url", None)
+
+            estimated_size = sum(f.get('filesize', 0) for f in video_info.get('requested_formats', []))
+
+            # ✅ Check if the estimated file size exceeds Telegram's limit
+            if estimated_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming & download links instead.")
+                return None, 0, streaming_url, download_url, None, None
+
             def download_video():
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     return ydl.extract_info(url, download=True)
@@ -77,27 +92,21 @@ async def process_adult(text):
 
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
-                return None, 0, None, None, None
+                return None, 0, None, None, None, None
 
             downloads = info_dict.get("requested_downloads", [])
             if not downloads:
                 logger.error("❌ No downloads found in response.")
-                return None, 0, None, None, None
+                return None, 0, None, None, None, None
 
             file_path = downloads[0].get("filepath")
 
             if file_path and os.path.exists(file_path):
                 file_size = os.path.getsize(file_path)
 
-                # ✅ Check if file is too large for Telegram
-                if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                    logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
-                    return None, 0, streaming_url, None, None
-
-                # ✅ Generate Thumbnail & Best Clip in Parallel
-                thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
-                clip_task = asyncio.create_task(download_best_clip(file_path, file_size))
-
+                # ✅ Parallel Processing: Generate Thumbnail & Best Clip
+                thumbnail_task = generate_thumbnail(file_path)
+                clip_task = download_best_clip(file_path, file_size)
                 thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
 
                 logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
@@ -113,7 +122,4 @@ async def process_adult(text):
     finally:
         gc.collect()
 
-    return file_path, file_size, streaming_url, thumbnail_path, clip_path  # ✅ Ensure function always returns 5 values
-
-
-
+    return file_path, file_size, streaming_url, download_url, thumbnail_path, clip_path  # ✅ Now returns 6 values
