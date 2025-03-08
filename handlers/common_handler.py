@@ -11,7 +11,6 @@ from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
-from utils.api_video import ApiVideoClient  # ✅ Import api.video client
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
