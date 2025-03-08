@@ -143,7 +143,8 @@ async def background_download(message, url):
             file_path, file_size, streaming_url = result[:3]
             thumbnail_path = result[3] if len(result) > 3 else None
         else:
-            await bot.send_message(message.chat.id, "❌ **Error processing video.**")
+            await bot.send_message(message.chat.id, "❌ **Error processing video. Check handler output.**") #Changed error message
+            logger.error(f"Error processing video in handler for URL: {url}. Result: {result}") #Added log
             return
 
         file_size = int(file_size) if file_size.isdigit() else 0
@@ -157,7 +158,7 @@ async def background_download(message, url):
                     disable_web_page_preview=True
                 )
             else:
-                await bot.send_message(message.chat.id, "❌ **Download failed.**")
+                await bot.send_message(message.chat.id, "❌ **Download failed. Streaming URL not found.**") #changed error message
             return
 
         log_memory_usage()
@@ -177,8 +178,9 @@ async def background_download(message, url):
         gc.collect()
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error: {e}, URL: {url}") #Added URL to error log
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
 
 # Worker function for parallel downloads
 async def worker():
@@ -201,6 +203,7 @@ async def handle_message(message):
     url = message.text.strip()
     await download_queue.put((message, url))
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
+    logger.info(f"URL added to queue: {url}") #Added log
 
 # Main async function
 async def main():
