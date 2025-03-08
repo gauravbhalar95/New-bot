@@ -18,7 +18,7 @@ from handlers.common_handler import process_adult  # ✅ Only this handler uses 
 from handlers.x_handler import download_twitter_media
 from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
+from utils.streaming import get_streaming_url, ApiVideoClient, download_best_clip
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
