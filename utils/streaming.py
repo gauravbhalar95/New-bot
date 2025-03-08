@@ -22,21 +22,23 @@ async def get_streaming_url(url):
     }
 
     def fetch():
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(url, download=False)
-                video_url = info_dict.get('url')
-                download_url = info_dict.get('webpage_url')  # Original video page link
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            print(info_dict)  # Debugging: Print the extracted info to see its structure
+            
+            video_url = info_dict.get('url')
+            download_url = info_dict.get('webpage_url')
 
-                if video_url:
-                    print(f"✅ Streaming URL: {video_url}")
-                else:
-                    print("❌ Failed to extract MP4 URL.")
+            if video_url:
+                print(f"✅ Streaming URL: {video_url}")
+            else:
+                print("❌ Failed to extract MP4 URL.")
 
-                return (video_url, download_url) if video_url else (None, None)
-        except Exception as e:
-            logger.error(f"⚠️ Error fetching streaming URL: {e}")
-            return None, None
+            return (video_url, download_url) if video_url else (None, None)
+    except Exception as e:
+        logger.error(f"⚠️ Error fetching streaming URL: {e}")
+        return None, None
 
     return await loop.run_in_executor(None, fetch)
 
