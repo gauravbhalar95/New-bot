@@ -71,6 +71,7 @@ async def get_streaming_url(url):
                 formats = info_dict.get('formats', [])
                 best_download_url = None
                 best_resolution = 0
+                m3u8_url = None  # Store M3U8 URL
 
                 download_links = []
 
@@ -92,9 +93,20 @@ async def get_streaming_url(url):
                             best_resolution = format_res
                             best_download_url = format_url
 
+                        # Store M3U8 URL if available
+                        if format_ext == 'm3u8':
+                            m3u8_url = format_url
+
                 # If no MP4/MKV, fall back to the highest available quality
                 if not best_download_url and download_links:
                     best_download_url = download_links[-1]['url']
+
+                # Convert M3U8 to MP4 if available
+                if m3u8_url:
+                    logger.info(f"🎥 M3U8 stream found: {m3u8_url}")
+                    converted_mp4 = convert_m3u8_to_mp4(m3u8_url)
+                    if converted_mp4:
+                        best_download_url = converted_mp4
 
                 logger.info(f"✅ Streaming URL: {video_url}")
                 logger.info(f"⬇️ Best Download URL ({best_resolution}p): {best_download_url}")
@@ -107,19 +119,23 @@ async def get_streaming_url(url):
 
     return await loop.run_in_executor(None, fetch)
 
-async def download_best_clip(video_url, duration):
-    """Downloads a 1-minute best scene clip from the video."""
-    clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)
+def convert_m3u8_to_mp4(m3u8_url):
+    """Converts an M3U8 stream to MP4 using FFmpeg."""
+    output_file = "converted_video.mp4"
 
     command = [
-        "ffmpeg", "-i", video_url, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+        "ffmpeg", "-i", m3u8_url, "-c:v", "libx264", "-c:a", "aac", "-strict", "experimental",
+        "-b:a", "128k", "-preset", "fast", "-f", "mp4", output_file, "-y"
     ]
 
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
+
+    if process.returncode == 0 and os.path.exists(output_file):
+        logger.info(f"✅ M3U8 successfully converted to MP4: {output_file}")
+        return output_file
+    else:
+        logger.error("❌ M3U8 to MP4 conversion failed.")
+        return None
 
 async def send_streaming_options(bot, chat_id, video_url, best_download_url, download_links):
     """Sends streaming URL, best quality download link, and all available formats."""
