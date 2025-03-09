@@ -47,11 +47,11 @@ class ApiVideoClient:
         return video_links
 
 async def get_streaming_url(url):
-    """Fetches a direct MP4 streaming URL and gets video duration."""
+    """Fetches the best quality streaming & download links."""
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
-        'format': 'bv*+ba/best[ext=mp4]/best',
+        'format': 'bv*+ba/bestvideo[ext=mp4]+bestaudio/best',
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'cookiefile': COOKIES_FILE,
@@ -64,32 +64,46 @@ async def get_streaming_url(url):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
 
-                # Extract the main streaming URL
+                # Extract streaming URL
                 video_url = info_dict.get('url')
 
                 # Extract all available formats
                 formats = info_dict.get('formats', [])
+                best_download_url = None
+                best_resolution = 0
+
                 download_links = []
 
                 for fmt in formats:
                     format_url = fmt.get('url')
                     format_ext = fmt.get('ext', 'unknown')
-                    format_res = fmt.get('format_note', 'unknown')
+                    format_res = fmt.get('height', 0)  # Extract resolution in pixels
 
                     if format_url:
+                        # Store all available formats
                         download_links.append({
                             "format": format_ext,
-                            "resolution": format_res,
+                            "resolution": f"{format_res}p" if format_res else "unknown",
                             "url": format_url
                         })
 
-                logger.info(f"✅ Streaming URL: {video_url}")
-                logger.info(f"⬇️ Available Download Links: {download_links}")
+                        # Choose the highest quality format (MP4/MKV preferred)
+                        if format_res > best_resolution and format_ext in ['mp4', 'mkv']:
+                            best_resolution = format_res
+                            best_download_url = format_url
 
-                return video_url, download_links
+                # If no MP4/MKV, fall back to the highest available quality
+                if not best_download_url and download_links:
+                    best_download_url = download_links[-1]['url']
+
+                logger.info(f"✅ Streaming URL: {video_url}")
+                logger.info(f"⬇️ Best Download URL ({best_resolution}p): {best_download_url}")
+                logger.info(f"📂 Available Download Links: {download_links}")
+
+                return video_url, best_download_url, download_links
         except Exception as e:
             logger.error(f"⚠️ Error fetching streaming URL: {e}")
-            return None, []
+            return None, None, []
 
     return await loop.run_in_executor(None, fetch)
 
@@ -107,18 +121,22 @@ async def download_best_clip(video_url, duration):
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
 
-async def send_streaming_options(bot, chat_id, video_url, download_links):
-    """Sends streaming URL and all available download links."""
+async def send_streaming_options(bot, chat_id, video_url, best_download_url, download_links):
+    """Sends streaming URL, best quality download link, and all available formats."""
     if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
         return
 
-    # Start message with streaming link
+    # Build the message
     message = f"🎬 **Streaming Link:**\n▶ [Watch Online]({video_url})\n\n"
 
-    # Add all download links
+    # Best download link (highest quality)
+    if best_download_url:
+        message += f"⬇️ **Best Quality Download:** [Download Here]({best_download_url})\n\n"
+
+    # All available formats
     if download_links:
-        message += "⬇️ **Download Links:**\n"
+        message += "📂 **Other Available Formats:**\n"
         for link in download_links:
             message += f"📁 `{link['format']}` ({link['resolution']}): [Download]({link['url']})\n"
 
