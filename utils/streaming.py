@@ -8,6 +8,8 @@ from apivideo.apis import VideosApi
 from config import COOKIES_FILE, API_VIDEO_KEY
 from utils.logger import setup_logging
 
+# Setup logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 class ApiVideoClient:
@@ -22,7 +24,7 @@ class ApiVideoClient:
             response = self.videos_api.list()
             return response.get("data", [])
         except Exception as e:
-            logging.error(f"⚠️ Error fetching videos: {e}")
+            logger.error(f"⚠️ Error fetching videos: {e}")
             return []
 
     def get_video_links(self):
@@ -61,15 +63,15 @@ async def get_streaming_url(url):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
-                video_url = info_dict.get('url')
-                duration = info_dict.get('duration', 0)
+                video_url = info_dict.get('url')  # Direct MP4 streaming link
+                download_url = info_dict.get('url')  # Direct download link
 
                 if video_url:
-                    print(f"✅ Extracted Video URL: {video_url}")
+                    logger.info(f"✅ Streaming URL: {video_url}")
                 else:
-                    print("❌ Failed to extract MP4 URL.")
+                    logger.error("❌ Failed to extract MP4 URL.")
 
-                return video_url, duration if video_url else (None, None)
+                return video_url, download_url
         except Exception as e:
             logger.error(f"⚠️ Error fetching streaming URL: {e}")
             return None, None
