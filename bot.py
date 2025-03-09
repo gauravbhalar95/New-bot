@@ -52,6 +52,17 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
+# Function to retry failed downloads
+async def retry_download(handler, url, retries=3):
+    """Retries a failed download up to 3 times before failing."""
+    for attempt in range(retries):
+        try:
+            return await handler(url)  # Attempt download
+        except Exception as e:
+            logger.warning(f"Retry {attempt+1}/{retries} failed: {e}")
+            await asyncio.sleep(2)  # Wait before retrying
+    return None  # Return None if all retries fail
+
 # Background download function
 async def background_download(message, url):
     """Handles the entire download process and sends the video to Telegram."""
@@ -64,8 +75,13 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        task = asyncio.create_task(handler(url))
+        # Use retry function for more reliable downloads
+        task = asyncio.create_task(retry_download(handler, url))
         result = await task
+
+        if not result:
+            await bot.send_message(message.chat.id, "❌ **Download failed after multiple attempts.**")
+            return
 
         if isinstance(result, tuple) and len(result) >= 3:
             file_path, file_size, streaming_url = result[:3]
@@ -131,14 +147,23 @@ async def background_download(message, url):
 
 # Worker function for parallel downloads
 async def worker():
+    """Processes multiple downloads in parallel (up to 3 at a time)."""
     while True:
-        message, url = await download_queue.get()
-        await background_download(message, url)
-        download_queue.task_done()
+        queue_items = []
+        while not download_queue.empty() and len(queue_items) < 3:  # Process up to 3 downloads at once
+            queue_items.append(await download_queue.get())
+
+        if queue_items:
+            tasks = [asyncio.create_task(background_download(msg, url)) for msg, url in queue_items]
+            await asyncio.gather(*tasks)  # Run all tasks concurrently
+
+            for _ in queue_items:
+                download_queue.task_done()
 
 # Start command
 @bot.message_handler(commands=["start"])
 async def start(message):
+    """Sends a welcome message to the user when they start the bot."""
     user_name = message.from_user.first_name or "User"
     welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
     await bot.reply_to(message, welcome_text)
@@ -147,12 +172,14 @@ async def start(message):
 # Handle incoming URLs
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
+    """Handles incoming messages and adds them to the download queue."""
     url = message.text.strip()
     await download_queue.put((message, url))
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
 
 # Main async function
 async def main():
+    """Starts the bot and runs the worker function in parallel."""
     logger.info("Bot is starting...")
     worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
     await asyncio.gather(bot.infinity_polling(), worker_task)
