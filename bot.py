@@ -52,8 +52,6 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
-
-
 # Background download function
 async def background_download(message, url):
     """Handles the entire download process and sends the video to Telegram."""
@@ -76,9 +74,20 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
 
+        # Debug: Check variable types
+        logger.debug(f"Type of file_size: {type(file_size)}, Type of TELEGRAM_FILE_LIMIT: {type(TELEGRAM_FILE_LIMIT)}")
+
+        # Convert file_size & TELEGRAM_FILE_LIMIT to integers
+        file_size = int(file_size)
+        telegram_limit = int(TELEGRAM_FILE_LIMIT)
+
         # If file is too large, generate a streaming link instead
-        if not file_path or file_size > TELEGRAM_FILE_LIMIT:
+        if not file_path or file_size > telegram_limit:
             video_url, duration = await get_streaming_url(url)
+
+            # Debug: Check duration type
+            logger.debug(f"Type of duration: {type(duration)}")
+
             if video_url:
                 await bot.send_message(
                     message.chat.id,
@@ -88,7 +97,7 @@ async def background_download(message, url):
 
                 # ✅ Only extract best 1-minute clip if it's an adult video
                 if handler == process_adult:
-                    clip_path = await download_best_clip(video_url, duration)
+                    clip_path = await download_best_clip(video_url, int(duration))  # Convert duration to int
                     if clip_path:
                         async with aiofiles.open(clip_path, "rb") as clip:
                             await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
