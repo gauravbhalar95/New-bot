@@ -17,23 +17,20 @@ logger = setup_logging(logging.DEBUG)
 # ✅ ThreadPool for Faster Execution
 executor = ThreadPoolExecutor(max_workers=5)
 
-# ✅ Function to Extract and Validate URL
-def extract_valid_url(text):
-    url_match = re.search(r"https?://[^\s]+", text)  # Extract URL using regex
-    if url_match:
-        url = url_match.group(0)
-        parsed_url = urlparse(url)
-        if parsed_url.scheme and parsed_url.netloc:
-            return url  # Return only valid URLs
-    return None
+# ✅ Function to Extract and Validate URLs
+def extract_valid_urls(text):
+    urls = re.findall(r"https?://[^\s]+", text)  # Extract all URLs
+    valid_urls = [url for url in urls if urlparse(url).scheme and urlparse(url).netloc]
+    return valid_urls if valid_urls else None
 
-# ✅ Async Function for Downloading Videos with Streaming & Download Links
-async def process_adult(text):
-    url = extract_valid_url(text)
-    if not url:
-        logger.error("❌ Invalid URL provided.")
+# ✅ Async Function for Processing Video
+async def process_video(text):
+    urls = extract_valid_urls(text)
+    if not urls:
+        logger.error("❌ No valid URL found.")
         return None, 0, None, None, None, None
 
+    url = urls[0]  # Process the first valid URL
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
@@ -54,7 +51,7 @@ async def process_adult(text):
         },
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4',
+            'preferredformat': 'mp4',  # ✅ Fixed spelling
         }]
     }
 
@@ -65,53 +62,59 @@ async def process_adult(text):
 
         # ✅ Fetch Streaming URL First
         streaming_url = await get_streaming_url(url)
+        if streaming_url:
+            logger.info(f"✅ Streaming URL Found: {streaming_url}")
+            return None, 0, streaming_url, None, None, None  # Skip download if streaming exists
 
-        # ✅ If no streaming URL, proceed with downloading
-        if not streaming_url:
-            def fetch_video_info():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=False)
+        # ✅ Fetch Video Metadata Without Downloading
+        def fetch_video_info():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=False)
 
-            video_info = await loop.run_in_executor(executor, fetch_video_info)
-            
-            # ✅ Extract direct download URL from video metadata
-            download_url = video_info.get("url", None)
+        video_info = await loop.run_in_executor(executor, fetch_video_info)
 
-            estimated_size = sum(f.get('filesize', 0) for f in video_info.get('requested_formats', []))
+        if not video_info:
+            logger.error("❌ Failed to fetch video info.")
+            return None, 0, None, None, None, None
 
-            # ✅ Check if the estimated file size exceeds Telegram's limit
-            if estimated_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming & download links instead.")
-                return None, 0, streaming_url, download_url, None, None
+        # ✅ Extract Direct Download URL
+        download_url = video_info.get("url")
+        estimated_size = sum(f.get('filesize', f.get('filesize_approx', 0)) for f in video_info.get('requested_formats', []))
 
-            def download_video():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=True)
+        # ✅ Check File Size Limit
+        if estimated_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+            logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming & download links.")
+            return None, 0, streaming_url, download_url, None, None
 
-            info_dict = await loop.run_in_executor(executor, download_video)
+        # ✅ Proceed with Download
+        def download_video():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
 
-            if not info_dict or "requested_downloads" not in info_dict:
-                logger.error("❌ No video found.")
-                return None, 0, None, None, None, None
+        info_dict = await loop.run_in_executor(executor, download_video)
 
-            downloads = info_dict.get("requested_downloads", [])
-            if not downloads:
-                logger.error("❌ No downloads found in response.")
-                return None, 0, None, None, None, None
+        if not info_dict or "requested_downloads" not in info_dict:
+            logger.error("❌ No video found.")
+            return None, 0, None, None, None, None
 
-            file_path = downloads[0].get("filepath")
+        downloads = info_dict.get("requested_downloads", [])
+        if not downloads:
+            logger.error("❌ No downloadable files found.")
+            return None, 0, None, None, None, None
 
-            if file_path and os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
+        file_path = downloads[0].get("filepath")
 
-                # ✅ Parallel Processing: Generate Thumbnail & Best Clip
-                thumbnail_task = generate_thumbnail(file_path)
-                clip_task = download_best_clip(file_path, file_size)
-                thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
+        if file_path and os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
 
-                logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-                logger.info(f"✅ Best clip downloaded: {clip_path}")
+            # ✅ Parallel Processing: Generate Thumbnail & Best Clip
+            thumbnail_task = generate_thumbnail(file_path)
+            clip_task = download_best_clip(file_path, file_size)
+            thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
+
+            logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            logger.info(f"✅ Best clip downloaded: {clip_path}")
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
