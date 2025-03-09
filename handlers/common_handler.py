@@ -24,7 +24,7 @@ def extract_valid_urls(text):
     return valid_urls if valid_urls else None
 
 # ✅ Async Function for Processing Video
-async def process_video(text):
+async def process_adult(text):
     urls = extract_valid_urls(text)
     if not urls:
         logger.error("❌ No valid URL found.")
