@@ -47,11 +47,11 @@ class ApiVideoClient:
         return video_links
 
 async def get_streaming_url(url):
-    """Fetches the best quality streaming & download link in the same format."""
+    """Fetches the highest quality streaming & download link in the same format."""
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
-        'format': 'bv*+ba/best',
+        'format': 'bv*+ba/best',  # Best video + audio
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'cookiefile': COOKIES_FILE,
@@ -63,19 +63,16 @@ async def get_streaming_url(url):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
-
-                # Extract best format URL
                 best_video_url = info_dict.get('url')
                 best_format = info_dict.get('ext')
 
                 if best_video_url and best_format:
                     logger.info(f"✅ Selected Format: {best_format.upper()}")
-                    logger.info(f"🎬 Streaming & Download Link: {best_video_url}")
-
-                    # If the format is M3U8 or DASH, convert to MP4
+                    
+                    # Convert M3U8/DASH to MP4 with no quality loss
                     if best_format in ["m3u8", "mpd"]:
-                        converted_url = convert_to_mp4(best_video_url)
-                        return converted_url, "mp4"
+                        converted_link = convert_to_mp4(best_video_url)
+                        return converted_link, "mp4"
 
                     return best_video_url, best_format
                 else:
@@ -88,19 +85,26 @@ async def get_streaming_url(url):
     return await loop.run_in_executor(None, fetch)
 
 def convert_to_mp4(video_url):
-    """Converts M3U8/DASH stream to MP4 using ffmpeg."""
+    """Converts M3U8/DASH stream to MP4 without quality loss and provides a download link."""
     output_file = "converted_video.mp4"
 
     command = [
-        "ffmpeg", "-i", video_url, "-c:v", "copy", "-c:a", "copy", "-bsf:a",
-        "aac_adtstoasc", output_file, "-y"
+        "ffmpeg", "-i", video_url, "-c:v", "copy", "-c:a", "copy",
+        "-bsf:a", "aac_adtstoasc", "-movflags", "+faststart",
+        output_file, "-y"
     ]
 
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     if process.returncode == 0 and os.path.exists(output_file):
-        logger.info(f"✅ Converted to MP4: {output_file}")
-        return output_file
+        logger.info(f"✅ Lossless MP4 Conversion: {output_file}")
+        
+        # Upload MP4 to a server or MEGA and return the link
+        from handlers.mega_handlers import MegaNZ
+        mega = MegaNZ()
+        upload_link = mega.upload_file(output_file)
+
+        return upload_link if upload_link else output_file
     else:
         logger.error("❌ Failed to convert video.")
         return None
