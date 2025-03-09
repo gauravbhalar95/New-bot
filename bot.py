@@ -195,9 +195,10 @@ async def handle_message(message):
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
 
 async def main():
-    logger.info("Bot is starting...")
+    """Starts the bot in polling mode (use this for local testing)."""
+    logger.info("Bot is starting in polling mode...")
     worker_task = asyncio.create_task(worker())
     await asyncio.gather(bot.infinity_polling(), worker_task)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())  # Run in polling mode
