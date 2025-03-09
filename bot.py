@@ -7,7 +7,6 @@ import requests
 import telebot
 import psutil
 import subprocess
-from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
@@ -18,7 +17,7 @@ from handlers.common_handler import process_adult  # ✅ Only this handler uses 
 from handlers.x_handler import download_twitter_media
 from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
+from utils.streaming import get_streaming_url, download_best_clip  # ✅ Importing the function
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
@@ -51,24 +50,6 @@ def detect_platform(url):
 def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
-
-# Function to download a 1-minute best scene clip (Used only in `process_adult`)
-async def download_best_clip(video_url, duration):
-    """Extracts a 1-minute highlight scene from the video using FFmpeg."""
-    clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
-    command = [
-        "ffmpeg", "-i", video_url, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "ultrafast", "-threads", "4", "-y", clip_path
-    ]
-
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await process.communicate()
-
-    if process.returncode == 0 and os.path.exists(clip_path):
-        return clip_path
-    return None
 
 # Background download function
 async def background_download(message, url):
@@ -104,7 +85,7 @@ async def background_download(message, url):
 
                 # ✅ Only extract best 1-minute clip if it's an adult video
                 if handler == process_adult:
-                    clip_path = await download_best_clip(video_url, duration)
+                    clip_path = await download_best_clip(video_url, duration)  # ✅ Calling from `streaming.py`
                     if clip_path:
                         async with aiofiles.open(clip_path, "rb") as clip:
                             await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
