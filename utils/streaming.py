@@ -108,7 +108,13 @@ def convert_to_mp4(video_url):
 async def download_best_clip(video_url, duration):
     """Downloads a 1-minute best scene clip from the video."""
     clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)
+    
+    try:
+        duration = int(duration)  # Ensure duration is an integer
+    except ValueError:
+        return None  # If conversion fails, return None
+
+    start_time = max(0, duration // 3)  # Now division will work correctly
 
     command = [
         "ffmpeg", "-i", video_url, "-ss", str(start_time),
@@ -118,7 +124,6 @@ async def download_best_clip(video_url, duration):
 
     process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
-
 async def send_streaming_options(bot, chat_id, video_url, format_ext, clip_path):
     """Sends streaming and download links in the same format."""
     if not video_url:
