@@ -45,7 +45,7 @@ async def process_instagram(url):
         return None, 0, "Instagram cookies file is missing or empty"
 
     ydl_opts = {
-        'format': 'bv+ba/b',
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',  # ✅ Ensures FHD (1080p),
         'merge_output_format': 'mp4',
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'socket_timeout': 10,
