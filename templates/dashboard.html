@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Download Manager</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h2>Active Downloads</h2>
+    <table>
+        <tr>
+            <th>User ID</th>
+            <th>URL</th>
+            <th>Status</th>
+        </tr>
+        {% for user_id, info in downloads.items() %}
+        <tr>
+            <td>{{ user_id }}</td>
+            <td>{{ info.url }}</td>
+            <td>{{ info.status }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
