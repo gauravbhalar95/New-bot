@@ -119,7 +119,7 @@ async def get_streaming_url(url):
 
     return await loop.run_in_executor(None, fetch)
 
-def convert_m3u8_to_mp4(m3u8_url):
+def download_best_clip(m3u8_url):
     """Converts an M3U8 stream to MP4 using FFmpeg."""
     output_file = "converted_video.mp4"
 
