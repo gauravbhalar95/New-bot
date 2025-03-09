@@ -46,7 +46,7 @@ class ApiVideoClient:
 
         return video_links
 
-async def download_best_clip(url):
+async def get_streaming_url(url):
     """Fetches the best quality streaming & download link in the same format."""
     loop = asyncio.get_running_loop()
 
@@ -81,7 +81,21 @@ async def download_best_clip(url):
 
     return await loop.run_in_executor(None, fetch)
 
-async def send_streaming_options(bot, chat_id, video_url, format_ext):
+async def download_best_clip(video_url, duration):
+    """Downloads a 1-minute best scene clip from the video."""
+    clip_path = "best_scene.mp4"
+    start_time = max(0, duration // 3)
+
+    command = [
+        "ffmpeg", "-i", video_url, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "fast", clip_path, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return clip_path if process.returncode == 0 and os.path.exists(clip_path) else None
+
+async def send_streaming_options(bot, chat_id, video_url, format_ext, clip_path):
     """Sends streaming and download links in the same format."""
     if not video_url:
         await bot.send_message(chat_id, "⚠️ **Failed to fetch streaming link. Try again!**")
@@ -90,3 +104,8 @@ async def send_streaming_options(bot, chat_id, video_url, format_ext):
     message = f"🎬 **Streaming & Download Link ({format_ext.upper()}):**\n[▶ Watch / Download]({video_url})"
 
     await bot.send_message(chat_id, message, parse_mode="Markdown")
+
+    if clip_path:
+        with open(clip_path, "rb") as clip:
+            await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+        os.remove(clip_path)
