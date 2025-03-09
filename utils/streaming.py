@@ -51,7 +51,7 @@ async def get_streaming_url(url):
     loop = asyncio.get_running_loop()
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best',
+        'format': 'bv*+ba/best',
         'merge_output_format': 'mp4',
         'noplaylist': True,
         'cookiefile': COOKIES_FILE,
@@ -71,6 +71,12 @@ async def get_streaming_url(url):
                 if best_video_url and best_format:
                     logger.info(f"✅ Selected Format: {best_format.upper()}")
                     logger.info(f"🎬 Streaming & Download Link: {best_video_url}")
+
+                    # If the format is M3U8 or DASH, convert to MP4
+                    if best_format in ["m3u8", "mpd"]:
+                        converted_url = convert_to_mp4(best_video_url)
+                        return converted_url, "mp4"
+
                     return best_video_url, best_format
                 else:
                     logger.error("❌ Failed to extract best format URL.")
@@ -80,6 +86,24 @@ async def get_streaming_url(url):
             return None, None
 
     return await loop.run_in_executor(None, fetch)
+
+def convert_to_mp4(video_url):
+    """Converts M3U8/DASH stream to MP4 using ffmpeg."""
+    output_file = "converted_video.mp4"
+
+    command = [
+        "ffmpeg", "-i", video_url, "-c:v", "copy", "-c:a", "copy", "-bsf:a",
+        "aac_adtstoasc", output_file, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    if process.returncode == 0 and os.path.exists(output_file):
+        logger.info(f"✅ Converted to MP4: {output_file}")
+        return output_file
+    else:
+        logger.error("❌ Failed to convert video.")
+        return None
 
 async def download_best_clip(video_url, duration):
     """Downloads a 1-minute best scene clip from the video."""
