@@ -3,6 +3,8 @@ import asyncio
 import yt_dlp
 import subprocess
 import logging
+import snscrape.modules.twitter as sntwitter
+import requests
 from utils.logger import setup_logging
 from config import DOWNLOAD_DIR, X_FILE
 
@@ -12,7 +14,7 @@ logger = setup_logging(logging.DEBUG)
 async def download_twitter_media(url):
     """
     Downloads a Twitter/X video using yt-dlp.
-    Falls back to twdl only if yt-dlp crashes without an error message.
+    Falls back to snscrape if yt-dlp fails.
     """
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -41,7 +43,7 @@ async def download_twitter_media(url):
 
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ yt-dlp: No video found.")
-                return None, None  # Don't fall back to twdl
+                return None, None  
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -51,28 +53,49 @@ async def download_twitter_media(url):
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ yt-dlp failed with an error: {e}")
-        return None, None  # Don't use twdl if yt-dlp returned an error
+        return None, None  
 
     except Exception as e:
         logger.warning(f"⚠️ yt-dlp crashed unexpectedly: {e}")
-        logger.info("🔄 Falling back to twdl...")
+        logger.info("🔄 Falling back to snscrape...")
 
-        # Try using twdl as a fallback
+        # Extract direct video URL using snscrape
         try:
-            process = subprocess.run(
-                ["twdl", "-o", DOWNLOAD_DIR, url],
-                capture_output=True, text=True, check=True
-            )
-            output = process.stdout
+            tweet_id = url.split("/")[-1]  
+            tweet = next(sntwitter.TwitterTweetScraper(tweet_id).get_items())
 
-            for line in output.split("\n"):
-                if line.endswith(".mp4"):
-                    file_path = os.path.join(DOWNLOAD_DIR, line.strip())
-                    file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-                    logger.info(f"✅ twdl: Download completed: {file_path}")
-                    return file_path, file_size
+            if hasattr(tweet, "media"):
+                video_urls = [
+                    variant.url for media in tweet.media if isinstance(media, sntwitter.Video)
+                    for variant in media.variants
+                ]
+                if video_urls:
+                    best_video_url = sorted(video_urls, key=lambda x: int(x.split("bitrate=")[-1].split("&")[0]) if "bitrate=" in x else 0, reverse=True)[0]
+                    
+                    # Download manually
+                    return await download_file(best_video_url, os.path.join(DOWNLOAD_DIR, f"{tweet_id}.mp4"))
 
-        except subprocess.CalledProcessError as twdl_error:
-            logger.error(f"❌ twdl also failed: {twdl_error}")
+        except Exception as scrape_error:
+            logger.error(f"❌ snscrape failed: {scrape_error}")
+
+    return None, None
+
+async def download_file(url, file_path):
+    """
+    Downloads a file from a URL.
+    """
+    try:
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(file_path, "wb") as file:
+                for chunk in response.iter_content(1024):
+                    file.write(chunk)
+            file_size = os.path.getsize(file_path)
+            logger.info(f"✅ Direct download completed: {file_path}")
+            return file_path, file_size
+        else:
+            logger.error(f"❌ Failed to download {url}")
+    except Exception as e:
+        logger.error(f"❌ Download error: {e}")
 
     return None, None
