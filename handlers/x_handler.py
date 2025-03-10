@@ -39,33 +39,36 @@ async def download_twitter_media(url):
 
     try:
         loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
-            if not info_dict or "requested_downloads" not in info_dict:
-                logger.error("❌ No video found.")
-                return None, None, None
+        ydl = yt_dlp.YoutubeDL(ydl_opts)  # ✅ Move outside 'with' statement
+        info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
 
-            file_path = info_dict["requested_downloads"][0]["filepath"]
+        if not info_dict or "requested_downloads" not in info_dict:
+            logger.error("❌ No video found.")
+            return None, None, None
 
-            # Check if file exists before getting size
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        file_path = info_dict.get("requested_downloads", [{}])[0].get("filepath", None)
 
-            # ✅ Await async function & check for None
-            thumbnail_path = await generate_thumbnail(file_path)
+        if not file_path or not os.path.exists(file_path):
+            logger.error("❌ File not found after download.")
+            return None, None, None
 
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-            else:
-                logger.warning("⚠️ Thumbnail generation failed.")
+        file_size = os.path.getsize(file_path)
 
-            logger.info(f"✅ Download completed: {file_path}")
+        # ✅ Await async function & check for None
+        thumbnail_path = await generate_thumbnail(file_path)
 
-            return file_path, file_size, thumbnail_path
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+        else:
+            logger.warning("⚠️ Thumbnail generation failed.")
 
-    except yt_dlp.DownloadError as e:
-        logger.error(f"⚠️ Download failed: {e}")
-    except Exception as e:
-        logger.error(f"⚠️ Unexpected error: {e}")
+        logger.info(f"✅ Download completed: {file_path}")
+
+        return file_path, file_size, thumbnail_path
+
+    except yt_dlp.DownloadError:
+        logger.exception("⚠️ Download failed")
+    except Exception:
+        logger.exception("⚠️ Unexpected error")
 
     return None, None, None
-
