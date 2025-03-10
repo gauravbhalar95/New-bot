@@ -39,36 +39,54 @@ async def download_twitter_media(url):
 
     try:
         loop = asyncio.get_running_loop()
-        ydl = yt_dlp.YoutubeDL(ydl_opts)  # ✅ Move outside 'with' statement
-        info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+            if not info_dict or "requested_downloads" not in info_dict:
+                logger.error("❌ No video found.")
+                return None, None, None
 
-        if not info_dict or "requested_downloads" not in info_dict:
-            logger.error("❌ No video found.")
-            return None, None, None
+            file_path = info_dict["requested_downloads"][0]["filepath"]
 
-        file_path = info_dict.get("requested_downloads", [{}])[0].get("filepath", None)
+            # Check if file exists before getting size
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-        if not file_path or not os.path.exists(file_path):
-            logger.error("❌ File not found after download.")
-            return None, None, None
+            # ✅ Await async function & check for None
+            thumbnail_path = await generate_thumbnail(file_path)
 
-        file_size = os.path.getsize(file_path)
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            else:
+                logger.warning("⚠️ Thumbnail generation failed.")
 
-        # ✅ Await async function & check for None
-        thumbnail_path = await generate_thumbnail(file_path)
+            logger.info(f"✅ Download completed: {file_path}")
 
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-        else:
-            logger.warning("⚠️ Thumbnail generation failed.")
+            return file_path, file_size, thumbnail_path
 
-        logger.info(f"✅ Download completed: {file_path}")
-
-        return file_path, file_size, thumbnail_path
-
-    except yt_dlp.DownloadError:
-        logger.exception("⚠️ Download failed")
-    except Exception:
-        logger.exception("⚠️ Unexpected error")
+    except yt_dlp.DownloadError as e:
+        logger.error(f"⚠️ Download failed: {e}")
+    except Exception as e:
+        logger.error(f"⚠️ Unexpected error: {e}")
 
     return None, None, None
+
+async def get_streaming_url(url):
+    """
+    Fetches a streaming URL without downloading the video.
+    """
+    ydl_opts = {
+        'format': 'bv+ba/b',
+        'noplaylist': True,
+        'cookiefile': X_FILE,
+        'headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Referer': 'https://x.com/'
+        }
+    }
+    try:
+        loop = asyncio.get_running_loop()
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
+            return info_dict.get('url')
+    except Exception as e:
+        logger.error(f"⚠️ Error fetching streaming URL: {e}")
+        return None
