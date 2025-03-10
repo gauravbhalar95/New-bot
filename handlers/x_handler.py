@@ -26,8 +26,7 @@ async def download_twitter_media(url):
         'socket_timeout': 30,  
         'retries': 10,  
         'fragment_retries': 10,  
-        'cookiefile': X_FILE,
-        'extractor_args': {'twitter': {'legacy_api': True}},  # 👈 Force legacy API  
+        'cookiefile': X_FILE,  
         'continuedl': True,  
         'http_chunk_size': 1048576,  # 1 MB chunk size  
         'quiet': False,  
