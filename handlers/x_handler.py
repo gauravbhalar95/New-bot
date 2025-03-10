@@ -4,7 +4,6 @@ import yt_dlp
 import telebot  
 import logging  
 from utils.logger import setup_logging  
-from utils.thumb_generator import generate_thumbnail  
 from utils.streaming import get_streaming_url  # ✅ Importing get_streaming_link  
 from config import DOWNLOAD_DIR, X_FILE, API_TOKEN  
 
@@ -16,7 +15,7 @@ bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 async def download_twitter_media(url):  
     """  
-    Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).  
+    Downloads a Twitter/X video in HD and returns (file_path, file_size).  
     """  
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")  
 
@@ -44,28 +43,20 @@ async def download_twitter_media(url):
             info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)  
             if not info_dict or "requested_downloads" not in info_dict:  
                 logger.error("❌ No video found.")  
-                return None, None, None  
+                return None, None  
 
             file_path = info_dict["requested_downloads"][0]["filepath"]  
 
             # Check if file exists before getting size  
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0  
 
-            # ✅ Await async function & check for None  
-            thumbnail_path = await generate_thumbnail(file_path)  
-
-            if thumbnail_path and os.path.exists(thumbnail_path):  
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")  
-            else:  
-                logger.warning("⚠️ Thumbnail generation failed.")  
-
             logger.info(f"✅ Download completed: {file_path}")  
 
-            return file_path, file_size, thumbnail_path  
+            return file_path, file_size  
 
     except yt_dlp.DownloadError as e:  
         logger.error(f"⚠️ Download failed: {e}")  
     except Exception as e:  
         logger.error(f"⚠️ Unexpected error: {e}")  
 
-    return None, None, None
+    return None, None
