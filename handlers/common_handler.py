@@ -5,14 +5,18 @@ import gc
 import asyncio
 import subprocess
 import re
+import dropbox
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
-from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
+from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE, DROPBOX_ACCESS_TOKEN
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
+
+# ✅ Dropbox Setup
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
 # ✅ ThreadPool for Faster Execution
 executor = ThreadPoolExecutor(max_workers=5)
@@ -26,6 +30,15 @@ def extract_valid_url(text):
         if parsed_url.scheme and parsed_url.netloc:
             return url
     return None
+
+# ✅ Dropbox File Upload and Link Generation
+def upload_to_dropbox(file_path):
+    dropbox_path = f"/Downloads/{os.path.basename(file_path)}"
+    with open(file_path, "rb") as file:
+        dbx.files_upload(file.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+    
+    shared_link = dbx.sharing_create_shared_link_with_settings(dropbox_path)
+    return shared_link.url.replace("?dl=0", "?dl=1")
 
 # ✅ Function to Convert M3U8 to MP4
 async def convert_m3u8_to_mp4(m3u8_url):
@@ -59,8 +72,8 @@ async def process_adult(text):
             file_size = os.path.getsize(converted_file)
 
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                download_link = f"http://yourserver.com/downloads/{os.path.basename(converted_file)}"
-                logger.warning("⚠️ M3U8 file too large for Telegram. Providing download link.")
+                download_link = upload_to_dropbox(converted_file)
+                logger.warning("⚠️ M3U8 file too large for Telegram. Providing Dropbox link.")
                 return None, 0, download_link, None, None
 
             thumbnail_task = asyncio.create_task(generate_thumbnail(converted_file))
@@ -123,8 +136,8 @@ async def process_adult(text):
             file_size = os.path.getsize(file_path)
 
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                download_link = f"http://yourserver.com/downloads/{os.path.basename(file_path)}"
-                logger.warning("⚠️ File too large for Telegram. Providing download link.")
+                download_link = upload_to_dropbox(file_path)
+                logger.warning("⚠️ File too large for Telegram. Providing Dropbox link.")
                 return None, 0, download_link, None, None
 
             thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
