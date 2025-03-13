@@ -19,12 +19,29 @@ executor = ThreadPoolExecutor(max_workers=5)
 
 # ✅ Function to Extract and Validate URL
 def extract_valid_url(text):
-    url_match = re.search(r"https?://[^\s]+", text)  # Extract URL using regex
+    url_match = re.search(r"https?://[^\s]+", text)
     if url_match:
         url = url_match.group(0)
         parsed_url = urlparse(url)
         if parsed_url.scheme and parsed_url.netloc:
-            return url  # Return only valid URLs
+            return url
+    return None
+
+# ✅ Function to Convert M3U8 to MP4
+async def convert_m3u8_to_mp4(m3u8_url):
+    """Converts an M3U8 link to an MP4 file."""
+    output_file = os.path.join(DOWNLOAD_DIR, "converted_video.mp4")
+
+    command = [
+        "ffmpeg", "-i", m3u8_url,
+        "-c", "copy", 
+        "-bsf:a", "aac_adtstoasc",
+        output_file, "-y"
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode == 0 and os.path.exists(output_file):
+        return output_file
     return None
 
 # ✅ Async Function for Downloading Videos
@@ -34,6 +51,28 @@ async def process_adult(text):
         logger.error("❌ Invalid URL provided.")
         return None, 0, None, None, None
 
+    # ✅ Handle M3U8 Links with Direct Conversion
+    if url.endswith(".m3u8"):
+        logger.info("🔄 Detected M3U8 link. Starting conversion...")
+        converted_file = await convert_m3u8_to_mp4(url)
+        if converted_file and os.path.exists(converted_file):
+            file_size = os.path.getsize(converted_file)
+
+            if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                download_link = f"http://yourserver.com/downloads/{os.path.basename(converted_file)}"
+                logger.warning("⚠️ M3U8 file too large for Telegram. Providing download link.")
+                return None, 0, download_link, None, None
+
+            thumbnail_task = asyncio.create_task(generate_thumbnail(converted_file))
+            clip_task = asyncio.create_task(download_best_clip(converted_file, file_size))
+
+            thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
+            return converted_file, file_size, None, thumbnail_path, clip_path
+
+        logger.error("❌ M3U8 conversion failed.")
+        return None, 0, None, None, None
+
+    # ✅ Continue with Standard Download Logic for Other URLs
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
@@ -63,7 +102,6 @@ async def process_adult(text):
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Download video
         def download_video():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -84,13 +122,11 @@ async def process_adult(text):
         if file_path and os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
 
-            # ✅ Generate Download Link for Large Files
             if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
                 download_link = f"http://yourserver.com/downloads/{os.path.basename(file_path)}"
-                logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Providing download link.")
+                logger.warning("⚠️ File too large for Telegram. Providing download link.")
                 return None, 0, download_link, None, None
 
-            # ✅ Generate Thumbnail & Best Clip in Parallel
             thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
             clip_task = asyncio.create_task(download_best_clip(file_path, file_size))
 
@@ -111,10 +147,8 @@ async def process_adult(text):
 
     return file_path, file_size, download_link, thumbnail_path, clip_path
 
-
 # ✅ Function for 1-Minute Best Clip
 async def download_best_clip(file_path, file_size):
-    """Downloads a 1-minute best scene clip from the video."""
     clip_path = file_path.replace(".mp4", "_clip.mp4")
 
     start_time = max(0, (file_size // 4) // (1024 * 1024))
@@ -129,36 +163,28 @@ async def download_best_clip(file_path, file_size):
         return clip_path
     return None
 
-
 # ✅ Function to Send Download Link, Thumbnail, Clip, and Video
 async def send_streaming_options(bot, chat_id, text):
-    """Handles download link, thumbnail, clip, and full video sending in order."""
-
     try:
-        # ✅ Ensure Correct Unpacking (5 values)
         file_path, file_size, download_link, thumbnail_path, clip_path = await process_adult(text)
 
         if not file_path and not download_link:
             await bot.send_message(chat_id, "⚠️ **Failed to fetch video. Try again!**")
             return
 
-        # ✅ Send Download Link First (If Available)
         if download_link:
             download_message = f"📥 **Download Link:**\n[⬇ Click Here]({download_link})"
             await bot.send_message(chat_id, download_message, parse_mode="Markdown")
 
-        # ✅ Send Thumbnail Next (If Available)
         if thumbnail_path and os.path.exists(thumbnail_path):
             with open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(chat_id, thumb, caption="📸 **Thumbnail**")
 
-        # ✅ Send Best Clip Next (If Available)
         if clip_path and os.path.exists(clip_path):
             with open(clip_path, "rb") as clip:
                 await bot.send_video(chat_id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-            os.remove(clip_path)  # ✅ Delete Clip After Sending
+            os.remove(clip_path)
 
-        # ✅ Send Full Video Last (If Available)
         if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as video:
                 await bot.send_video(chat_id, video, caption="📹 **Full Video Downloaded!**")
