@@ -17,7 +17,7 @@ from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
+from utils.streaming import get_download_url
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
