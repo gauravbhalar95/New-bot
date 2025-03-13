@@ -14,7 +14,7 @@ from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
-from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
+from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
@@ -34,7 +34,7 @@ SUPPORTED_PLATFORMS = {
     "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
     "Adult": (
         ["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"],
-        process_adult,  # ✅ Only this platform will use thumbnails & clip download
+        process_adult,
     ),
 }
 
@@ -49,6 +49,19 @@ def detect_platform(url):
 def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
+
+# M3U8 to MP4 conversion function
+async def convert_m3u8_to_mp4(m3u8_url, output_path):
+    command = [
+        "ffmpeg", "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", "-y", output_path
+    ]
+
+    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    await process.communicate()
+
+    if process.returncode == 0 and os.path.exists(output_path):
+        return output_path
+    return None
 
 # Function to download a 1-minute best scene clip (Used only in `process_adult`)
 async def download_best_clip(video_url, duration):
@@ -90,9 +103,17 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
 
+        # Handle M3U8 links by converting to MP4
+        if file_path and file_path.endswith(".m3u8"):
+            converted_path = file_path.replace(".m3u8", ".mp4")
+            converted_path = await convert_m3u8_to_mp4(file_path, converted_path)
+            if converted_path:
+                file_path = converted_path
+                file_size = os.path.getsize(file_path)
+
         # If file is too large, provide a direct download link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            video_url, duration = await get_streaming_url(url)  # Assume this now returns a direct download link
+            video_url, duration = await get_streaming_url(url)
             if video_url:
                 await bot.send_message(
                     message.chat.id,
@@ -158,9 +179,14 @@ async def handle_message(message):
 
 # Main async function
 async def main():
+    """Starts the bot with 3 parallel download workers."""
     logger.info("Bot is starting...")
-    worker_task = asyncio.create_task(worker())  # Worker for parallel downloads
-    await asyncio.gather(bot.infinity_polling(), worker_task)
+
+    # Start 3 parallel workers
+    worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]
+
+    # Run the bot and workers concurrently
+    await asyncio.gather(bot.infinity_polling(), *worker_tasks)
 
 # Run bot
 if __name__ == "__main__":
