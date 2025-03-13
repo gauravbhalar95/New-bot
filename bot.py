@@ -16,7 +16,6 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
 from handlers.x_handler import download_twitter_media
-from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
@@ -25,7 +24,6 @@ logger = setup_logging(logging.DEBUG)
 
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
-mega = MegaNZ()
 download_queue = asyncio.Queue()
 
 # Supported platforms and handlers
@@ -92,13 +90,13 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
 
-        # If file is too large, generate a streaming link instead
+        # If file is too large, provide a direct download link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            video_url, duration = await get_streaming_url(url)
+            video_url, duration = await get_streaming_url(url)  # Assume this now returns a direct download link
             if video_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
+                    f"⚡ **File too large for Telegram. Download here:** [Click]({video_url})",
                     disable_web_page_preview=True
                 )
 
@@ -147,7 +145,7 @@ async def worker():
 @bot.message_handler(commands=["start"])
 async def start(message):
     user_name = message.from_user.first_name or "User"
-    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
+    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link to download."
     await bot.reply_to(message, welcome_text)
     logger.info(f"User {message.chat.id} started the bot.")
 
