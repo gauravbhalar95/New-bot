@@ -17,7 +17,6 @@ from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
-from utils.streaming import get_download_url
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
@@ -97,7 +96,7 @@ async def background_download(message, url):
         result = await task
 
         if isinstance(result, tuple) and len(result) >= 3:
-            file_path, file_size, streaming_url = result[:3]
+            file_path, file_size, download_url = result[:3]
             thumbnail_path = result[3] if len(result) > 3 else None
         else:
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
@@ -113,17 +112,16 @@ async def background_download(message, url):
 
         # If file is too large, provide a direct download link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            video_url, duration = await get_streaming_url(url)
-            if video_url:
+            if download_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Download here:** [Click]({video_url})",
+                    f"⚡ **File too large for Telegram. Download here:** [Click]({download_url})",
                     disable_web_page_preview=True
                 )
 
                 # ✅ Only extract best 1-minute clip if it's an adult video
                 if handler == process_adult:
-                    clip_path = await download_best_clip(video_url, duration)
+                    clip_path = await download_best_clip(download_url, file_size)
                     if clip_path:
                         async with aiofiles.open(clip_path, "rb") as clip:
                             await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
