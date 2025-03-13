@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from config import DOWNLOAD_DIR, MAX_FILE_SIZE_MB, COOKIES_FILE
 from utils.thumb_generator import generate_thumbnail
 from utils.logger import setup_logging
-from utils.streaming import get_streaming_url
 
 # ✅ Logging Setup
 logger = setup_logging(logging.DEBUG)
@@ -59,50 +58,47 @@ async def process_adult(text):
         }]
     }
 
-    file_path, file_size, streaming_url, thumbnail_path, clip_path = None, 0, None, None, None
+    file_path, file_size, download_link, thumbnail_path, clip_path = None, 0, None, None, None
 
     try:
         loop = asyncio.get_running_loop()
 
-        # ✅ Try fetching the streaming URL first
-        streaming_url = await get_streaming_url(url)
+        # ✅ Download video
+        def download_video():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
 
-        # ✅ If no streaming URL, proceed with downloading
-        if not streaming_url:
-            def download_video():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=True)
+        info_dict = await loop.run_in_executor(executor, download_video)
 
-            info_dict = await loop.run_in_executor(executor, download_video)
+        if not info_dict or "requested_downloads" not in info_dict:
+            logger.error("❌ No video found.")
+            return None, 0, None, None, None
 
-            if not info_dict or "requested_downloads" not in info_dict:
-                logger.error("❌ No video found.")
-                return None, 0, None, None, None
+        downloads = info_dict.get("requested_downloads", [])
+        if not downloads:
+            logger.error("❌ No downloads found in response.")
+            return None, 0, None, None, None
 
-            downloads = info_dict.get("requested_downloads", [])
-            if not downloads:
-                logger.error("❌ No downloads found in response.")
-                return None, 0, None, None, None
+        file_path = downloads[0].get("filepath")
 
-            file_path = downloads[0].get("filepath")
+        if file_path and os.path.exists(file_path):
+            file_size = os.path.getsize(file_path)
 
-            if file_path and os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
+            # ✅ Generate Download Link for Large Files
+            if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                download_link = f"http://yourserver.com/downloads/{os.path.basename(file_path)}"
+                logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Providing download link.")
+                return None, 0, download_link, None, None
 
-                # ✅ Check if file is too large for Telegram
-                if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
-                    logger.warning(f"⚠️ File too large for Telegram ({MAX_FILE_SIZE_MB}MB limit). Returning streaming URL instead.")
-                    return None, 0, streaming_url, None, None
+            # ✅ Generate Thumbnail & Best Clip in Parallel
+            thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
+            clip_task = asyncio.create_task(download_best_clip(file_path, file_size))
 
-                # ✅ Generate Thumbnail & Best Clip in Parallel
-                thumbnail_task = asyncio.create_task(generate_thumbnail(file_path))
-                clip_task = asyncio.create_task(download_best_clip(file_path, file_size))
+            thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
 
-                thumbnail_path, clip_path = await asyncio.gather(thumbnail_task, clip_task)
-
-                logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
-                logger.info(f"✅ Best clip downloaded: {clip_path}")
+            logger.info(f"✅ Download completed: {file_path} ({file_size / (1024 * 1024):.2f} MB)")
+            logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+            logger.info(f"✅ Best clip downloaded: {clip_path}")
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
@@ -113,7 +109,7 @@ async def process_adult(text):
     finally:
         gc.collect()
 
-    return file_path, file_size, streaming_url, thumbnail_path, clip_path  # ✅ Ensure function always returns 5 values
+    return file_path, file_size, download_link, thumbnail_path, clip_path
 
 
 # ✅ Function for 1-Minute Best Clip
@@ -134,22 +130,22 @@ async def download_best_clip(file_path, file_size):
     return None
 
 
-# ✅ Function to Send Streaming, Thumbnail, Clip, and Video
+# ✅ Function to Send Download Link, Thumbnail, Clip, and Video
 async def send_streaming_options(bot, chat_id, text):
-    """Handles streaming, thumbnail, clip, and full video sending in order."""
+    """Handles download link, thumbnail, clip, and full video sending in order."""
 
     try:
         # ✅ Ensure Correct Unpacking (5 values)
-        file_path, file_size, streaming_url, thumbnail_path, clip_path = await process_adult(text)
+        file_path, file_size, download_link, thumbnail_path, clip_path = await process_adult(text)
 
-        if not file_path and not streaming_url:
-            await bot.send_message(chat_id, "⚠️ **Failed to fetch video or streaming link. Try again!**")
+        if not file_path and not download_link:
+            await bot.send_message(chat_id, "⚠️ **Failed to fetch video. Try again!**")
             return
 
-        # ✅ Send Streaming Link First (If Available)
-        if streaming_url:
-            stream_message = f"🎬 **Streaming Link:**\n[▶ Watch Video]({streaming_url})"
-            await bot.send_message(chat_id, stream_message, parse_mode="Markdown")
+        # ✅ Send Download Link First (If Available)
+        if download_link:
+            download_message = f"📥 **Download Link:**\n[⬇ Click Here]({download_link})"
+            await bot.send_message(chat_id, download_message, parse_mode="Markdown")
 
         # ✅ Send Thumbnail Next (If Available)
         if thumbnail_path and os.path.exists(thumbnail_path):
