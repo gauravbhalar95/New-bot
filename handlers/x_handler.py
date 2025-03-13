@@ -68,25 +68,3 @@ async def download_twitter_media(url):
         logger.error(f"⚠️ Unexpected error: {e}")
 
     return None, None, None
-
-async def get_streaming_url(url):
-    """
-    Fetches a streaming URL without downloading the video.
-    """
-    ydl_opts = {
-        'format': 'bv+ba/b',
-        'noplaylist': True,
-        'cookiefile': X_FILE,
-        'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
-        }
-    }
-    try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, False)
-            return info_dict.get('url')
-    except Exception as e:
-        logger.error(f"⚠️ Error fetching streaming URL: {e}")
-        return None
