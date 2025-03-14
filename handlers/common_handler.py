@@ -48,7 +48,15 @@ async def process_adult(url):
                 logger.error("❌ Downloaded file not found.")
                 return None, None, None
 
-            file_path = rename_file(file_path)
+            # Sanitize filename and define new path
+            directory, filename = os.path.split(file_path)
+            new_filename = sanitize_filename(filename)
+            new_path = os.path.join(directory, new_filename)
+
+            # Await the async rename function properly
+            await rename_file(file_path, new_path)
+            file_path = new_path  # Update the path after renaming
+
             file_size = os.path.getsize(file_path)
 
             # ✅ Await async function & check for None
