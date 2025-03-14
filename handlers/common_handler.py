@@ -9,7 +9,8 @@ from utils.renamer import rename_file
 from utils.file_server import get_direct_download_link
 from utils.compressor import compress_video  # New compressor utility
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
-from your_flask_app import app  # Import your Flask app instance
+from flask import current_app
+
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
