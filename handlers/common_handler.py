@@ -8,12 +8,10 @@ from utils.sanitize import sanitize_filename  # Ensure this is async
 from utils.renamer import rename_file
 from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
-from flask import current_app
+from your_flask_app import app  # Import your Flask app instance
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
-
-
 
 async def process_adult(url):
     """
@@ -54,11 +52,13 @@ async def process_adult(url):
             # ✅ Await sanitize_filename to ensure async handling
             sanitized_filename = await sanitize_filename(os.path.basename(file_path))
             new_path = os.path.join(DOWNLOAD_DIR, sanitized_filename)
-            
+
             await rename_file(file_path, new_path)  # ✅ Await added
             file_path = new_path  # ✅ Update file path after renaming
 
             file_size = os.path.getsize(file_path)
+            file_size_mb = round(file_size / (1024 * 1024), 2)  # Display file size in MB
+            logger.info(f"✅ File Size: {file_size_mb} MB")
 
             # ✅ Await async function & check for None
             thumbnail_path = await generate_thumbnail(file_path)
@@ -73,11 +73,11 @@ async def process_adult(url):
             # Provide direct download link for large files (ensure it's within a request context)
             if file_size > TELEGRAM_FILE_LIMIT:
                 logger.info("⚠️ File too large for Telegram. Generating direct download link...")
-                
-                # Ensure we are in the app context for Flask functions
-                with current_app.app_context():
+
+                # ✅ Use `app.app_context()` to create a valid Flask context
+                with app.app_context():
                     download_link = get_direct_download_link(file_path)
-                
+
                 if download_link:
                     logger.info(f"✅ Direct download link generated: {download_link}")
                     return None, file_size, download_link
