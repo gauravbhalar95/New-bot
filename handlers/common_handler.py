@@ -23,7 +23,7 @@ async def process_adult(url):
 
     ydl_opts = {
         'outtmpl': output_path,
-        'format': 'bv+ba/b',
+        'format': 'best',
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
