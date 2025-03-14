@@ -1,21 +1,20 @@
 import os
 import asyncio
 import yt_dlp
-import telebot
 import logging
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
-from config import DOWNLOAD_DIR, API_TOKEN
+from utils.sanitize import sanitize_filename
+from utils.renamer import rename_file
+from utils.file_server import get_direct_download_link
+from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
 
-# Initialize Telegram bot
-bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
-
-async def process_adult(url):
+async def process_video(url):
     """
-    Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).
+    Downloads a video and returns (file_path, file_size, thumbnail_path).
     """
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
@@ -31,8 +30,7 @@ async def process_adult(url):
         'quiet': False,
         'nocheckcertificate': True,
         'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Referer': 'https://x.com/'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         }
     }
 
@@ -46,8 +44,12 @@ async def process_adult(url):
 
             file_path = info_dict["requested_downloads"][0]["filepath"]
 
-            # Check if file exists before getting size
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            if not os.path.exists(file_path):
+                logger.error("❌ Downloaded file not found.")
+                return None, None, None
+
+            file_path = rename_file(file_path)
+            file_size = os.path.getsize(file_path)
 
             # ✅ Await async function & check for None
             thumbnail_path = await generate_thumbnail(file_path)
@@ -58,6 +60,17 @@ async def process_adult(url):
                 logger.warning("⚠️ Thumbnail generation failed.")
 
             logger.info(f"✅ Download completed: {file_path}")
+
+            # Provide direct download link for large files
+            if file_size > TELEGRAM_FILE_LIMIT:
+                logger.info("⚠️ File too large for Telegram. Generating direct download link...")
+                download_link = get_direct_download_link(file_path)
+                if download_link:
+                    logger.info(f"✅ Direct download link generated: {download_link}")
+                    return None, file_size, download_link
+                else:
+                    logger.error("❌ Direct download link generation failed.")
+                    return None, file_size, None
 
             return file_path, file_size, thumbnail_path
 
