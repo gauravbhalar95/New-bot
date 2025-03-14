@@ -1,32 +1,25 @@
 import asyncio
 import subprocess
-import os
 
-async def compress_video(input_path):
-    """
-    Compresses a video using `ffmpeg` with optimized settings for quality retention.
-    """
-    output_path = f"{os.path.splitext(input_path)[0]}_compressed.mp4"
-
-    command = [
-        'ffmpeg', '-y', '-i', input_path,
-        '-c:v', 'libx264',            # Use H.264 codec for high efficiency
-        '-crf', '23',                 # Constant Rate Factor (balanced quality/compression)
-        '-preset', 'slow',            # Better compression with reasonable encoding speed
-        '-c:a', 'aac',                # Audio codec for compatibility
-        '-b:a', '128k',               # Audio bitrate for quality retention
-        '-movflags', '+faststart',    # Optimizes file for streaming
-        output_path
+async def compress_video(input_file, output_file):
+    cmd = [
+        "ffmpeg", "-i", input_file, 
+        "-c:v", "libx264", "-crf", "23", "-preset", "medium", 
+        "-c:a", "aac", "-b:a", "128k", 
+        output_file
     ]
 
-    try:
-        loop = asyncio.get_running_loop()
-        process = await loop.run_in_executor(None, subprocess.run, command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
 
-        if process.returncode == 0 and os.path.exists(output_path):
-            return output_path
-        else:
-            return None
-    except Exception as e:
-        print(f"⚠️ Compression error: {e}")
+    stdout, stderr = await process.communicate()
+
+    if process.returncode == 0:
+        print(f"✅ Video compressed successfully: {output_file}")
+        return output_file
+    else:
+        print(f"❌ Compression failed: {stderr.decode().strip()}")
         return None
