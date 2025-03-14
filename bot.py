@@ -1,5 +1,6 @@
 import os
 import gc
+import sys
 import logging
 import asyncio
 import aiofiles
@@ -24,6 +25,26 @@ logger = setup_logging(logging.DEBUG)
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
+
+# PID lock system to prevent duplicate bot instances
+PID_FILE = "bot.pid"
+
+def check_pid():
+    """Prevents multiple bot instances from running."""
+    if os.path.exists(PID_FILE):
+        with open(PID_FILE, 'r') as file:
+            pid = int(file.read().strip())
+        if os.path.exists(f"/proc/{pid}"):
+            print(f"Another instance is already running with PID: {pid}")
+            sys.exit(1)
+    
+    with open(PID_FILE, 'w') as file:
+        file.write(str(os.getpid()))
+
+def cleanup_pid():
+    """Removes PID file on bot shutdown."""
+    if os.path.exists(PID_FILE):
+        os.remove(PID_FILE)
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
@@ -178,13 +199,14 @@ async def handle_message(message):
 # Main async function
 async def main():
     """Starts the bot with 3 parallel download workers."""
+    check_pid()  # Ensure only one instance runs
     logger.info("Bot is starting...")
 
-    # Start 3 parallel workers
-    worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]
-
-    # Run the bot and workers concurrently
-    await asyncio.gather(bot.infinity_polling(), *worker_tasks)
+    try:
+        worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]
+        await asyncio.gather(bot.infinity_polling(), *worker_tasks)
+    finally:
+        cleanup_pid()  # Cleanup PID file on shutdown
 
 # Run bot
 if __name__ == "__main__":
