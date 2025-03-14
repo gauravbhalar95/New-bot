@@ -4,7 +4,7 @@ import yt_dlp
 import logging
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
-from utils.sanitize import sanitize_filename
+from utils.sanitize import sanitize_filename  # Ensure this is async
 from utils.renamer import rename_file
 from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
@@ -48,14 +48,14 @@ async def process_adult(url):
                 logger.error("❌ Downloaded file not found.")
                 return None, None, None
 
-            # Sanitize filename and define new path
+            # Sanitize filename (await the async function)
             directory, filename = os.path.split(file_path)
-            new_filename = sanitize_filename(filename)
+            new_filename = await sanitize_filename(filename)  # Fixed: Await here
             new_path = os.path.join(directory, new_filename)
 
             # Await the async rename function properly
             await rename_file(file_path, new_path)
-            file_path = new_path  # Update the path after renaming
+            file_path = new_path  # Update path after renaming
 
             file_size = os.path.getsize(file_path)
 
