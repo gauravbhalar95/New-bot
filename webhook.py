@@ -40,7 +40,7 @@ def set_webhook():
     """Sets the Telegram webhook."""
     try:
         bot.remove_webhook()
-        success = bot.set_webhook(url=WEBHOOK_PATH, timeout=60)
+        success = bot.set_webhook(url=WEBHOOK_PATH, timeout=120)
         if success:
             return "Webhook set successfully", 200
         else:
