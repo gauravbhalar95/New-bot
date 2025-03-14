@@ -7,18 +7,38 @@ from utils.thumb_generator import generate_thumbnail
 from utils.sanitize import sanitize_filename
 from utils.renamer import rename_file
 from utils.file_server import get_direct_download_link
-from utils.compressor import compress_video  # New compressor utility
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 from flask import current_app
-
+import subprocess
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
 
+# ✅ Improved Compression Function
+async def compress_video(input_file, output_file):
+    cmd = [
+        "ffmpeg", "-i", input_file,
+        "-c:v", "libx264", "-crf", "23", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "128k",
+        output_file
+    ]
+
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    stdout, stderr = await process.communicate()
+
+    if process.returncode == 0:
+        logger.info(f"✅ Video compressed successfully: {output_file}")
+        return output_file
+    else:
+        logger.error(f"❌ Compression failed: {stderr.decode().strip()}")
+        return None
+
 async def process_adult(url):
-    """
-    Downloads a video, compresses it if needed, and returns (file_path, file_size, thumbnail_path).
-    """
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
 
     ydl_opts = {
@@ -55,27 +75,14 @@ async def process_adult(url):
             new_path = os.path.join(DOWNLOAD_DIR, sanitized_filename)
 
             await rename_file(file_path, new_path)
-            file_path = new_path  # ✅ Update file path after renaming
+            file_path = new_path  
 
-            file_size = os.path.getsize(file_path)
-            file_size_mb = round(file_size / (1024 * 1024), 2)
-            logger.info(f"✅ File Size: {file_size_mb} MB")
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # Convert to MB
+            logger.info(f"✅ File Size: {file_size:.2f} MB")
 
-            # ✅ Compress video if too large
-            if file_size > TELEGRAM_FILE_LIMIT:
-                logger.info("⚠️ File too large for Telegram. Compressing video...")
-                compressed_file_path = await compress_video(file_path)
-
-                if compressed_file_path:
-                    file_path = compressed_file_path
-                    file_size = os.path.getsize(file_path)
-                    file_size_mb = round(file_size / (1024 * 1024), 2)
-                    logger.info(f"✅ Video compressed successfully. New Size: {file_size_mb} MB")
-                else:
-                    logger.warning("⚠️ Compression failed. Proceeding with original file.")
-
-            # ✅ Generate thumbnail
+            # ✅ Await async function & check for None
             thumbnail_path = await generate_thumbnail(file_path)
+
             if thumbnail_path and os.path.exists(thumbnail_path):
                 logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
             else:
@@ -83,19 +90,28 @@ async def process_adult(url):
 
             logger.info(f"✅ Download completed: {file_path}")
 
-            # Provide direct download link if still too large
-            if file_size > TELEGRAM_FILE_LIMIT:
-                logger.info("⚠️ File still too large for Telegram. Generating direct download link...")
+            # ✅ Handle large files
+            if file_size > TELEGRAM_FILE_LIMIT / (1024 * 1024):  # Convert TELEGRAM_FILE_LIMIT to MB
+                logger.info("⚠️ File too large for Telegram. Compressing video...")
 
-                with app.app_context():
-                    download_link = get_direct_download_link(file_path)
+                compressed_file_path = file_path.replace(".mp4", "_compressed.mp4")
+                compressed_file = await compress_video(file_path, compressed_file_path)
 
-                if download_link:
-                    logger.info(f"✅ Direct download link generated: {download_link}")
-                    return None, file_size, download_link
+                if compressed_file and os.path.getsize(compressed_file) < TELEGRAM_FILE_LIMIT:
+                    logger.info(f"✅ Compressed file within limit: {compressed_file}")
+                    return compressed_file, os.path.getsize(compressed_file), thumbnail_path
                 else:
-                    logger.error("❌ Direct download link generation failed.")
-                    return None, file_size, None
+                    logger.warning("⚠️ Compression failed or file still too large. Generating download link...")
+
+                    with current_app.app_context():
+                        download_link = get_direct_download_link(file_path)
+
+                    if download_link:
+                        logger.info(f"✅ Direct download link generated: {download_link}")
+                        return None, file_size, download_link
+                    else:
+                        logger.error("❌ Direct download link generation failed.")
+                        return None, file_size, None
 
             return file_path, file_size, thumbnail_path
 
