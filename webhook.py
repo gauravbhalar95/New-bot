@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import telebot
 from telebot.async_telebot import AsyncTeleBot
+from urllib.parse import urljoin
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # Load environment variables
@@ -16,16 +17,19 @@ logger = logging.getLogger(__name__)
 # Initialize bot
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 
+# Define webhook path
+WEBHOOK_PATH = urljoin(WEBHOOK_URL, f"/{API_TOKEN}")
+
 # Flask app for webhook
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
-def webhook():
-    """Handles incoming Telegram updates."""
+async def webhook():
+    """Handles incoming Telegram updates asynchronously."""
     try:
-        data = request.get_data().decode("utf-8")
+        data = await request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(data)
-        bot.process_new_updates([update])
+        await bot.process_new_updates([update])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error processing update: {e}")
@@ -36,7 +40,7 @@ def set_webhook():
     """Sets the Telegram webhook."""
     try:
         bot.remove_webhook()
-        success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}, timeout=60")
+        success = bot.set_webhook(url=WEBHOOK_PATH, timeout=60)
         if success:
             return "Webhook set successfully", 200
         else:
@@ -46,5 +50,8 @@ def set_webhook():
         return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
-    app.run(host='0.0.0.0', port=PORT)
+    try:
+        logger.info(f"Starting Flask webhook server on port {PORT}...")
+        app.run(host='0.0.0.0', port=PORT)
+    except Exception as e:
+        logger.error(f"Server failed to start: {e}")
