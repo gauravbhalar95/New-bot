@@ -12,7 +12,7 @@ from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
 
-async def process_video(url):
+async def process_adult(url):
     """
     Downloads a video and returns (file_path, file_size, thumbnail_path).
     """
