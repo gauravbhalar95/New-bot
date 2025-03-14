@@ -8,9 +8,12 @@ from utils.sanitize import sanitize_filename  # Ensure this is async
 from utils.renamer import rename_file
 from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
+from flask import current_app
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
+
+
 
 async def process_adult(url):
     """
@@ -48,14 +51,12 @@ async def process_adult(url):
                 logger.error("❌ Downloaded file not found.")
                 return None, None, None
 
-            # Sanitize filename (await the async function)
-            directory, filename = os.path.split(file_path)
-            new_filename = await sanitize_filename(filename)  # Fixed: Await here
-            new_path = os.path.join(directory, new_filename)
-
-            # Await the async rename function properly
-            await rename_file(file_path, new_path)
-            file_path = new_path  # Update path after renaming
+            # ✅ Await sanitize_filename to ensure async handling
+            sanitized_filename = await sanitize_filename(os.path.basename(file_path))
+            new_path = os.path.join(DOWNLOAD_DIR, sanitized_filename)
+            
+            await rename_file(file_path, new_path)  # ✅ Await added
+            file_path = new_path  # ✅ Update file path after renaming
 
             file_size = os.path.getsize(file_path)
 
@@ -69,10 +70,14 @@ async def process_adult(url):
 
             logger.info(f"✅ Download completed: {file_path}")
 
-            # Provide direct download link for large files
+            # Provide direct download link for large files (ensure it's within a request context)
             if file_size > TELEGRAM_FILE_LIMIT:
                 logger.info("⚠️ File too large for Telegram. Generating direct download link...")
-                download_link = get_direct_download_link(file_path)
+                
+                # Ensure we are in the app context for Flask functions
+                with current_app.app_context():
+                    download_link = get_direct_download_link(file_path)
+                
                 if download_link:
                     logger.info(f"✅ Direct download link generated: {download_link}")
                     return None, file_size, download_link
