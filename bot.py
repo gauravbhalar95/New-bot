@@ -11,7 +11,7 @@ from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
-from handlers.youtube_handler import process_youtube, extract_audio, extract_audio_ffmpeg
+from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
@@ -49,8 +49,6 @@ def detect_platform(url):
 def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
-
-
 
 # Background download function
 async def background_download(message, url):
@@ -147,11 +145,9 @@ async def handle_message(message):
     await download_queue.put((message, url))
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
 
-
-
+# `/audio` Command for Audio Extraction
 @bot.message_handler(commands=["audio"])
 async def download_audio(message):
-    # URL એક્સ્ટ્રાક્ટ કરવા માટે વધુ મજબૂત લોજિક
     url = message.text.split(maxsplit=1)[1].strip() if len(message.text.split()) > 1 else None
 
     if not url:
@@ -160,7 +156,8 @@ async def download_audio(message):
 
     await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")
 
-    audio_file, file_size = await extract_audio_ffmpeg
+    # ✅ Correctly call extract_audio_ffmpeg with the URL parameter
+    audio_file, file_size = await extract_audio_ffmpeg(url)
 
     if audio_file:
         async with aiofiles.open(audio_file, "rb") as audio:
@@ -168,8 +165,6 @@ async def download_audio(message):
         os.remove(audio_file)
     else:
         await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")
-
-
 
 # Main async function
 async def main():
