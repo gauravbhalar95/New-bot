@@ -137,9 +137,9 @@ async def background_download(message, url):
             async with aiofiles.open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
-        # Send video file
+        # Send video file with increased timeout
         async with aiofiles.open(file_path, "rb") as video:
-            await bot.send_video(message.chat.id, video, supports_streaming=True)
+            await bot.send_video(message.chat.id, video, supports_streaming=True, timeout=600)
 
         # Cleanup
         for path in [file_path, thumbnail_path]:
