@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import yt_dlp
 import logging
@@ -35,6 +36,16 @@ async def process_youtube(url):
     except Exception as e:
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
+
+
+
+
+async def extract_url(message):
+    # Extract URL using regex
+    url_pattern = r"(https?://[^\s]+)"
+    match = re.search(url_pattern, message)
+    return match.group(0) if match else None
+
 
 async def extract_audio(url):
     """Download and extract audio from a YouTube video asynchronously."""
