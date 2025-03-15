@@ -9,29 +9,31 @@ from utils.logger import setup_logging
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
 
+# Download video logic
 async def process_youtube(url):
     """Download video using yt-dlp asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    # ✅ Await sanitize_filename() before passing it to yt-dlp
     sanitized_title = await sanitize_filename("%(title)s")
+    video_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp4")
 
     ydl_opts = {
         'format': 'bv+ba/b',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitized_title}.%(ext)s',
+        'outtmpl': video_path,
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
         'logger': logger,
         'verbose': True,
     }
+
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
-                return None, 0, None 
+                return None, 0, None
 
             file_path = ydl.prepare_filename(info_dict)
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -40,16 +42,17 @@ async def process_youtube(url):
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
 
+# Extract audio logic
 async def extract_audio(url):
     """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    # ✅ Await sanitize_filename() before passing it to yt-dlp
     sanitized_title = await sanitize_filename("%(title)s")
+    audio_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp3")
 
     audio_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitized_title}.%(ext)s',
+        'outtmpl': audio_path,
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -59,6 +62,7 @@ async def extract_audio(url):
         'logger': logger,
         'verbose': True,
     }
+
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(audio_opts) as ydl:
@@ -74,17 +78,15 @@ async def extract_audio(url):
         logger.error(f"⚠️ Error extracting audio: {e}")
         return None, 0
 
-# Async function to extract audio using ffmpeg
+# FFmpeg-based audio extraction
 async def extract_audio_ffmpeg(video_path: str, audio_path: str) -> bool:
     """Converts video to audio using FFmpeg."""
     try:
         cmd = [
             "ffmpeg", "-i", video_path,
-            "-vn",            # No video output
-            "-acodec", "libmp3lame", 
-            "-b:a", "192k", 
-            "-y",             # Overwrite if file exists
-            audio_path
+            "-vn", "-acodec", "libmp3lame",
+            "-b:a", "192k",
+            "-y", audio_path
         ]
         process = await asyncio.create_subprocess_exec(*cmd)
         await process.communicate()
@@ -93,31 +95,9 @@ async def extract_audio_ffmpeg(video_path: str, audio_path: str) -> bool:
         logger.error(f"⚠️ FFmpeg error: {e}")
         return False
 
-# Async function to download video
-async def download_video(url):
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    
-    sanitized_title = await sanitize_filename("%(title)s")
-    video_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp4")
-
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': video_path,
-        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
-        'logger': logger,
-    }
-
-    try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            await loop.run_in_executor(None, ydl.download, [url])
-        return video_path
-    except Exception as e:
-        logger.error(f"⚠️ Error downloading video: {e}")
-        return None
-
-# Async function to get video duration using ffprobe
+# Video duration retrieval
 async def get_video_duration(video_path: str) -> float:
+    """Retrieve video duration using ffprobe."""
     try:
         cmd = [
             "ffprobe", "-i", video_path,
