@@ -49,36 +49,7 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
-# M3U8 to MP4 conversion function
-async def convert_m3u8_to_mp4(m3u8_url, output_path):
-    command = [
-        "ffmpeg", "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", "-y", output_path
-    ]
 
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await process.communicate()
-
-    if process.returncode == 0 and os.path.exists(output_path):
-        return output_path
-    return None
-
-# Function to download a 1-minute best scene clip (Used only in `process_adult`)
-async def download_best_clip(video_url, duration):
-    """Extracts a 1-minute highlight scene from the video using FFmpeg."""
-    clip_path = "best_scene.mp4"
-    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
-    command = [
-        "ffmpeg", "-i", video_url, "-ss", str(start_time),
-        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
-        "-b:a", "128k", "-preset", "ultrafast", "-threads", "4", "-y", clip_path
-    ]
-
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    await process.communicate()
-
-    if process.returncode == 0 and os.path.exists(clip_path):
-        return clip_path
-    return None
 
 # Background download function
 async def background_download(message, url):
