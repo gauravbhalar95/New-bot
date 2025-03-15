@@ -11,7 +11,7 @@ from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
-from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
+from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg, extract_audio
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
@@ -28,7 +28,7 @@ download_queue = asyncio.Queue()
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
-    "YouTube": (["youtube.com", "youtu.be"], process_youtube),
+    "YouTube": (["youtube.com", "youtu.be"], process_youtube, extract_audio),
     "Instagram": (["instagram.com"], process_instagram),
     "Facebook": (["facebook.com"], process_facebook),
     "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
@@ -157,7 +157,7 @@ async def download_audio(message):
     await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")
 
     # ✅ Correctly call extract_audio_ffmpeg with the URL parameter
-    audio_file, file_size = await extract_audio_ffmpeg(url)
+    audio_file, file_size = await extract_audio(url)
 
     if audio_file:
         async with aiofiles.open(audio_file, "rb") as audio:
