@@ -12,9 +12,13 @@ logger = setup_logging(logging.DEBUG)
 async def process_youtube(url):
     """Download video using yt-dlp asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+    # ✅ Await sanitize_filename() before passing it to yt-dlp
+    sanitized_title = await sanitize_filename("%(title)s")
+
     ydl_opts = {
         'format': 'bv+ba/b',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitized_title}.%(ext)s',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -39,9 +43,13 @@ async def process_youtube(url):
 async def extract_audio(url):
     """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+    # ✅ Await sanitize_filename() before passing it to yt-dlp
+    sanitized_title = await sanitize_filename("%(title)s")
+
     audio_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitized_title}.%(ext)s',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
