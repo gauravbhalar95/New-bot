@@ -1,6 +1,11 @@
 import re
 import os
 import asyncio
+import mimetypes
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 async def sanitize_filename(filename, max_length=250):
     """
