@@ -27,7 +27,7 @@ async def process_youtube(message):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     ydl_opts = {
         'format': 'bv+ba/b',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -42,9 +42,10 @@ async def process_youtube(message):
                 logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
 
-            file_path = ydl.prepare_filename(info_dict)
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            return file_path, file_size, None
+            original_file_path = ydl.prepare_filename(info_dict)
+            renamed_file_path = rename_file(original_file_path)  # Renames and returns the new path
+            file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
+            return renamed_file_path, file_size, None
     except Exception as e:
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
@@ -59,7 +60,7 @@ async def extract_audio(message):
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     audio_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -77,9 +78,10 @@ async def extract_audio(message):
                 logger.error("❌ No info_dict returned. Audio download failed.")
                 return None, 0
 
-            audio_filename = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
-            file_size = os.path.getsize(audio_filename) if os.path.exists(audio_filename) else 0
-            return audio_filename, file_size
+            original_file_path = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
+            renamed_file_path = rename_file(original_file_path)  # Renames and returns the new path
+            file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
+            return renamed_file_path, file_size
     except Exception as e:
         logger.error(f"⚠️ Error extracting audio: {e}")
         return None, 0
