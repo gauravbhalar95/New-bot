@@ -151,7 +151,8 @@ async def handle_message(message):
 
 @bot.message_handler(commands=["audio"])
 async def download_audio(message):
-    url = message.text.replace("/audio", "").strip()
+    # URL એક્સ્ટ્રાક્ટ કરવા માટે વધુ મજબૂત લોજિક
+    url = message.text.split(maxsplit=1)[1].strip() if len(message.text.split()) > 1 else None
 
     if not url:
         await bot.send_message(message.chat.id, "❌ **Please provide a valid YouTube URL.**")
