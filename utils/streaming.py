@@ -84,3 +84,17 @@ async def handle_video_request(bot, chat_id, url):
 
     clip_path = await download_best_clip(video_url, duration)
     await send_download_options(bot, chat_id, video_url, clip_path, filesize)
+
+# M3U8 to MP4 conversion function
+async def convert_m3u8_to_mp4(m3u8_url, output_path):
+    command = [
+        "ffmpeg", "-i", m3u8_url, "-c", "copy", "-bsf:a", "aac_adtstoasc", "-y", output_path
+    ]
+
+    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    await process.communicate()
+
+    if process.returncode == 0 and os.path.exists(output_path):
+        return output_path
+    return None
+
