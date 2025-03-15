@@ -28,7 +28,7 @@ download_queue = asyncio.Queue()
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
-    "YouTube": (["youtube.com", "youtu.be"], process_youtube),
+    "YouTube": (["youtube.com", "youtu.be"], process_youtube, extract_audio_ffmpeg),
     "Instagram": (["instagram.com"], process_instagram),
     "Facebook": (["facebook.com"], process_facebook),
     "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),
