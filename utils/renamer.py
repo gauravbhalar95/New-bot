@@ -19,6 +19,7 @@ async def get_file_extension(file_path):
 
 async def rename_file(old_path, new_path):
     """Asynchronously rename a file."""
+    logging.debug(f"rename_file() called with: old_path={old_path}, new_path={new_path}")
     loop = asyncio.get_running_loop()
     try:
         await loop.run_in_executor(None, os.rename, old_path, new_path)
@@ -34,6 +35,10 @@ async def rename_files_in_directory(directory):
 
     renamed_files = {}
     files = sorted([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+
+    if not files:
+        logging.info(f"No files found in directory: {directory}")
+        return renamed_files
 
     tasks = []
     for index, filename in enumerate(files, start=1):
@@ -52,6 +57,28 @@ async def rename_files_in_directory(directory):
         if old_path != new_path:
             tasks.append(asyncio.create_task(rename_file(old_path, new_path)))
             renamed_files[filename] = new_filename
+        else:
+            logging.info(f"Skipping (already renamed): {old_path}")
 
     await asyncio.gather(*tasks)  # Run all rename operations concurrently
     return renamed_files
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 2:
+        print("Usage: python rename_files.py <directory>")
+        sys.exit(1)
+
+    directory = sys.argv[1]
+
+    try:
+        renamed_files = asyncio.run(rename_files_in_directory(directory))
+        if renamed_files:
+            print("Renamed files:")
+            for old, new in renamed_files.items():
+                print(f"{old} ➔ {new}")
+        else:
+            print("No files were renamed.")
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
