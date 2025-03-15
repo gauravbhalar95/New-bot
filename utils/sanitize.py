@@ -38,3 +38,25 @@ async def sanitize_filename(filename, max_length=250):
 
     return await loop.run_in_executor(None, clean)
 
+# Example usage in an async function
+async def main():
+    # Test example
+    original_filename = "example video??*<>|.mp4"
+    sanitized_filename = await sanitize_filename(original_filename)
+    logging.info(f"Original: {original_filename}")
+    logging.info(f"Sanitized: {sanitized_filename}")
+
+# Example usage in a sync function
+def sync_function():
+    original_filename = "example video??*<>|.mp4"
+    sanitized_filename = asyncio.run(sanitize_filename(original_filename))
+    print(f"Original: {original_filename}")
+    print(f"Sanitized: {sanitized_filename}")
+
+# Run the example
+if __name__ == "__main__":
+    # Async example
+    asyncio.run(main())
+
+    # Sync example
+    sync_function()
