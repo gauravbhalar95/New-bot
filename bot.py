@@ -166,6 +166,13 @@ async def download_audio(message):
     else:
         await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")
 
+
+@bot.message_handler(commands=["ping"])
+async def ping(message):
+    await bot.send_message(message.chat.id, "🏓 Pong!")
+    logger.info("✅ Received /ping command.")
+
+
 # Main async function
 async def main():
     """Starts the bot with 3 parallel download workers."""
