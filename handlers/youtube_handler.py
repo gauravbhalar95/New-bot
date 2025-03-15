@@ -32,22 +32,29 @@ async def process_youtube(message):
         'socket_timeout': 10,
         'retries': 5,
         'logger': logger,
-        'verbose': True,
+        'noprogress': True,
+        'quiet': True,
+        'merge_output_format': 'mp4',  # Ensures final file is .mp4
     }
+
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, download=True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
 
             original_file_path = ydl.prepare_filename(info_dict)
+            if not original_file_path or not os.path.exists(original_file_path):
+                logger.error(f"❌ Downloaded file not found: {original_file_path}")
+                return None, 0, None
+
             ext = await get_file_extension(original_file_path) or ".mp4"
             new_filename = sanitize_filename(f"{info_dict['title']}{ext}")
             renamed_file_path = os.path.join(DOWNLOAD_DIR, new_filename)
 
-            await rename_file(original_file_path, renamed_file_path)  # Corrected
+            await rename_file(original_file_path, renamed_file_path)
             file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
             return renamed_file_path, file_size, None
     except Exception as e:
@@ -72,21 +79,29 @@ async def extract_audio(message):
             'preferredquality': '192',
         }],
         'logger': logger,
-        'verbose': True,
+        'noprogress': True,
+        'quiet': True,
     }
+
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(audio_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, download=True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Audio download failed.")
                 return None, 0
 
-            original_file_path = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
+            original_file_path = ydl.prepare_filename(info_dict)
+            original_file_path = original_file_path.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+
+            if not original_file_path or not os.path.exists(original_file_path):
+                logger.error(f"❌ Downloaded audio file not found: {original_file_path}")
+                return None, 0
+
             new_filename = sanitize_filename(f"{info_dict['title']}.mp3")
             renamed_file_path = os.path.join(DOWNLOAD_DIR, new_filename)
 
-            await rename_file(original_file_path, renamed_file_path)  # Corrected
+            await rename_file(original_file_path, renamed_file_path)
             file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
             return renamed_file_path, file_size
     except Exception as e:
