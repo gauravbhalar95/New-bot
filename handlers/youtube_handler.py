@@ -10,8 +10,19 @@ from utils.logger import setup_logging
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
 
-async def process_youtube(url):
-    """Download video using yt-dlp asynchronously."""
+async def extract_url(message):
+    """Extract the first valid URL from the message."""
+    url_pattern = r"(https?://[^\s]+)"
+    match = re.search(url_pattern, message)
+    return match.group(0) if match else None
+
+async def process_youtube(message):
+    """Download video using yt-dlp asynchronously after extracting the URL."""
+    url = await extract_url(message)
+    if not url:
+        logger.error("❌ No valid URL found in the message.")
+        return None, 0, None
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     ydl_opts = {
         'format': 'bv+ba/b',
@@ -37,18 +48,13 @@ async def process_youtube(url):
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
 
+async def extract_audio(message):
+    """Download and extract audio asynchronously after extracting the URL."""
+    url = await extract_url(message)
+    if not url:
+        logger.error("❌ No valid URL found in the message.")
+        return None, 0
 
-
-
-async def extract_url(message):
-    # Extract URL using regex
-    url_pattern = r"(https?://[^\s]+)"
-    match = re.search(url_pattern, message)
-    return match.group(0) if match else None
-
-
-async def extract_audio(url):
-    """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     audio_opts = {
         'format': 'bestaudio/best',
