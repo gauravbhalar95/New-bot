@@ -6,7 +6,6 @@ import aiofiles
 import requests
 import telebot
 import psutil
-import subprocess
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
@@ -65,12 +64,15 @@ async def background_download(message, url):
         task = asyncio.create_task(handler(url))
         result = await task
 
-        if isinstance(result, tuple) and len(result) >= 3:
-            file_path, file_size, download_url = result[:3]
-            thumbnail_path = result[3] if len(result) > 3 else None
-        else:
-            await bot.send_message(message.chat.id, "❌ **Error processing video.**")
-            return
+        if isinstance(result, tuple):
+            if len(result) == 3:
+                file_path, file_size, download_url = result
+            elif len(result) == 2:
+                file_path, file_size = result
+                download_url = None
+            else:
+                await bot.send_message(message.chat.id, "❌ **Error processing video.**")
+                return
 
         # Handle M3U8 links by converting to MP4
         if file_path and file_path.endswith(".m3u8"):
@@ -89,7 +91,7 @@ async def background_download(message, url):
                     disable_web_page_preview=True
                 )
 
-                # ✅ Only extract best 1-minute clip if it's an adult video
+                # ✅ Extract 1-minute clip if it's an adult video
                 if handler == process_adult:
                     clip_path = await download_best_clip(download_url, file_size)
                     if clip_path:
@@ -102,7 +104,7 @@ async def background_download(message, url):
 
         log_memory_usage()
 
-        # ✅ Only send thumbnail if it's an adult video
+        # ✅ Send thumbnail if available
         if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):
             async with aiofiles.open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
@@ -166,12 +168,11 @@ async def download_audio(message):
     else:
         await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")
 
-
+# `/ping` Command for Checking Bot Status
 @bot.message_handler(commands=["ping"])
 async def ping(message):
     await bot.send_message(message.chat.id, "🏓 Pong!")
     logger.info("✅ Received /ping command.")
-
 
 # Main async function
 async def main():
