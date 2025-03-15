@@ -14,12 +14,9 @@ async def process_youtube(url):
     """Download video using yt-dlp asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    sanitized_title = await sanitize_filename("%(title)s")
-    video_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp4")
-
     ydl_opts = {
         'format': 'bv+ba/b',
-        'outtmpl': video_path,
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'socket_timeout': 10,
         'retries': 5,
@@ -36,8 +33,9 @@ async def process_youtube(url):
                 return None, 0, None
 
             file_path = ydl.prepare_filename(info_dict)
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            return file_path, file_size, None
+            sanitized_file_path = await sanitize_filename(file_path)
+            file_size = os.path.getsize(sanitized_file_path) if os.path.exists(sanitized_file_path) else 0
+            return sanitized_file_path, file_size, None
     except Exception as e:
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, None
@@ -47,12 +45,9 @@ async def extract_audio(url):
     """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    sanitized_title = await sanitize_filename("%(title)s")
-    audio_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp3")
-
     audio_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': audio_path,
+        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
