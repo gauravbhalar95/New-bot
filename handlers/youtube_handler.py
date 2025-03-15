@@ -40,7 +40,7 @@ async def process_youtube(message):
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, download=True)
+            info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
@@ -86,7 +86,7 @@ async def extract_audio(message):
     try:
         loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(audio_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, download=True)
+            info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             if not info_dict:
                 logger.error("❌ No info_dict returned. Audio download failed.")
                 return None, 0
