@@ -73,3 +73,62 @@ async def extract_audio(url):
     except Exception as e:
         logger.error(f"⚠️ Error extracting audio: {e}")
         return None, 0
+
+# Async function to extract audio using ffmpeg
+async def extract_audio_ffmpeg(video_path: str, audio_path: str) -> bool:
+    """Converts video to audio using FFmpeg."""
+    try:
+        cmd = [
+            "ffmpeg", "-i", video_path,
+            "-vn",            # No video output
+            "-acodec", "libmp3lame", 
+            "-b:a", "192k", 
+            "-y",             # Overwrite if file exists
+            audio_path
+        ]
+        process = await asyncio.create_subprocess_exec(*cmd)
+        await process.communicate()
+        return os.path.exists(audio_path) and os.path.getsize(audio_path) > 0
+    except Exception as e:
+        logger.error(f"⚠️ FFmpeg error: {e}")
+        return False
+
+# Async function to download video
+async def download_video(url):
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    
+    sanitized_title = await sanitize_filename("%(title)s")
+    video_path = os.path.join(DOWNLOAD_DIR, f"{sanitized_title}.mp4")
+
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': video_path,
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+        'logger': logger,
+    }
+
+    try:
+        loop = asyncio.get_running_loop()
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            await loop.run_in_executor(None, ydl.download, [url])
+        return video_path
+    except Exception as e:
+        logger.error(f"⚠️ Error downloading video: {e}")
+        return None
+
+# Async function to get video duration using ffprobe
+async def get_video_duration(video_path: str) -> float:
+    try:
+        cmd = [
+            "ffprobe", "-i", video_path,
+            "-show_entries", "format=duration",
+            "-v", "quiet", "-of", "csv=p=0"
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await process.communicate()
+        return float(stdout.strip()) if stdout else 0
+    except Exception as e:
+        logger.error(f"⚠️ FFprobe error: {e}")
+        return 0
