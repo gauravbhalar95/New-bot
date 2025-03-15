@@ -11,7 +11,7 @@ from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
-from handlers.youtube_handler import process_youtube
+from handlers.youtube_handler import process_youtube, extract_audio
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
@@ -174,6 +174,29 @@ async def handle_message(message):
     url = message.text.strip()
     await download_queue.put((message, url))
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
+
+
+
+@bot.message_handler(commands=["audio"])
+async def download_audio(message):
+    url = message.text.replace("/audio", "").strip()
+
+    if not url:
+        await bot.send_message(message.chat.id, "❌ **Please provide a valid YouTube URL.**")
+        return
+
+    await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")
+
+    audio_file, file_size = await extract_audio(url)
+
+    if audio_file:
+        async with aiofiles.open(audio_file, "rb") as audio:
+            await bot.send_audio(message.chat.id, audio, caption="🎧 **Here's your MP3 file!**")
+        os.remove(audio_file)
+    else:
+        await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")
+
+
 
 # Main async function
 async def main():
