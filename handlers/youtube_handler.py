@@ -6,7 +6,7 @@ import logging
 from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.logger import setup_logging
-from utils.renamer import *
+from utils.renamer import rename_file, get_file_extension  # Ensure correct imports
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -43,7 +43,11 @@ async def process_youtube(message):
                 return None, 0, None 
 
             original_file_path = ydl.prepare_filename(info_dict)
-            renamed_file_path = rename_file(original_file_path)  # Renames and returns the new path
+            ext = await get_file_extension(original_file_path) or ".mp4"
+            new_filename = sanitize_filename(f"{info_dict['title']}{ext}")
+            renamed_file_path = os.path.join(DOWNLOAD_DIR, new_filename)
+
+            await rename_file(original_file_path, renamed_file_path)  # Corrected
             file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
             return renamed_file_path, file_size, None
     except Exception as e:
@@ -79,7 +83,10 @@ async def extract_audio(message):
                 return None, 0
 
             original_file_path = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
-            renamed_file_path = rename_file(original_file_path)  # Renames and returns the new path
+            new_filename = sanitize_filename(f"{info_dict['title']}.mp3")
+            renamed_file_path = os.path.join(DOWNLOAD_DIR, new_filename)
+
+            await rename_file(original_file_path, renamed_file_path)  # Corrected
             file_size = os.path.getsize(renamed_file_path) if os.path.exists(renamed_file_path) else 0
             return renamed_file_path, file_size
     except Exception as e:
