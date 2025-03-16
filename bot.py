@@ -105,7 +105,8 @@ async def background_download(message, url):
 
         log_memory_usage()
 
-        # ✅ Send thumbnail if available
+        # ✅ Generate and send thumbnail if available
+        thumbnail_path = await generate_thumbnail(file_path) if file_path else None
         if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):
             async with aiofiles.open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
