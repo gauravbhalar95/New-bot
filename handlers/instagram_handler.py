@@ -1,9 +1,9 @@
 import logging
-import os
-import yt_dlp
 import gc
 import asyncio
+from pathlib import Path
 from urllib.parse import urlparse
+import yt_dlp
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
@@ -24,7 +24,7 @@ def is_valid_url(url: str) -> bool:
     except ValueError:
         return False
 
-# Check if URL is an Instagram video
+# Identify Instagram Video
 def is_instagram_video(url: str) -> bool:
     """Identify if the given URL points to an Instagram video."""
     return any(x in url for x in ['/reel/', '/tv/', '/video/'])
@@ -38,33 +38,34 @@ def download_progress_hook(d: dict) -> None:
         eta = d.get('_eta_str', 'N/A')
         logger.info(f"Downloading... {percent} at {speed}, ETA: {eta}")
     elif d['status'] == 'finished':
-        logger.info(f"Download finished: {d['filename']}")
+        logger.info(f"✅ Download finished: {d['filename']}")
 
 # Instagram Video Downloader
-async def process_instagram(url: str) -> tuple:
+async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
     """Download Instagram video asynchronously and return its path, size, and any errors."""
-
+    
     # Clean URL to avoid unwanted parameters
     url = url.split('?')[0].split('#')[0]
 
-    # Check for valid cookies
-    if not os.path.exists(INSTAGRAM_FILE) or os.path.getsize(INSTAGRAM_FILE) == 0:
-        logger.error("Instagram cookies file is missing or empty!")
+    # Validate cookies
+    cookie_path = Path(INSTAGRAM_FILE)
+    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
+        logger.error("❌ Instagram cookies file is missing or empty!")
         return None, 0, "Instagram cookies file is missing or empty"
 
     ydl_opts = {
         'format': 'bv+ba/b',
         'merge_output_format': 'mp4',
-        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'outtmpl': str(Path(DOWNLOAD_DIR) / '%(title)s.%(ext)s'),
         'socket_timeout': 10,
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'verbose': True,
-        'cookiefile': INSTAGRAM_FILE,
-        'age_limit': 0,  # ✅ Bypass age restriction
+        'cookiefile': str(cookie_path),
+        'age_limit': 0,
         'extractor_args': {
             'instagram:ap_user': ['1'],
-            'instagram:viewport_width': ['1920'],  # Ensures correct layout extraction
+            'instagram:viewport_width': ['1920'],
         },
         'http_headers': {
             'User-Agent': (
@@ -77,21 +78,23 @@ async def process_instagram(url: str) -> tuple:
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Dest': 'document'
         },
-        'force_generic_extractor': True,  # ✅ Fallback in case Instagram extractor fails
+        'force_generic_extractor': True,
         'lazy_playlist': True
     }
 
     try:
-        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
             if info_dict:
-                video_path = ydl.prepare_filename(info_dict)
-                file_size = info_dict.get('filesize', 0)
-                return video_path, file_size, None
-            return None, 0, "Failed to extract info"
+                video_path = Path(ydl.prepare_filename(info_dict))
+                file_size = info_dict.get('filesize', video_path.stat().st_size if video_path.exists() else 0)
+                return str(video_path), file_size, None
+            return None, 0, "❌ Failed to extract info"
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"❌ Instagram download error: {e}")
+        return None, 0, str(e)
     except Exception as e:
-        logger.error(f"Error downloading Instagram video: {e}")
+        logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
         return None, 0, str(e)
 
 # Send Video to User
@@ -100,17 +103,18 @@ async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     try:
         with open(video_path, 'rb') as video:
             await bot.send_video(chat_id, video)
-        logger.info(f"Video successfully sent to user {chat_id}")
+        logger.info(f"✅ Video successfully sent to user {chat_id}")
     except Exception as e:
-        logger.error(f"Failed to send video to user {chat_id}: {e}")
+        logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
 
 # Cleanup Downloaded Files
 def cleanup_video(video_path: str) -> None:
     """Remove the downloaded video file to free up space."""
+    video_file = Path(video_path)
     try:
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        if video_file.exists():
+            video_file.unlink()
             gc.collect()
-            logger.info(f"Cleaned up {video_path}")
+            logger.info(f"🧹 Cleaned up {video_path}")
     except Exception as e:
-        logger.error(f"Failed to clean up {video_path}: {e}")
+        logger.error(f"❌ Failed to clean up {video_path}: {e}")
