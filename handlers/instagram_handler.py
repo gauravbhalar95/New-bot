@@ -44,12 +44,14 @@ def download_progress_hook(d: dict) -> None:
 async def process_instagram(url: str) -> tuple:
     """Download Instagram video asynchronously and return its path, size, and any errors."""
     
+    # Clean URL to avoid unwanted parameters
+    url = url.split('?')[0].split('#')[0]
+
     # Check for valid cookies
     if not os.path.exists(INSTAGRAM_FILE) or os.path.getsize(INSTAGRAM_FILE) == 0:
         logger.error("Instagram cookies file is missing or empty!")
         return None, 0, "Instagram cookies file is missing or empty"
 
-    # yt-dlp options
     ydl_opts = {
         'format': 'bv+ba/b',
         'merge_output_format': 'mp4',
@@ -59,7 +61,7 @@ async def process_instagram(url: str) -> tuple:
         'progress_hooks': [download_progress_hook],
         'verbose': True,
         'cookiefile': INSTAGRAM_FILE,
-        'no_check_certificate': True,  # Bypass SSL issues (if needed)
+        'no_check_certificate': True,
         'http_headers': {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -67,8 +69,9 @@ async def process_instagram(url: str) -> tuple:
                 'Chrome/123.0.0.0 Safari/537.36'
             ),
             'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
         },
-        'lazy_playlist': True  # Defers playlist evaluation for better stability
+        'lazy_playlist': True
     }
 
     try:
