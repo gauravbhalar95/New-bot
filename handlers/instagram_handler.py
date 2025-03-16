@@ -61,7 +61,8 @@ async def process_instagram(url: str) -> tuple:
         'progress_hooks': [download_progress_hook],
         'verbose': True,
         'cookiefile': INSTAGRAM_FILE,
-        'no_check_certificate': True,
+        'age_limit': 0,  # ✅ Bypass age restriction
+        'extractor_args': {'instagram:ap_user': ['1']},  # ✅ Instagram-specific access improvement
         'http_headers': {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
