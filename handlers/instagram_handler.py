@@ -43,7 +43,7 @@ def download_progress_hook(d: dict) -> None:
 # Instagram Video Downloader
 async def process_instagram(url: str) -> tuple:
     """Download Instagram video asynchronously and return its path, size, and any errors."""
-    
+
     # Clean URL to avoid unwanted parameters
     url = url.split('?')[0].split('#')[0]
 
@@ -62,16 +62,22 @@ async def process_instagram(url: str) -> tuple:
         'verbose': True,
         'cookiefile': INSTAGRAM_FILE,
         'age_limit': 0,  # ✅ Bypass age restriction
-        'extractor_args': {'instagram:ap_user': ['1']},  # ✅ Instagram-specific access improvement
+        'extractor_args': {
+            'instagram:ap_user': ['1'],
+            'instagram:viewport_width': ['1920'],  # Ensures correct layout extraction
+        },
         'http_headers': {
             'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) '
-                'Chrome/123.0.0.0 Safari/537.36'
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) '
+                'Gecko/20100101 Firefox/123.0'
             ),
             'Accept-Language': 'en-US,en;q=0.9',
             'Referer': 'https://www.instagram.com/',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Dest': 'document'
         },
+        'force_generic_extractor': True,  # ✅ Fallback in case Instagram extractor fails
         'lazy_playlist': True
     }
 
