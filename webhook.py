@@ -7,9 +7,6 @@ from telebot.async_telebot import AsyncTeleBot
 from urllib.parse import urljoin
 import asyncio
 from config import API_TOKEN, WEBHOOK_URL, PORT
-import telebot
-import requests
-import time
 
 
 # Load environment variables
@@ -29,16 +26,6 @@ WEBHOOK_PATH = urljoin(WEBHOOK_URL.rstrip('/'), f"/{API_TOKEN}")
 app = Flask(__name__)
 
 webhook_set = False  # Variable to track webhook status
-
-
-
-# Webhook હટાવવાનું ફંક્શન
-def delete_webhook():
-    response = requests.get(f"https://api.telegram.org/bot{API_TOKEN}/deleteWebhook")
-    if response.status_code == 200:
-        print("✅ Webhook successfully deleted.")
-    else:
-        print(f"❌ Failed to delete webhook: {response.text}")
 
 
 
