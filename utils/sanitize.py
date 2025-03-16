@@ -1,7 +1,6 @@
 import re
 import os
 import asyncio
-import mimetypes
 import logging
 
 # Configure logging
@@ -21,16 +20,8 @@ async def sanitize_filename(filename, max_length=250):
     loop = asyncio.get_running_loop()
 
     def clean():
-        # ✅ Replace invalid characters with an underscore
-        clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename)
-
-        # ✅ Remove leading and trailing whitespace
-        clean_name = clean_name.strip()
-
-        # ✅ Remove Unicode non-ASCII characters (better compatibility)
-        clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)
-
-        # ✅ Trim filename to max_length while keeping the extension
+        clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename).strip()
+        clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)  # Non-ASCII characters removed
         base, ext = os.path.splitext(clean_name)
         if len(base) > max_length - len(ext):
             base = base[:max_length - len(ext)]
@@ -39,24 +30,35 @@ async def sanitize_filename(filename, max_length=250):
     return await loop.run_in_executor(None, clean)
 
 # Example usage in an async function
-async def main():
-    # Test example
+async def async_example():
     original_filename = "example video??*<>|.mp4"
     sanitized_filename = await sanitize_filename(original_filename)
-    logging.info(f"Original: {original_filename}")
-    logging.info(f"Sanitized: {sanitized_filename}")
+    logging.info(f"Original (async): {original_filename}")
+    logging.info(f"Sanitized (async): {sanitized_filename}")
 
 # Example usage in a sync function
-def sync_function():
+def sync_example():
     original_filename = "example video??*<>|.mp4"
     sanitized_filename = asyncio.run(sanitize_filename(original_filename))
-    print(f"Original: {original_filename}")
-    print(f"Sanitized: {sanitized_filename}")
+    logging.info(f"Original (sync): {original_filename}")
+    logging.info(f"Sanitized (sync): {sanitized_filename}")
 
-# Run the example
+# Example integration with yt_dlp download logic
+async def download_video(url):
+    import yt_dlp
+    ydl_opts = {'outtmpl': 'downloads/%(title)s.%(ext)s', 'format': 'bestvideo+bestaudio/best'}
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(url, download=True)
+        video_title = info_dict.get('title', 'Unknown Title')
+        
+        # Correct usage of sanitize_filename with await
+        sanitized_title = await sanitize_filename(video_title)
+        download_path = f"downloads/{sanitized_title}.mp4"
+
+        logging.info(f"Downloaded: {download_path}")
+
+# Run the examples
 if __name__ == "__main__":
-    # Async example
-    asyncio.run(main())
-
-    # Sync example
-    sync_function()
+    asyncio.run(async_example())  # Async example
+    sync_example()                # Sync example
