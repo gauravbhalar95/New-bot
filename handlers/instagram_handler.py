@@ -4,7 +4,7 @@ import yt_dlp
 import gc
 import asyncio
 from urllib.parse import urlparse
-from config import DOWNLOAD_DIR, INSTAGRAM_FILE  # Ensure INSTAGRAM_FILE is set to your cookies file path
+from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
@@ -15,20 +15,23 @@ logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 # Supported Domains
 SUPPORTED_DOMAINS = ['instagram.com']
 
-# Validate URL
-def is_valid_url(url):
+# URL Validation
+def is_valid_url(url: str) -> bool:
+    """Check if the given URL is a valid Instagram link."""
     try:
         result = urlparse(url)
         return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
 
-# Check if the URL is a video
-def is_instagram_video(url):
+# Check if URL is an Instagram video
+def is_instagram_video(url: str) -> bool:
+    """Identify if the given URL points to an Instagram video."""
     return any(x in url for x in ['/reel/', '/tv/', '/video/'])
 
-# Progress Hook
-def download_progress_hook(d):
+# Progress Hook for Downloads
+def download_progress_hook(d: dict) -> None:
+    """Track and log download progress."""
     if d['status'] == 'downloading':
         percent = d.get('_percent_str', '0%')
         speed = d.get('_speed_str', 'N/A')
@@ -37,13 +40,16 @@ def download_progress_hook(d):
     elif d['status'] == 'finished':
         logger.info(f"Download finished: {d['filename']}")
 
-# Async Instagram Video Download
-async def process_instagram(url):
-    # Ensure cookies file exists
+# Instagram Video Downloader
+async def process_instagram(url: str) -> tuple:
+    """Download Instagram video asynchronously and return its path, size, and any errors."""
+    
+    # Check for valid cookies
     if not os.path.exists(INSTAGRAM_FILE) or os.path.getsize(INSTAGRAM_FILE) == 0:
         logger.error("Instagram cookies file is missing or empty!")
         return None, 0, "Instagram cookies file is missing or empty"
 
+    # yt-dlp options
     ydl_opts = {
         'format': 'bv+ba/b',
         'merge_output_format': 'mp4',
@@ -52,7 +58,17 @@ async def process_instagram(url):
         'retries': 5,
         'progress_hooks': [download_progress_hook],
         'verbose': True,
-        'cookiefile': INSTAGRAM_FILE,  # Use cookies for authentication
+        'cookiefile': INSTAGRAM_FILE,
+        'no_check_certificate': True,  # Bypass SSL issues (if needed)
+        'http_headers': {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/123.0.0.0 Safari/537.36'
+            ),
+            'Accept-Language': 'en-US,en;q=0.9',
+        },
+        'lazy_playlist': True  # Defers playlist evaluation for better stability
     }
 
     try:
@@ -63,23 +79,24 @@ async def process_instagram(url):
                 video_path = ydl.prepare_filename(info_dict)
                 file_size = info_dict.get('filesize', 0)
                 return video_path, file_size, None
-            else:
-                return None, 0, "Failed to extract info"
+            return None, 0, "Failed to extract info"
     except Exception as e:
         logger.error(f"Error downloading Instagram video: {e}")
         return None, 0, str(e)
 
 # Send Video to User
-async def send_video_to_user(bot, chat_id, video_path):
+async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
+    """Send the downloaded Instagram video to the specified user."""
     try:
         with open(video_path, 'rb') as video:
             await bot.send_video(chat_id, video)
-        logger.info(f"Video sent to user {chat_id}")
+        logger.info(f"Video successfully sent to user {chat_id}")
     except Exception as e:
         logger.error(f"Failed to send video to user {chat_id}: {e}")
 
-# Cleanup
-def cleanup_video(video_path):
+# Cleanup Downloaded Files
+def cleanup_video(video_path: str) -> None:
+    """Remove the downloaded video file to free up space."""
     try:
         if os.path.exists(video_path):
             os.remove(video_path)
