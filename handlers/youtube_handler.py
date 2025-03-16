@@ -5,6 +5,7 @@ import logging
 from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.logger import setup_logging
+from utils.thum_generator import *
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
