@@ -159,7 +159,7 @@ async def download_audio(message):
     await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")
 
     # ✅ Correctly call extract_audio_ffmpeg with the URL parameter
-    audio_file, file_size = await extract_audio(url)
+    audio_file, file_size = await extract_audio_ffmpeg(url)
 
     if audio_file:
         async with aiofiles.open(audio_file, "rb") as audio:
