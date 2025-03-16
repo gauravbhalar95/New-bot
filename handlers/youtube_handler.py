@@ -110,3 +110,6 @@ async def get_video_duration(video_path: str) -> float:
     except Exception as e:
         logger.error(f"⚠️ FFprobe error: {e}")
     return 0
+
+if __name__ == "__main__":
+    asyncio.run(main())
