@@ -43,7 +43,7 @@ def set_webhook():
     global webhook_set
     try:
         if not webhook_set:
-            bot.remove_webhook()
+            await bot.remove_webhook()
             success = bot.set_webhook(url=WEBHOOK_PATH, timeout=120)
             if success:
                 webhook_set = True
