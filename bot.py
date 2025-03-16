@@ -17,7 +17,7 @@ from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
 from utils.streaming import *
-from thum_ganarator import *
+from thum_generator import *
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
