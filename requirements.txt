@@ -31,3 +31,4 @@ gunicorn
 quart
 dropbox
 flask[async]
+fastapi
