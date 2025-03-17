@@ -1,5 +1,5 @@
 import os
-import asyncio  # Added for async support
+import asyncio
 import urllib3
 import logging
 from flask import Flask, request, jsonify
@@ -23,37 +23,35 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 app = Flask(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
-async def webhook():
+def webhook():
     """Handles incoming Telegram updates."""
     try:
         data = request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(data)
-        await bot.process_new_updates([update])
+        asyncio.create_task(bot.process_new_updates([update]))
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error processing update: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/')
-async def set_webhook():
+def set_webhook():
     """Sets the Telegram webhook."""
     try:
-        await bot.remove_webhook()
-        success = await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-        if success:
-            return "Webhook set successfully", 200
-        else:
-            return "Failed to set webhook", 500
+        asyncio.create_task(bot.remove_webhook())
+        asyncio.create_task(bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60))
+        return "Webhook set successfully", 200
     except Exception as e:
         logger.error(f"Webhook setup failed: {e}")
         return f"Error: {str(e)}", 500
 
-async def start_app():
-    """Handles async setup before starting the Flask app."""
+async def start_bot():
+    """Handles async setup for Telegram bot."""
     await bot.remove_webhook()
     await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}")
     logger.info(f"Starting Flask webhook server on port {PORT}...")
-    app.run(host='0.0.0.0', port=PORT, debug=True)
 
 if __name__ == '__main__':
-    asyncio.run(start_app())
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_bot())
+    app.run(host='0.0.0.0', port=PORT, debug=True)
