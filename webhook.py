@@ -16,45 +16,23 @@ logger = logging.getLogger(__name__)
 # Initialize bot
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 
-# Flask app for webhook
-app = Flask(__name__)
+from quart import Quart, request
+import telebot
+import asyncio
+
+app = Quart(__name__)
 
 @app.route('/' + API_TOKEN, methods=['POST'])
-def webhook():
-    """Handles incoming Telegram updates."""
-    try:
-        data = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(data)
-        bot.process_new_updates([update])
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        logger.error(f"Error processing update: {e}")
-        return jsonify({"error": str(e)}), 500
+async def webhook():
+    data = await request.stream.read()
+    bot.process_new_updates([telebot.types.Update.de_json(data.decode("utf-8"))])
+    return "OK", 200
 
-@app.route('/set_webhook')
-def set_webhook():
-    """Manually sets the Telegram webhook."""
-    try:
-        bot.remove_webhook()
-        success = bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-        if success:
-            return "Webhook set successfully", 200
-        else:
-            return "Failed to set webhook", 500
-    except Exception as e:
-        logger.error(f"Webhook setup failed: {e}")
-        return f"Error: {str(e)}", 500
-
-@app.route('/delete_webhook')
-def delete_webhook():
-    """Deletes the current Telegram webhook."""
-    try:
-        bot.remove_webhook()
-        return "Webhook deleted successfully", 200
-    except Exception as e:
-        logger.error(f"Failed to delete webhook: {e}")
-        return f"Error: {str(e)}", 500
+@app.route('/')
+async def set_webhook():
+    bot.remove_webhook()
+    await asyncio.to_thread(bot.set_webhook, url=WEBHOOK_URL + '/' + API_TOKEN, timeout=60)
+    return "Webhook set", 200
 
 if __name__ == '__main__':
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
     app.run(host='0.0.0.0', port=PORT)
