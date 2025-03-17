@@ -24,42 +24,39 @@ WEBHOOK_PATH = urljoin(WEBHOOK_URL.rstrip('/'), f"/{API_TOKEN}")
 # Flask app for webhook
 app = Flask(__name__)
 
-webhook_set = False  # Variable to track webhook status
-
 @app.route('/' + API_TOKEN, methods=['POST'])
-def webhook():
+async def webhook():
     """Handles incoming Telegram updates asynchronously."""
     try:
         data = request.get_data().decode("utf-8")
         update = telebot.types.Update.de_json(data)
-        asyncio.run(bot.process_new_updates([update]))
+        await bot.process_new_updates([update])
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error processing update: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/')
-def set_webhook():
-    """Sets the Telegram webhook and confirms with getUpdates."""
-    global webhook_set
+async def set_webhook():
+    """Ensures webhook is correctly set and handles conflicts automatically."""
     try:
-        if not webhook_set:
-            asyncio.run(bot.remove_webhook())
-            success = asyncio.run(bot.set_webhook(url=WEBHOOK_PATH, timeout=120))
-            if success:
-                webhook_set = True
-                # Confirm webhook by calling getUpdates
-                updates = asyncio.run(bot.get_updates(timeout=5))
-                if updates:
-                    logger.info("Webhook confirmed with getUpdates.")
-                    return "Webhook set and confirmed successfully", 200
-                else:
-                    logger.warning("Webhook set but no updates received via getUpdates.")
-                    return "Webhook set but getUpdates returned no data", 200
-            else:
-                return "Failed to set webhook", 500
+        logger.info("Checking existing webhook status...")
+        webhook_info = await bot.get_webhook_info()
+
+        # If a conflicting webhook is found, remove it
+        if webhook_info.url:
+            logger.warning(f"Conflict detected: Existing webhook URL -> {webhook_info.url}")
+            await bot.remove_webhook()
+            logger.info("Previous webhook removed successfully.")
+
+        # Set the new webhook
+        success = await bot.set_webhook(url=WEBHOOK_PATH, timeout=120)
+        if success:
+            logger.info("Webhook successfully set.")
+            return "Webhook set successfully", 200
         else:
-            return "Webhook already set", 200
+            logger.error("Failed to set webhook.")
+            return "Failed to set webhook", 500
     except Exception as e:
         logger.error(f"Webhook setup failed: {e}")
         return f"Error: {str(e)}", 500
@@ -67,6 +64,7 @@ def set_webhook():
 if __name__ == '__main__':
     try:
         logger.info(f"Starting Flask webhook server on port {PORT}...")
+        asyncio.run(set_webhook())  # Ensure webhook is set before running
         app.run(host='0.0.0.0', port=PORT)
         logger.info(f"Flask webhook server stopped.")
     except Exception as e:
