@@ -63,7 +63,7 @@ async def set_webhook():
         logger.error(f"Webhook setup failed: {e}")
         return f"Error: {str(e)}", 500
 
-@app.before_first_request
+@app.before_request
 async def startup():
     """Ensure webhook is set before starting the Flask server."""
     await set_webhook()
