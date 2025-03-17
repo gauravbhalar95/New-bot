@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import telebot
 from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, WEBHOOK_URL, PORT
+from utils.logger import *
 
 # Load environment variables
 load_dotenv()
