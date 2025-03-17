@@ -1,4 +1,5 @@
 import os
+import urllib3
 import logging
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
