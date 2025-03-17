@@ -8,7 +8,6 @@ from urllib.parse import urljoin
 import asyncio
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
-
 # Load environment variables
 load_dotenv()
 
@@ -27,8 +26,6 @@ app = Flask(__name__)
 
 webhook_set = False  # Variable to track webhook status
 
-
-
 @app.route('/' + API_TOKEN, methods=['POST'])
 def webhook():
     """Handles incoming Telegram updates asynchronously."""
@@ -43,7 +40,7 @@ def webhook():
 
 @app.route('/')
 def set_webhook():
-    """Sets the Telegram webhook."""
+    """Sets the Telegram webhook and confirms with getUpdates."""
     global webhook_set
     try:
         if not webhook_set:
@@ -51,7 +48,14 @@ def set_webhook():
             success = asyncio.run(bot.set_webhook(url=WEBHOOK_PATH, timeout=120))
             if success:
                 webhook_set = True
-                return "Webhook set successfully", 200
+                # Confirm webhook by calling getUpdates
+                updates = asyncio.run(bot.get_updates(timeout=5))
+                if updates:
+                    logger.info("Webhook confirmed with getUpdates.")
+                    return "Webhook set and confirmed successfully", 200
+                else:
+                    logger.warning("Webhook set but no updates received via getUpdates.")
+                    return "Webhook set but getUpdates returned no data", 200
             else:
                 return "Failed to set webhook", 500
         else:
@@ -64,6 +68,6 @@ if __name__ == '__main__':
     try:
         logger.info(f"Starting Flask webhook server on port {PORT}...")
         app.run(host='0.0.0.0', port=PORT)
-        logger.info(f"Flask webhook server stopped.")  # Add stop logging
+        logger.info(f"Flask webhook server stopped.")
     except Exception as e:
         logger.error(f"Server failed to start: {e}")
