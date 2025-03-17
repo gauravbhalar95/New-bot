@@ -6,6 +6,7 @@ import telebot
 from telebot.async_telebot import AsyncTeleBot
 from urllib.parse import urljoin
 import asyncio
+import time
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
 # Load environment variables
@@ -44,9 +45,10 @@ async def set_webhook():
         webhook_info = await bot.get_webhook_info()
 
         # If a conflicting webhook is found, remove it
-        if webhook_info.url:
+        if webhook_info.url and webhook_info.url != WEBHOOK_PATH:
             logger.warning(f"Conflict detected: Existing webhook URL -> {webhook_info.url}")
             await bot.remove_webhook()
+            time.sleep(2)  # Delay to ensure Telegram clears the old webhook
             logger.info("Previous webhook removed successfully.")
 
         # Set the new webhook
@@ -61,10 +63,14 @@ async def set_webhook():
         logger.error(f"Webhook setup failed: {e}")
         return f"Error: {str(e)}", 500
 
+@app.before_first_request
+async def startup():
+    """Ensure webhook is set before starting the Flask server."""
+    await set_webhook()
+
 if __name__ == '__main__':
     try:
         logger.info(f"Starting Flask webhook server on port {PORT}...")
-        asyncio.run(set_webhook())  # Ensure webhook is set before running
         app.run(host='0.0.0.0', port=PORT)
         logger.info(f"Flask webhook server stopped.")
     except Exception as e:
