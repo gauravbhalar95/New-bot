@@ -1,29 +1,33 @@
-FROM python:3.13
+FROM python:3.13-slim
 
 WORKDIR /app
 
+# Install dependencies efficiently
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Python dependencies
 COPY requirements.txt /app/
-
 RUN python -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --upgrade yt-dlp && \
     pip install --no-cache-dir -r requirements.txt
 
+# Copy source code
 COPY . /app/
 
+# Make update.sh executable
 RUN chmod +x /app/update.sh
 
+# Expose the port
 EXPOSE 8080
 
+# Environment variables
 ENV PYTHONUNBUFFERED=1 \
-    FLASK_ENV=production \
+    QUART_ENV=production \
     PORT=8080
 
-
-CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:8080 webhook:app & python bot.py && tail -f /dev/null"]
+# Start the server with proper async support
+CMD ["bash", "-c", "/app/update.sh && hypercorn app:app --bind 0.0.0.0:8080"]
