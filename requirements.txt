@@ -32,3 +32,4 @@ quart
 dropbox
 flask[async]
 fastapi
+Quart
