@@ -30,4 +30,4 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8080
 
 # Start the server with proper async support
-CMD ["bash", "-c", "/app/update.sh && hypercorn webhook:app --bind 0.0.0.0:8080"]
+CMD ["bash", "-c", "/app/update.sh && hypercorn webhook:app --bind 0.0.0.0:8080 & \ python bot.py"]
