@@ -29,13 +29,18 @@ async def compress_video(input_file, output_file):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
-    _, stderr = await process.communicate()
 
-    if process.returncode == 0:
-        logger.info(f"✅ Video compressed successfully: {output_file}")
-        return output_file
-    else:
-        logger.error(f"❌ Compression failed: {stderr.decode().strip()}")
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5-minute timeout
+        if process.returncode == 0:
+            logger.info(f"✅ Video compressed successfully: {output_file}")
+            return output_file
+        else:
+            logger.error(f"❌ Compression failed: {stderr.decode().strip()}")
+            return None
+    except asyncio.TimeoutError:
+        logger.error("❌ FFmpeg compression timed out.")
+        process.kill()
         return None
 
 @asynccontextmanager
@@ -65,7 +70,7 @@ async def process_adult(url):
 
     try:
         async with yt_dlp_context(ydl_opts) as ydl:
-            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
+            info_dict = await asyncio.to_thread(ydl.extract_info, url, download=True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
@@ -97,27 +102,39 @@ async def process_adult(url):
                 compressed_file_path = file_path.with_stem(f"{file_path.stem}_compressed")
                 compressed_file = await compress_video(str(file_path), str(compressed_file_path))
 
-                if compressed_file and Path(compressed_file).stat().st_size < TELEGRAM_FILE_LIMIT:
-                    logger.info(f"✅ Compressed file within limit: {compressed_file}")
-                    return compressed_file, Path(compressed_file).stat().st_size, thumbnail_path
+                if compressed_file:
+                    compressed_size = Path(compressed_file).stat().st_size
+                    if compressed_size < TELEGRAM_FILE_LIMIT:
+                        logger.info(f"✅ Compressed file within limit: {compressed_file}")
+                        return compressed_file, compressed_size, thumbnail_path
 
                 logger.warning("⚠️ Compression failed or file still too large. Generating download link...")
 
-                with current_app.app_context():
-                    download_link = get_direct_download_link(str(file_path))
-
-                if download_link:
-                    logger.info(f"✅ Direct download link generated: {download_link}")
-                    return None, file_size, download_link
-
-                logger.error("❌ Direct download link generation failed.")
-                return None, file_size, None
+                try:
+                    with current_app.app_context():
+                        download_link = get_direct_download_link(str(file_path))
+                    if download_link:
+                        logger.info(f"✅ Direct download link generated: {download_link}")
+                        return None, file_size, download_link
+                    else:
+                        logger.error("❌ Direct download link generation failed.")
+                        return None, file_size, None
+                except Exception as e:
+                    logger.error(f"⚠️ Error generating download link: {e}")
+                    return None, file_size, None
 
             return str(file_path), file_size, thumbnail_path
 
-    except yt_dlp.DownloadError as e:
+    except yt_dlp.utils.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
+    except OSError as e:
+        logger.error(f"❌ File system error: {e}")
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
+
+    # Cleanup incomplete files to save disk space
+    if file_path and file_path.exists() and file_size == 0:
+        file_path.unlink()
+        logger.info(f"🧹 Removed incomplete file: {file_path}")
 
     return None, 0, None
