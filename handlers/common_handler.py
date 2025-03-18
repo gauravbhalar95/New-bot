@@ -2,6 +2,8 @@ import os
 import asyncio
 import yt_dlp
 import logging
+from pathlib import Path
+from contextlib import asynccontextmanager
 from utils.logger import setup_logging
 from utils.sanitize import sanitize_filename
 from utils.renamer import rename_file
@@ -36,9 +38,15 @@ async def compress_video(input_file, output_file):
         logger.error(f"❌ Compression failed: {stderr.decode().strip()}")
         return None
 
+@asynccontextmanager
+async def yt_dlp_context(ydl_opts):
+    """Context manager for yt-dlp instance."""
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        yield ydl
+
 async def process_adult(url):
     """Download adult video asynchronously using yt-dlp."""
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
     ydl_opts = {
         'format': 'best',
@@ -56,28 +64,27 @@ async def process_adult(url):
     }
 
     try:
-        loop = asyncio.get_running_loop()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+        async with yt_dlp_context(ydl_opts) as ydl:
+            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
                 return None, 0, None 
 
-            file_path = ydl.prepare_filename(info_dict)
+            file_path = Path(ydl.prepare_filename(info_dict))
 
-            if not os.path.exists(file_path):
+            if not file_path.exists():
                 logger.error("❌ Downloaded file not found.")
                 return None, 0, None
 
-            sanitized_filename = sanitize_filename(os.path.basename(file_path))
-            new_path = os.path.join(DOWNLOAD_DIR, sanitized_filename)
-            await rename_file(file_path, new_path)
+            sanitized_filename = sanitize_filename(file_path.name)
+            new_path = file_path.parent / sanitized_filename
+            await rename_file(str(file_path), str(new_path))
             file_path = new_path  
 
-            file_size = os.path.getsize(file_path)
+            file_size = file_path.stat().st_size
             logger.info(f"✅ File Size: {file_size / (1024 * 1024):.2f} MB")
 
-            thumbnail_path = await generate_thumbnail(file_path)
+            thumbnail_path = await generate_thumbnail(str(file_path))
             if thumbnail_path:
                 logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
             else:
@@ -87,17 +94,17 @@ async def process_adult(url):
             if file_size > TELEGRAM_FILE_LIMIT:
                 logger.info("⚠️ File too large for Telegram. Compressing video...")
 
-                compressed_file_path = file_path.replace(".mp4", "_compressed.mp4")
-                compressed_file = await compress_video(file_path, compressed_file_path)
+                compressed_file_path = file_path.with_stem(f"{file_path.stem}_compressed")
+                compressed_file = await compress_video(str(file_path), str(compressed_file_path))
 
-                if compressed_file and os.path.getsize(compressed_file) < TELEGRAM_FILE_LIMIT:
+                if compressed_file and Path(compressed_file).stat().st_size < TELEGRAM_FILE_LIMIT:
                     logger.info(f"✅ Compressed file within limit: {compressed_file}")
-                    return compressed_file, os.path.getsize(compressed_file), thumbnail_path
-                
+                    return compressed_file, Path(compressed_file).stat().st_size, thumbnail_path
+
                 logger.warning("⚠️ Compression failed or file still too large. Generating download link...")
 
                 with current_app.app_context():
-                    download_link = get_direct_download_link(file_path)
+                    download_link = get_direct_download_link(str(file_path))
 
                 if download_link:
                     logger.info(f"✅ Direct download link generated: {download_link}")
@@ -106,7 +113,7 @@ async def process_adult(url):
                 logger.error("❌ Direct download link generation failed.")
                 return None, file_size, None
 
-            return file_path, file_size, thumbnail_path
+            return str(file_path), file_size, thumbnail_path
 
     except yt_dlp.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
