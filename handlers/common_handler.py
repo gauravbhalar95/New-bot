@@ -69,7 +69,7 @@ async def process_adult(url):
                 logger.error("❌ Downloaded file not found.")
                 return None, 0, None
 
-            sanitized_filename = await sanitize_filename(os.path.basename(file_path))
+            sanitized_filename = sanitize_filename(os.path.basename(file_path))
             new_path = os.path.join(DOWNLOAD_DIR, sanitized_filename)
             await rename_file(file_path, new_path)
             file_path = new_path  
