@@ -77,18 +77,23 @@ async def background_download(message, url):
 
         # Handle M3U8 links by converting to MP4
         if file_path and file_path.endswith(".m3u8"):
-            converted_path = file_path.replace(".m3u8", ".mp4")
-            converted_path = await convert_m3u8_to_mp4(file_path, converted_path)
-            if converted_path:
-                file_path = converted_path
-                file_size = os.path.getsize(file_path)
+            try:
+                converted_path = file_path.replace(".m3u8", ".mp4")
+                converted_path = await convert_m3u8_to_mp4(file_path, converted_path)
+                if converted_path:
+                    file_path = converted_path
+                    file_size = os.path.getsize(file_path)
+            except Exception as e:
+                logger.error(f"Error converting M3U8 to MP4: {e}")
+                await bot.send_message(message.chat.id, "❌ **Failed to convert video format.**")
+                return
 
         # If file is too large, provide a direct download link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
             if download_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Download here:** [Click]({download_url})",
+                    f"⚠️ **The video is too large for Telegram.**\n📥 [Download here]({download_url})",
                     disable_web_page_preview=True
                 )
 
