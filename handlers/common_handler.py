@@ -53,6 +53,8 @@ async def process_adult(url):
     """Download adult video asynchronously using yt-dlp."""
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
+    file_path = None  # Initialize to avoid 'referenced before assignment' error
+
     ydl_opts = {
         'format': 'bv[height<=?720]',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
@@ -73,7 +75,7 @@ async def process_adult(url):
             info_dict = await asyncio.to_thread(ydl.extract_info, url, download=True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
-                return None, 0, None 
+                return None, 0, None
 
             file_path = Path(ydl.prepare_filename(info_dict))
 
@@ -133,8 +135,10 @@ async def process_adult(url):
         logger.error(f"⚠️ Unexpected error: {e}")
 
     # Cleanup incomplete files to save disk space
-    if file_path and file_path.exists() and file_size == 0:
-        file_path.unlink()
-        logger.info(f"🧹 Removed incomplete file: {file_path}")
+    if file_path and file_path.exists():
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            file_path.unlink()
+            logger.info(f"🧹 Removed incomplete file: {file_path}")
 
     return None, 0, None
