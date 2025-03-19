@@ -61,10 +61,9 @@ def detect_platform(url):
 async def login_mega(message):
     global mega_client
     try:
-        # Parse credentials
         args = message.text.split()
         if len(args) != 3:
-            await bot.send_message(message.chat.id, "Usage: /meganz <username> <password>")
+            await bot.send_message(message.chat.id, "❌ **Usage:** `/meganz <username> <password>`")
             return
 
         username, password = args[1], args[2]
@@ -73,14 +72,20 @@ async def login_mega(message):
         mega = Mega()
         mega_client = mega.login(username, password)
 
+        if not mega_client:
+            await bot.send_message(message.chat.id, "❌ **MEGA login failed. Please check your credentials.**")
+            return
+
         # Save credentials for future sessions
         user_credentials['username'] = username
         user_credentials['password'] = password
 
-        await bot.send_message(message.chat.id, "✅ **Logged into Mega.nz successfully!**")
+        await bot.send_message(message.chat.id, "✅ **Logged into MEGA successfully!**")
     except Exception as e:
-        logger.error(f"Error logging into Mega.nz: {e}")
-        await bot.send_message(message.chat.id, f"❌ **Failed to log in:** {e}")
+        error_message = str(e)
+        if "Expecting value" in error_message:
+            error_message = "Invalid MEGA response. Please try again later."
+        await bot.send_message(message.chat.id, f"❌ **Failed to log in:** {error_message}")
 
 async def background_download(message, url):
     try:
