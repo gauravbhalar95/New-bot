@@ -8,6 +8,7 @@ import telebot
 import psutil
 from queue import Queue
 from telebot.async_telebot import AsyncTeleBot
+from mega import Mega
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg, extract_audio
@@ -38,8 +39,12 @@ SUPPORTED_PLATFORMS = {
     ),
 }
 
+# MEGA setup
+mega = Mega()
+mega_client = None  # Global variable to store the logged-in MEGA session
+
+# Detect Platform
 def detect_platform(url):
-    """Detects the platform of the given URL and returns the corresponding handler function."""
     for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():
         if any(domain in url for domain in domains):
             return platform, handler
@@ -50,9 +55,44 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
+# MEGA Login Handler
+@bot.message_handler(commands=["meganz"])
+async def mega_login_handler(message):
+    global mega_client
+
+    args = message.text.split(maxsplit=2)
+    if len(args) != 3:
+        await bot.send_message(message.chat.id, "❌ **Usage:** `/meganz <email> <password>`")
+        return
+
+    username, password = args[1], args[2]
+
+    try:
+        mega_client = mega.login(username, password)
+        await bot.send_message(message.chat.id, "✅ **MEGA.nz Login Successful!**")
+        logger.info("✅ Successfully logged into MEGA.nz")
+    except Exception as e:
+        logger.error(f"❌ MEGA Login Error: {e}")
+        await bot.send_message(message.chat.id, "❌ **MEGA.nz Login Failed. Please check your credentials.**")
+
+# Upload to MEGA Function
+async def upload_to_mega(file_path):
+    global mega_client
+    if not mega_client:
+        logger.error("❌ MEGA.nz not logged in.")
+        return None
+
+    try:
+        uploaded_file = mega_client.upload(file_path)
+        download_link = mega_client.get_upload_link(uploaded_file)
+        logger.info(f"✅ File uploaded to MEGA: {download_link}")
+        return download_link
+    except Exception as e:
+        logger.error(f"❌ MEGA Upload Error: {e}")
+        return None
+
 # Background download function
 async def background_download(message, url):
-    """Handles the entire download process and sends the video to Telegram."""
     try:
         await bot.send_message(message.chat.id, "📥 **Download started...**")
         logger.info(f"Processing URL: {url}")
@@ -88,24 +128,17 @@ async def background_download(message, url):
                 await bot.send_message(message.chat.id, "❌ **Failed to convert video format.**")
                 return
 
-        # If file is too large, provide a direct download link instead
+        # If file is too large for Telegram, upload to MEGA
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            if download_url:
+            mega_link = await upload_to_mega(file_path)
+            if mega_link:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚠️ **The video is too large for Telegram.**\n📥 [Download here]({download_url})",
+                    f"☁️ **Uploaded to MEGA.nz:** [Download Link]({mega_link})",
                     disable_web_page_preview=True
                 )
-
-                # ✅ Extract 1-minute clip if it's an adult video
-                if handler == process_adult:
-                    clip_path = await download_best_clip(download_url, file_size)
-                    if clip_path:
-                        async with aiofiles.open(clip_path, "rb") as clip:
-                            await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
-                        os.remove(clip_path)
             else:
-                await bot.send_message(message.chat.id, "❌ **Download failed.**")
+                await bot.send_message(message.chat.id, "❌ **Failed to upload to MEGA.nz.**")
             return
 
         log_memory_usage()
@@ -165,7 +198,6 @@ async def download_audio(message):
 
     await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")
 
-    # ✅ Correctly call extract_audio_ffmpeg with the URL parameter
     audio_file, file_size = await extract_audio_ffmpeg(url)
 
     if audio_file:
@@ -183,15 +215,11 @@ async def ping(message):
 
 # Main async function
 async def main():
-    """Starts the bot with 3 parallel download workers."""
     logger.info("Bot is starting...")
 
-    # Start 3 parallel workers
     worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]
 
-    # Run the bot and workers concurrently
     await asyncio.gather(bot.infinity_polling(), *worker_tasks)
 
-# Run bot
 if __name__ == "__main__":
     asyncio.run(main())
