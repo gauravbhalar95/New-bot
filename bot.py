@@ -7,6 +7,7 @@ import requests
 import telebot
 import psutil
 import nest_asyncio
+from flask import Flask, request
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
@@ -29,9 +30,14 @@ nest_asyncio.apply()
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# MEGA instance
-mega = Mega()
-mega_login = None  # Store MEGA login session
+# MEGA client
+mega_client = None
+
+# Flask app for webhook
+
+
+# Store login status
+user_credentials = {}
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
@@ -52,14 +58,29 @@ def detect_platform(url):
     return None, None
 
 @bot.message_handler(commands=["meganz"])
-async def meganz_login(message):
-    global mega_login
+async def login_mega(message):
+    global mega_client
     try:
-        _, username, password = message.text.split(" ", 2)
-        mega_login = mega.login(username, password)
-        await bot.send_message(message.chat.id, "✅ **MEGA login successful!**")
+        # Parse credentials
+        args = message.text.split()
+        if len(args) != 3:
+            await bot.send_message(message.chat.id, "Usage: /meganz <username> <password>")
+            return
+
+        username, password = args[1], args[2]
+
+        # Initialize Mega client and login
+        mega = Mega()
+        mega_client = mega.login(username, password)
+
+        # Save credentials for future sessions
+        user_credentials['username'] = username
+        user_credentials['password'] = password
+
+        await bot.send_message(message.chat.id, "✅ **Logged into Mega.nz successfully!**")
     except Exception as e:
-        await bot.send_message(message.chat.id, f"❌ **MEGA login failed:** {e}")
+        logger.error(f"Error logging into Mega.nz: {e}")
+        await bot.send_message(message.chat.id, f"❌ **Failed to log in:** {e}")
 
 async def background_download(message, url):
     try:
@@ -89,11 +110,11 @@ async def background_download(message, url):
                     f"⚠️ **The video is too large for Telegram.**\n📥 [Download here]({download_url})",
                     disable_web_page_preview=True
                 )
-            elif mega_login:
+            elif mega_client:
                 try:
                     await bot.send_message(message.chat.id, "📤 **Uploading to MEGA...**")
-                    mega_file = mega_login.upload(file_path)
-                    mega_link = mega_login.get_upload_link(mega_file)
+                    mega_file = mega_client.upload(file_path)
+                    mega_link = mega_client.get_upload_link(mega_file)
                     await bot.send_message(
                         message.chat.id,
                         f"✅ **Uploaded to MEGA:** [Download here]({mega_link})",
