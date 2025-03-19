@@ -54,7 +54,7 @@ async def process_adult(url):
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
     ydl_opts = {
-        'format': 'best',
+        'format': 'bv[height<=?720]',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'socket_timeout': 30,
         'retries': 10,
