@@ -25,7 +25,6 @@ logger = setup_logging(logging.DEBUG)
 
 nest_asyncio.apply()
 
-
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
@@ -51,6 +50,16 @@ def detect_platform(url):
         if any(domain in url for domain in domains):
             return platform, handler
     return None, None
+
+@bot.message_handler(commands=["meganz"])
+async def meganz_login(message):
+    global mega_login
+    try:
+        _, username, password = message.text.split(" ", 2)
+        mega_login = mega.login(username, password)
+        await bot.send_message(message.chat.id, "✅ **MEGA login successful!**")
+    except Exception as e:
+        await bot.send_message(message.chat.id, f"❌ **MEGA login failed:** {e}")
 
 async def background_download(message, url):
     try:
@@ -116,16 +125,6 @@ async def worker():
 async def start(message):
     user_name = message.from_user.first_name or "User"
     await bot.reply_to(message, f"👋 **Welcome {user_name}!**\n\nSend me a video link to download.")
-
-@bot.message_handler(commands=["meganz"])
-async def meganz_login(message):
-    global mega_login
-    try:
-        _, username, password = message.text.split(" ", 2)
-        mega_login = mega.login(username, password)
-        await bot.send_message(message.chat.id, "✅ **MEGA login successful!**")
-    except Exception as e:
-        await bot.send_message(message.chat.id, f"❌ **MEGA login failed:** {e}")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
