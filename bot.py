@@ -6,6 +6,7 @@ import aiofiles
 import requests
 import telebot
 import psutil
+import nest_asyncio
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
