@@ -22,6 +22,9 @@ from utils.thumb_generator import *
 # Logging setup
 logger = setup_logging(logging.DEBUG)
 
+nest_asyncio.apply()
+
+
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
