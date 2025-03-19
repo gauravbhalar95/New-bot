@@ -30,14 +30,13 @@ nest_asyncio.apply()
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# MEGA client
-mega_client = None
-
 # Flask app for webhook
+app = Flask(__name__)
 
-
-# Store login status
-user_credentials = {}
+# MEGA client
+mega = Mega()
+mega_client = None  # Store MEGA login session
+user_credentials = {}  # Store credentials for relogin if needed
 
 # Supported platforms and handlers
 SUPPORTED_PLATFORMS = {
@@ -57,36 +56,48 @@ def detect_platform(url):
             return platform, handler
     return None, None
 
+# Command: /meganz <username> <password>
 @bot.message_handler(commands=["meganz"])
 async def login_mega(message):
     global mega_client
     try:
         args = message.text.split()
-        if len(args) != 3:
-            await bot.send_message(message.chat.id, "❌ **Usage:** `/meganz <username> <password>`")
-            return
-
-        username, password = args[1], args[2]
-
-        # Initialize Mega client and login
-        mega = Mega()
-        mega_client = mega.login(username, password)
-
-        if not mega_client:
-            await bot.send_message(message.chat.id, "❌ **MEGA login failed. Please check your credentials.**")
-            return
-
-        # Save credentials for future sessions
-        user_credentials['username'] = username
-        user_credentials['password'] = password
-
-        await bot.send_message(message.chat.id, "✅ **Logged into MEGA successfully!**")
+        if len(args) == 3:
+            username, password = args[1], args[2]
+            mega_client = mega.login(username, password)
+            user_credentials['username'] = username
+            user_credentials['password'] = password
+            await bot.send_message(message.chat.id, "✅ **Logged into MEGA successfully!**")
+        else:
+            # Anonymous login (limited access)
+            mega_client = mega.login()
+            await bot.send_message(message.chat.id, "✅ **Logged into MEGA anonymously (limited access).**")
     except Exception as e:
-        error_message = str(e)
-        if "Expecting value" in error_message:
-            error_message = "Invalid MEGA response. Please try again later."
-        await bot.send_message(message.chat.id, f"❌ **Failed to log in:** {error_message}")
+        await bot.send_message(message.chat.id, f"❌ **MEGA login failed:** {e}")
 
+# Upload files to MEGA
+async def upload_to_mega(file_path, chat_id):
+    global mega_client
+    if not mega_client:
+        await bot.send_message(chat_id, "❌ **Please log in first using `/meganz <username> <password>`.**")
+        return
+
+    try:
+        await bot.send_message(chat_id, "📤 **Uploading to MEGA...**")
+
+        # Upload file
+        uploaded_file = mega_client.upload(file_path)
+        public_url = mega_client.get_upload_link(uploaded_file)
+
+        await bot.send_message(chat_id, f"✅ **Uploaded to MEGA:** [Download here]({public_url})")
+    except Exception as e:
+        await bot.send_message(chat_id, f"❌ **Failed to upload to MEGA:** {e}")
+    finally:
+        # Clean up local file
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+# Download logic
 async def background_download(message, url):
     try:
         await bot.send_message(message.chat.id, "📥 **Download started...**")
@@ -116,23 +127,13 @@ async def background_download(message, url):
                     disable_web_page_preview=True
                 )
             elif mega_client:
-                try:
-                    await bot.send_message(message.chat.id, "📤 **Uploading to MEGA...**")
-                    mega_file = mega_client.upload(file_path)
-                    mega_link = mega_client.get_upload_link(mega_file)
-                    await bot.send_message(
-                        message.chat.id,
-                        f"✅ **Uploaded to MEGA:** [Download here]({mega_link})",
-                        disable_web_page_preview=True
-                    )
-                except Exception as e:
-                    await bot.send_message(message.chat.id, f"❌ **MEGA upload failed:** {e}")
+                await upload_to_mega(file_path, message.chat.id)
             else:
                 await bot.send_message(message.chat.id, "❌ **Download failed.**")
             return
 
         async with aiofiles.open(file_path, "rb") as video:
-            await bot.send_video(message.chat.id, video, supports_streaming=True, timeout=600)
+            await bot.send_video(message.chat.id, video, supports_streaming=True)
 
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
@@ -141,23 +142,20 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
+# Worker for processing download queue
 async def worker():
     while True:
         message, url = await download_queue.get()
         await background_download(message, url)
         download_queue.task_done()
 
+# Start command
 @bot.message_handler(commands=["start"])
 async def start(message):
     user_name = message.from_user.first_name or "User"
     await bot.reply_to(message, f"👋 **Welcome {user_name}!**\n\nSend me a video link to download.")
 
-@bot.message_handler(func=lambda message: True, content_types=["text"])
-async def handle_message(message):
-    url = message.text.strip()
-    await download_queue.put((message, url))
-    await bot.send_message(message.chat.id, "✅ **Added to download queue!**")
-
+# Download audio
 @bot.message_handler(commands=["audio"])
 async def download_audio(message):
     url = message.text.split(maxsplit=1)[1].strip() if len(message.text.split()) > 1 else None
@@ -175,6 +173,7 @@ async def download_audio(message):
     else:
         await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")
 
+# Main loop
 async def main():
     logger.info("Bot is starting...")
     worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]
