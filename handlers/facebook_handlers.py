@@ -65,41 +65,11 @@ async def process_facebook(url, output_dir=DOWNLOAD_DIR):
 
         info_dict = await loop.run_in_executor(None, download_video)  # ✅ Correct way
 
-        await asyncio.to_thread(rename_files_in_directory, output_dir)
-        logger.info(f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}")
-        return filename, f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
-
-    except Exception as e:
-        logger.error(f"❌ Download failed: {str(e)}")
-        return None, f"❌ Download failed: {str(e)}"
-    # **Sanitize and Truncate the Filename**
-    safe_title = sanitize_filename(original_title)
-    truncated_title = truncate_filename(safe_title, 100)  # Limit to 100 chars
-    filename = f"{truncated_title}.{file_ext}"
-
-    # **Ensure Filename is Valid**
-    filename = re.sub(r'[\/\\:*?"<>|]', "_", filename)  # Replace invalid characters
-
-    # **Set yt-dlp options**
-    options = {
-        "outtmpl": os.path.join(output_dir, filename),
-        "format": "bv+ba/b",
-        "cookiefile": FACEBOOK_FILE,
-        "merge_output_format": "mp4",
-        "noprogress": False,  # 👈 Show Download Progress
-        "postprocessors": [{
-            "key": "FFmpegVideoConvertor",
-            "preferedformat": "mp4",
-        }]
-    }
-
-    try:
-        # **Download the video asynchronously**
-        with yt_dlp.YoutubeDL(options) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)  # 👈 FIX: Store info_dict
+        # **Ensure file size is an integer for comparison**
+        file_size = int(info_dict.get("filesize", 0))  # ✅ Fixed type conversion
 
         # **Rename files after downloading asynchronously**
-        await asyncio.to_thread(rename_files_in_directory, output_dir)
+        await rename_files_in_directory(output_dir)  # ✅ Corrected await usage
 
         logger.info(f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}")
         return filename, f"✅ Video '{info_dict['title']}' downloaded successfully in {output_dir}"
