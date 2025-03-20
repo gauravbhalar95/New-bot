@@ -7,6 +7,13 @@ import yt_dlp
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
+from dotenv import load_dotenv
+import os
+
+# Load environment variables for secure credential storage
+load_dotenv()
+INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME")
+INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
 
 # Logger setup
 logger = setup_logging(logging.DEBUG)
@@ -40,33 +47,21 @@ def download_progress_hook(d: dict) -> None:
     elif d['status'] == 'finished':
         logger.info(f"✅ Download finished: {d['filename']}")
 
-# Instagram Video Downloader
+# Instagram Video Downloader with Fallback Authentication
 async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
-    """Download Instagram video asynchronously and return its path, size, and any errors."""
+    """Download Instagram video asynchronously with fallback authentication."""
 
-    # Clean URL to avoid unwanted parameters (Keep query parameters)
-    url = url.split('#')[0]
+    url = url.split('#')[0]  # Clean URL
 
-    # Validate cookies
-    cookie_path = Path(INSTAGRAM_FILE)
-    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        logger.error("❌ Instagram cookies file is missing or empty!")
-        return None, 0, "Instagram cookies file is missing or empty"
-
-    ydl_opts = {
+    # Common yt-dlp options
+    common_ydl_opts = {
         'format': 'bv+ba/b',
         'merge_output_format': 'mp4',
         'outtmpl': str(Path(DOWNLOAD_DIR) / '%(title)s.%(ext)s'),
         'socket_timeout': 10,
         'retries': 5,
-        'age_limit': 28,
         'progress_hooks': [download_progress_hook],
         'verbose': True,
-        'cookiefile': str(cookie_path),
-        'extractor_args': {
-            'instagram:ap_user': ['1'],
-            'instagram:viewport_width': ['1920'],
-        },
         'http_headers': {
             'User-Agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) '
@@ -86,6 +81,13 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
         ],
     }
 
+    # Attempt download with cookies first
+    ydl_opts = common_ydl_opts.copy()
+    cookie_path = Path(INSTAGRAM_FILE)
+    if cookie_path.exists() and cookie_path.stat().st_size > 0:
+        ydl_opts['cookiefile'] = str(cookie_path)
+        logger.info("🍪 Using cookies for Instagram download.")
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
@@ -93,13 +95,27 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
                 video_path = Path(ydl.prepare_filename(info_dict))
                 file_size = info_dict.get('filesize', video_path.stat().st_size if video_path.exists() else 0)
                 return str(video_path), file_size, None
-            return None, 0, "❌ Failed to extract info"
+    except yt_dlp.utils.DownloadError:
+        logger.warning("⚠️ Cookies failed. Attempting username/password authentication...")
+
+    # Retry with username/password
+    ydl_opts = common_ydl_opts.copy()
+    ydl_opts['username'] = INSTAGRAM_USERNAME
+    ydl_opts['password'] = INSTAGRAM_PASSWORD
+    ydl_opts['age_limit'] = 0  # Disable age restriction enforcement
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
+            if info_dict:
+                video_path = Path(ydl.prepare_filename(info_dict))
+                file_size = info_dict.get('filesize', video_path.stat().st_size if video_path.exists() else 0)
+                return str(video_path), file_size, None
     except yt_dlp.utils.DownloadError as e:
-        logger.error(f"❌ Instagram download error: {e}")
+        logger.error(f"❌ Both cookies and username/password methods failed: {e}")
         return None, 0, str(e)
-    except Exception as e:
-        logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
-        return None, 0, str(e)
+
+    return None, 0, "❌ Failed to download Instagram video."
 
 # Send Video to User
 async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
