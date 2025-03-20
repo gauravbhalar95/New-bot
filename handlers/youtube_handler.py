@@ -27,14 +27,22 @@ async def process_youtube(url):
             info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
             if not info_dict:
                 logger.error("❌ No info_dict returned. Download failed.")
-                return None, 0, None 
+                return None, 0, "❌ No video information found."
+
+            # Handle unavailable video error directly
+            if 'entries' in info_dict and not info_dict['entries']:
+                logger.error("❌ Video unavailable or restricted.")
+                return None, 0, "❌ Video unavailable or restricted."
 
             file_path = ydl.prepare_filename(info_dict)
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             return file_path, file_size, None
+    except yt_dlp.utils.ExtractorError as e:
+        logger.error(f"❌ Extractor Error: {e}")
+        return None, 0, "❌ Video may be private, deleted, or region-restricted."
     except Exception as e:
         logger.error(f"⚠️ Error downloading video: {e}")
-        return None, 0, None
+        return None, 0, str(e)
 
 async def extract_audio(url):
     """Download and extract audio from a YouTube video asynchronously."""
@@ -62,6 +70,9 @@ async def extract_audio(url):
             audio_filename = ydl.prepare_filename(info_dict).replace('.webm', '.mp3').replace('.m4a', '.mp3')
             file_size = os.path.getsize(audio_filename) if os.path.exists(audio_filename) else 0
             return audio_filename, file_size
+    except yt_dlp.utils.ExtractorError as e:
+        logger.error(f"❌ Extractor Error: {e}")
+        return None, 0
     except Exception as e:
         logger.error(f"⚠️ Error extracting audio: {e}")
         return None, 0
