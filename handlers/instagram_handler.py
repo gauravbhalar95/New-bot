@@ -59,6 +59,7 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
         'outtmpl': str(Path(DOWNLOAD_DIR) / '%(title)s.%(ext)s'),
         'socket_timeout': 10,
         'retries': 5,
+        'age_limit': 0,
         'progress_hooks': [download_progress_hook],
         'verbose': True,
         'cookiefile': str(cookie_path),
