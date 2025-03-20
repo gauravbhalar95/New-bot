@@ -56,7 +56,7 @@ async def process_adult(url):
     file_path = None  # Initialize to avoid 'referenced before assignment' error
 
     ydl_opts = {
-        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+        'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
         'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
         'socket_timeout': 30,
         'retries': 10,
