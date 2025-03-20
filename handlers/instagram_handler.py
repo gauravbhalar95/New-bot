@@ -43,9 +43,9 @@ def download_progress_hook(d: dict) -> None:
 # Instagram Video Downloader
 async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
     """Download Instagram video asynchronously and return its path, size, and any errors."""
-    
-    # Clean URL to avoid unwanted parameters
-    url = url.split('?')[0].split('#')[0]
+
+    # Clean URL to avoid unwanted parameters (Keep query parameters)
+    url = url.split('#')[0]
 
     # Validate cookies
     cookie_path = Path(INSTAGRAM_FILE)
@@ -78,8 +78,12 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Dest': 'document'
         },
-        'force_generic_extractor': True,
-        'lazy_playlist': True
+        'postprocessors': [
+            {
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }
+        ],
     }
 
     try:
