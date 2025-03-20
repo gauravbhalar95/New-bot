@@ -10,7 +10,7 @@ from queue import Queue
 from telebot.async_telebot import AsyncTeleBot  
   
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT  
-from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg, extract_audio  
+from handlers.youtube_handler import process_youtube, extract_audio  
 from handlers.instagram_handler import process_instagram  
 from handlers.facebook_handlers import process_facebook  
 from handlers.common_handler import process_adult  
