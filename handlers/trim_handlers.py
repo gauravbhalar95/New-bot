@@ -95,7 +95,7 @@ async def download_and_trim_video(youtube_url, start_time, end_time):
 
 async def main():
     if len(sys.argv) != 4:
-        print("Usage: python script.py <YouTube_URL> <Start_Time> <End_Time>")
+        print("Usage:<YouTube_URL> <Start_Time> <End_Time>")
         sys.exit(1)
 
     youtube_url = sys.argv[1]
