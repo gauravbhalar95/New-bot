@@ -1,7 +1,6 @@
 import os
 import sys
 import asyncio
-import subprocess
 import yt_dlp
 import logging
 from utils.sanitize import sanitize_filename
@@ -16,19 +15,42 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 async def run_ffmpeg(video_filename, start_time, end_time, trimmed_filename):
     """Run FFmpeg asynchronously to trim the video."""
+    # Convert start_time and end_time to seconds
+    def time_to_seconds(time_str):
+        h, m, s = map(int, time_str.split(':'))
+        return h * 3600 + m * 60 + s
+
+    start_seconds = time_to_seconds(start_time)
+    end_seconds = time_to_seconds(end_time)
+    duration = end_seconds - start_seconds
+
+    if duration <= 0:
+        logger.error("❌ Invalid time range: end_time must be greater than start_time.")
+        return None
+
     ffmpeg_cmd = [
         'ffmpeg', '-y', '-i', video_filename,
-        '-ss', start_time, '-to', end_time, '-c:v', 'copy', '-c:a', 'copy', trimmed_filename
+        '-ss', str(start_seconds), '-t', str(duration),
+        '-c:v', 'copy', '-c:a', 'copy', trimmed_filename
     ]
+
+    logger.info(f"Running FFmpeg command: {' '.join(ffmpeg_cmd)}")
+
     process = await asyncio.create_subprocess_exec(
         *ffmpeg_cmd,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
     )
-    await process.communicate()
+    stdout, stderr = await process.communicate()
+
+    if process.returncode != 0:
+        logger.error(f"⚠️ FFmpeg Error: {stderr.decode().strip()}")
+        return None
+
+    return trimmed_filename
 
 async def download_and_trim_video(youtube_url, start_time, end_time):
-    """Download a YouTube video with audio and trim it using FFmpeg asynchronously."""
+    """Download a YouTube video and trim it using FFmpeg asynchronously."""
 
     ydl_opts = {
         'format': 'bv*+ba/best',
@@ -48,20 +70,25 @@ async def download_and_trim_video(youtube_url, start_time, end_time):
                 logger.error("❌ Download failed: No info_dict returned.")
                 return None
 
-            video_filename = ydl.prepare_filename(info_dict).replace('.webm', '.mp4')
+            video_filename = ydl.prepare_filename(info_dict)
+            if not video_filename.endswith('.mp4'):
+                video_filename = video_filename.rsplit('.', 1)[0] + '.mp4'
+
+            logger.info(f"✅ Downloaded Video: {video_filename}")
+
             trimmed_filename = video_filename.replace('.mp4', '_trimmed.mp4')
 
-            # **Trim using FFmpeg asynchronously**
-            await run_ffmpeg(video_filename, start_time, end_time, trimmed_filename)
+            # Trim the video using FFmpeg
+            trimmed_result = await run_ffmpeg(video_filename, start_time, end_time, trimmed_filename)
 
-            # Cleanup: Delete original file
-            if os.path.exists(trimmed_filename):
-                os.remove(video_filename)
-                logger.info(f"✅ Trimmed video saved: {trimmed_filename}")
-                return trimmed_filename
+            if trimmed_result:
+                os.remove(video_filename)  # Cleanup original file
+                logger.info(f"✅ Trimmed video saved: {trimmed_result}")
+                return trimmed_result
             else:
                 logger.error("⚠️ Error trimming video.")
                 return None
+
     except Exception as e:
         logger.error(f"⚠️ Error downloading and trimming video: {e}")
         return None
@@ -81,3 +108,5 @@ async def main():
     else:
         print("❌ Failed to process the video.")
 
+if __name__ == "__main__":
+    asyncio.run(main())
