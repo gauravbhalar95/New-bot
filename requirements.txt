@@ -36,3 +36,4 @@ mega.py @ git+https://github.com/odwyersoftware/mega.py.git
 tenacity==5.1.5
 psutil
 aiofiles
+rclone
