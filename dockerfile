@@ -1,36 +1,41 @@
-FROM python:3.13-slim
+# Use a lightweight Python image  
+FROM python:3.13-slim  
 
-WORKDIR /app
+# Set working directory  
+WORKDIR /app  
 
-# Install dependencies efficiently
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg git curl unzip && \
-    rm -rf /var/lib/apt/lists/*
+# Install system dependencies efficiently  
+RUN apt-get update && \  
+    apt-get install -y --no-install-recommends ffmpeg git unzip && \  
+    rm -rf /var/lib/apt/lists/*  
 
-# Install rclone for MediaFire uploads
-RUN curl https://rclone.org/install.sh | bash
+# Install rclone (Fixes the previous issue with missing unzip)  
+RUN curl https://rclone.org/install.sh | bash  
 
-# Install Python dependencies
-COPY requirements.txt /app/
-RUN python -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
+# Copy Python dependencies first to leverage Docker cache  
+COPY requirements.txt /app/  
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Create and activate a virtual environment  
+RUN python -m venv /app/venv  
+ENV PATH="/app/venv/bin:$PATH"  
 
-# Copy source code
-COPY . /app/
+# Install Python dependencies  
+RUN pip install --no-cache-dir --upgrade pip && \  
+    pip install --no-cache-dir -r requirements.txt  
 
-# Make update.sh executable
-RUN chmod +x /app/update.sh
+# Copy the source code  
+COPY . /app/  
 
-# Expose the port
-EXPOSE 8080
+# Make update.sh executable  
+RUN chmod +x /app/update.sh  
 
-# Environment variables
-ENV PYTHONUNBUFFERED=1 \
-    QUART_ENV=production \
-    PORT=8080
+# Expose the port  
+EXPOSE 8080  
 
-# Start the server with proper async support
+# Set environment variables  
+ENV PYTHONUNBUFFERED=1 \  
+    QUART_ENV=production \  
+    PORT=8080  
+
+# Start the bot and webhook server  
 CMD bash -c "/app/update.sh && hypercorn webhook:app --bind 0.0.0.0:8080 & python bot.py"
