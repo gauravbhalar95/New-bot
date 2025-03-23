@@ -4,13 +4,13 @@ import logging
 import asyncio  
 import aiofiles  
 import requests  
-import telebot  
 import psutil  
-from queue import Queue  
+import subprocess
 from telebot.async_telebot import AsyncTeleBot  
-  
+from queue import Queue  
+
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT  
-from handlers.youtube_handler import process_youtube, extract_audio  
+from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg  
 from handlers.instagram_handler import process_instagram  
 from handlers.facebook_handlers import process_facebook  
 from handlers.common_handler import process_adult  
@@ -18,15 +18,15 @@ from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging  
 from utils.streaming import *  
 from utils.thumb_generator import *  
-  
+
 # Logging setup  
 logger = setup_logging(logging.DEBUG)  
-  
-# Async Telegram bot setup  
+
+# Async Telegram bot  
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")  
 download_queue = asyncio.Queue()  
-  
-# Supported platforms and handlers  
+
+# Supported platforms  
 SUPPORTED_PLATFORMS = {  
     "YouTube": (["youtube.com", "youtu.be"], process_youtube),  
     "Instagram": (["instagram.com"], process_instagram),  
@@ -37,34 +37,44 @@ SUPPORTED_PLATFORMS = {
         process_adult,  
     ),  
 }  
-  
+
 def detect_platform(url):  
-    """Detects the platform of the given URL and returns the corresponding handler function."""  
+    """Detects platform of the URL and returns the handler function."""  
     for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():  
         if any(domain in url for domain in domains):  
             return platform, handler  
     return None, None  
-  
-# Log memory usage  
+
+# ✅ Log memory usage  
 def log_memory_usage():  
     memory = psutil.virtual_memory()  
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")  
-  
-# Background download function  
+
+# ✅ Upload to MediaFire  
+async def upload_to_mediafire(file_path):  
+    try:  
+        cmd = f"rclone copy '{file_path}' mediafire:YOUR_MEDIAFIRE_FOLDER --progress"  
+        subprocess.run(cmd, shell=True, check=True)  
+        return f"https://www.mediafire.com/file/{os.path.basename(file_path)}"  
+    except Exception as e:  
+        logger.error(f"MediaFire upload failed: {e}")  
+        return None  
+
+# ✅ Background Download Handler  
 async def background_download(message, url):  
-    """Handles the entire download process and sends the video to Telegram."""  
+    """Handles the download process and sends the video to Telegram."""  
     try:  
         await bot.send_message(message.chat.id, "📥 **Download started...**")  
         logger.info(f"Processing URL: {url}")  
-  
+
         platform, handler = detect_platform(url)  
         if not handler:  
             await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")  
             return  
-  
+
         task = asyncio.create_task(handler(url))  
         result = await task  
-  
+
         if isinstance(result, tuple):  
             if len(result) == 3:  
                 file_path, file_size, download_url = result  
@@ -74,8 +84,8 @@ async def background_download(message, url):
             else:  
                 await bot.send_message(message.chat.id, "❌ **Error processing video.**")  
                 return  
-  
-        # Handle M3U8 links by converting to MP4  
+
+        # ✅ Convert M3U8 to MP4  
         if file_path and file_path.endswith(".m3u8"):  
             try:  
                 converted_path = file_path.replace(".m3u8", ".mp4")  
@@ -87,17 +97,12 @@ async def background_download(message, url):
                 logger.error(f"Error converting M3U8 to MP4: {e}")  
                 await bot.send_message(message.chat.id, "❌ **Failed to convert video format.**")  
                 return  
-  
-        # If file is too large, provide a direct download link instead  
+
+        # ✅ Upload large files to MediaFire  
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:  
             if download_url:  
-                await bot.send_message(  
-                    message.chat.id,  
-                    f"⚠️ **The video is too large for Telegram.**\n📥 [Download here]({download_url})",  
-                    disable_web_page_preview=True  
-                )  
-  
-                # ✅ Extract 1-minute clip if it's an adult video  
+                await bot.send_message(message.chat.id, f"⚠️ **Video is too large.**\n📥 [Download here]({download_url})", disable_web_page_preview=True)  
+
                 if handler == process_adult:  
                     clip_path = await download_best_clip(download_url, file_size)  
                     if clip_path:  
@@ -105,93 +110,65 @@ async def background_download(message, url):
                             await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")  
                         os.remove(clip_path)  
             else:  
-                await bot.send_message(message.chat.id, "❌ **Download failed.**")  
+                mediafire_link = await upload_to_mediafire(file_path)  
+                if mediafire_link:  
+                    await bot.send_message(message.chat.id, f"📤 **Uploaded to MediaFire:** [Download here]({mediafire_link})", disable_web_page_preview=True)  
             return  
-  
+
         log_memory_usage()  
-  
-        # ✅ Generate and send thumbnail if available  
+
+        # ✅ Send thumbnail  
         thumbnail_path = await generate_thumbnail(file_path) if file_path else None  
-        if handler == process_adult and thumbnail_path and os.path.exists(thumbnail_path):  
+        if handler == process_adult and thumbnail_path:  
             async with aiofiles.open(thumbnail_path, "rb") as thumb:  
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")  
-  
-        # Send video file with increased timeout  
+
+        # ✅ Send video  
         async with aiofiles.open(file_path, "rb") as video:  
             await bot.send_video(message.chat.id, video, supports_streaming=True, timeout=600)  
-  
-        # Cleanup  
+
+        # ✅ Cleanup  
         for path in [file_path, thumbnail_path]:  
             if path and os.path.exists(path):  
                 os.remove(path)  
-  
+
         log_memory_usage()  
         gc.collect()  
-  
+
     except Exception as e:  
         logger.error(f"Error: {e}")  
         await bot.send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")  
-  
-# Worker function for parallel downloads  
+
+# ✅ Parallel Download Workers  
 async def worker():  
     while True:  
         message, url = await download_queue.get()  
         await background_download(message, url)  
         download_queue.task_done()  
-  
-# Start command  
+
+# ✅ Command Handlers  
 @bot.message_handler(commands=["start"])  
 async def start(message):  
-    user_name = message.from_user.first_name or "User"  
-    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link to download."  
-    await bot.reply_to(message, welcome_text)  
-    logger.info(f"User {message.chat.id} started the bot.")  
-  
-# Handle incoming URLs  
-@bot.message_handler(func=lambda message: True, content_types=["text"])  
-async def handle_message(message):  
-    url = message.text.strip()  
-    await download_queue.put((message, url))  
-    await bot.send_message(message.chat.id, "✅ **Added to download queue!**")  
-  
-# `/audio` Command for Audio Extraction  
+    await bot.reply_to(message, "👋 **Welcome!**\nSend me a video link to download.")  
+
 @bot.message_handler(commands=["audio"])  
 async def download_audio(message):  
     url = message.text.split(maxsplit=1)[1].strip() if len(message.text.split()) > 1 else None  
-  
     if not url:  
         await bot.send_message(message.chat.id, "❌ **Please provide a valid YouTube URL.**")  
         return  
-  
-    await bot.send_message(message.chat.id, "🎵 **Extracting audio... Please wait.**")  
-  
-    # ✅ Correctly call extract_audio_ffmpeg with the URL parameter  
+
+    await bot.send_message(message.chat.id, "🎵 **Extracting audio...**")  
     audio_file, file_size = await extract_audio_ffmpeg(url)  
-  
     if audio_file:  
         async with aiofiles.open(audio_file, "rb") as audio:  
-            await bot.send_audio(message.chat.id, audio, caption="🎧 **Here's your MP3 file!**")  
+            await bot.send_audio(message.chat.id, audio, caption="🎧 **Here's your MP3!**")  
         os.remove(audio_file)  
-    else:  
-        await bot.send_message(message.chat.id, "❌ **Failed to extract audio.**")  
-  
-# `/ping` Command for Checking Bot Status  
-@bot.message_handler(commands=["ping"])  
-async def ping(message):  
-    await bot.send_message(message.chat.id, "🏓 Pong!")  
-    logger.info("✅ Received /ping command.")  
-  
-# Main async function  
+
+# ✅ Run Bot  
 async def main():  
-    """Starts the bot with 3 parallel download workers."""  
-    logger.info("Bot is starting...")  
-  
-    # Start 3 parallel workers  
     worker_tasks = [asyncio.create_task(worker()) for _ in range(3)]  
-  
-    # Run the bot and workers concurrently  
     await asyncio.gather(bot.infinity_polling(), *worker_tasks)  
-  
-# Run bot  
+
 if __name__ == "__main__":  
     asyncio.run(main())
