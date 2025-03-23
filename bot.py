@@ -53,7 +53,7 @@ def log_memory_usage():
 # ✅ Upload to MediaFire  
 async def upload_to_mediafire(file_path):  
     try:  
-        cmd = f"rclone copy '{file_path}' mediafire:YOUR_MEDIAFIRE_FOLDER --progress"  
+        cmd = f"rclone copy '{file_path}' mediafire:Videos --progress"  
         subprocess.run(cmd, shell=True, check=True)  
         return f"https://www.mediafire.com/file/{os.path.basename(file_path)}"  
     except Exception as e:  
