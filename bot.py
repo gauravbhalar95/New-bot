@@ -3,6 +3,7 @@ import gc
 import logging
 import asyncio
 import aiofiles
+import requests
 import telebot
 import psutil
 import subprocess
@@ -15,7 +16,6 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult  # ✅ Only this handler uses thumbnails & clips
 from handlers.x_handler import download_twitter_media
-from handlers.mega_handlers import MegaNZ  
 from utils.logger import setup_logging
 from utils.streaming import get_streaming_url
 
@@ -24,7 +24,6 @@ logger = setup_logging(logging.DEBUG)
 
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
-mega = MegaNZ()
 download_queue = asyncio.Queue()
 
 # Supported platforms and handlers
@@ -51,27 +50,27 @@ def log_memory_usage():
     memory = psutil.virtual_memory()
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")
 
-# Function to upload file to MediaFire using rclone
-async def upload_to_mediafire(file_path):
-    """Uploads a file to MediaFire and returns the public link."""
-    remote_path = "mediafire:MyBotUploads/"  # Replace with your MediaFire rclone path
-    command = ["rclone", "copy", file_path, remote_path]
-    
-    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = await process.communicate()
+# Function to download a 1-minute best scene clip (Used only in `process_adult`)
+async def download_best_clip(video_url, duration):
+    """Extracts a 1-minute highlight scene from the video using FFmpeg."""
+    clip_path = "best_scene.mp4"
+    start_time = max(0, duration // 3)  # Start at 1/3rd of the video
+    command = [
+        "ffmpeg", "-i", video_url, "-ss", str(start_time),
+        "-t", "60", "-c:v", "libx264", "-c:a", "aac",
+        "-b:a", "128k", "-preset", "ultrafast", "-threads", "4", "-y", clip_path
+    ]
 
-    if process.returncode == 0:
-        # Get the public download link
-        link_command = ["rclone", "link", f"{remote_path}{os.path.basename(file_path)}"]
-        link_process = await asyncio.create_subprocess_exec(*link_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        link_stdout, _ = await link_process.communicate()
-        return link_stdout.decode().strip() if link_process.returncode == 0 else None
-    
+    process = await asyncio.create_subprocess_exec(*command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    await process.communicate()
+
+    if process.returncode == 0 and os.path.exists(clip_path):
+        return clip_path
     return None
 
 # Background download function
 async def background_download(message, url):
-    """Handles the entire download process and sends the video to Telegram or MediaFire."""
+    """Handles the entire download process and sends the video to Telegram."""
     try:
         await bot.send_message(message.chat.id, "📥 **Download started...**")
         logger.info(f"Processing URL: {url}")
@@ -91,17 +90,25 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "❌ **Error processing video.**")
             return
 
-        # ✅ Upload to MediaFire if file is too large
+        # If file is too large, generate a streaming link instead
         if not file_path or file_size > TELEGRAM_FILE_LIMIT:
-            mediafire_link = await upload_to_mediafire(file_path)
-            if mediafire_link:
+            video_url, duration = await get_streaming_url(url)
+            if video_url:
                 await bot.send_message(
                     message.chat.id,
-                    f"⚡ **File too large for Telegram. Download here:** [Click]({mediafire_link})",
+                    f"⚡ **File too large for Telegram. Watch here:** [Click]({video_url})",
                     disable_web_page_preview=True
                 )
+
+                # ✅ Only extract best 1-minute clip if it's an adult video
+                if handler == process_adult:
+                    clip_path = await download_best_clip(video_url, duration)
+                    if clip_path:
+                        async with aiofiles.open(clip_path, "rb") as clip:
+                            await bot.send_video(message.chat.id, clip, caption="🎞 **Best 1-Min Scene Clip!**")
+                        os.remove(clip_path)
             else:
-                await bot.send_message(message.chat.id, "❌ **Upload to MediaFire failed.**")
+                await bot.send_message(message.chat.id, "❌ **Download failed.**")
             return
 
         log_memory_usage()
@@ -111,7 +118,7 @@ async def background_download(message, url):
             async with aiofiles.open(thumbnail_path, "rb") as thumb:
                 await bot.send_photo(message.chat.id, thumb, caption="✅ **Thumbnail received!**")
 
-        # ✅ Send video file directly to Telegram
+        # Send video file
         async with aiofiles.open(file_path, "rb") as video:
             await bot.send_video(message.chat.id, video, supports_streaming=True)
 
@@ -138,7 +145,7 @@ async def worker():
 @bot.message_handler(commands=["start"])
 async def start(message):
     user_name = message.from_user.first_name or "User"
-    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link or use `/meganz` to login to Mega.nz."
+    welcome_text = f"👋 **Welcome {user_name}!**\n\nSend me a video link."
     await bot.reply_to(message, welcome_text)
     logger.info(f"User {message.chat.id} started the bot.")
 
