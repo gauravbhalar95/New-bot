@@ -4,8 +4,11 @@ WORKDIR /app
 
 # Install dependencies efficiently
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg git && \
+    apt-get install -y --no-install-recommends ffmpeg git curl && \
     rm -rf /var/lib/apt/lists/*
+
+# Install rclone for MediaFire uploads
+RUN curl https://rclone.org/install.sh | bash
 
 # Install Python dependencies
 COPY requirements.txt /app/
@@ -29,5 +32,5 @@ ENV PYTHONUNBUFFERED=1 \
     QUART_ENV=production \
     PORT=8080
 
-# Start the server with proper async support
+# Start the server and bot with async support
 CMD bash -c "/app/update.sh && hypercorn webhook:app --bind 0.0.0.0:8080 & python bot.py"
