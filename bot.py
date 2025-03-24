@@ -9,7 +9,7 @@ import psutil
 from telebot.async_telebot import AsyncTeleBot      
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT      
-from handlers.youtube_handler import process_youtube, extract_audio      
+from handlers.youtube_handler import process_youtube      
 from handlers.instagram_handler import process_instagram      
 from handlers.facebook_handlers import process_facebook      
 from handlers.common_handler import process_adult      
@@ -35,10 +35,12 @@ SUPPORTED_PLATFORMS = {
     "Adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),      
 }      
 
-def detect_platform(url):      
+def detect_platform(url, is_trim_request=False):      
     """Detects the platform of the given URL and returns the corresponding handler function."""      
     for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():      
         if any(domain in url for domain in domains):      
+            if platform == "YouTube" and is_trim_request:
+                return platform, process_youtube_request  
             return platform, handler      
     return None, None      
 
@@ -49,26 +51,25 @@ async def background_download(message, url):
         await bot.send_message(message.chat.id, "📥 **Download started...**")      
         logger.info(f"Processing URL: {url}")      
 
-        platform, handler = detect_platform(url)      
-        if not handler:      
-            await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")      
-            return      
-
         # Extract start & end time from URL format: "url start end"
         time_match = re.search(r"(\S+)\s+(\d+)\s+(\d+)", url)      
         start_time, end_time = None, None      
+        is_trim_request = False  
 
         if time_match:      
             url, start_time, end_time = time_match.groups()      
             start_time, end_time = int(start_time), int(end_time)      
+            is_trim_request = True  
 
-        # YouTube-specific handling      
-        if platform == "YouTube":      
-            if start_time is not None and end_time is not None:      
-                logger.info(f"Trimming YouTube video: Start={start_time}s, End={end_time}s")      
-                result = await process_youtube_request(text)    
-            else:      
-                result = await process_youtube(url)      
+        platform, handler = detect_platform(url, is_trim_request)      
+        if not handler:      
+            await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")      
+            return      
+
+        # Process request based on platform      
+        if platform == "YouTube" and is_trim_request:      
+            logger.info(f"Trimming YouTube video: Start={start_time}s, End={end_time}s")      
+            result = await process_youtube_request(url, start_time, end_time)    
         else:      
             result = await handler(url)      
 
