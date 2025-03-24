@@ -4,7 +4,7 @@ import logging
 import asyncio      
 import aiofiles      
 import requests      
-import re
+import re      
 import telebot      
 import psutil      
 from telebot.async_telebot import AsyncTeleBot      
@@ -18,7 +18,7 @@ from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging      
 from utils.streaming import *      
 from utils.thumb_generator import *      
-from handlers.trim_handlers import download_and_trim_video # Import trimming feature instead of rewriting
+from handlers.trim_handlers import download_and_trim_video  # Trimming function import
 
 # Logging setup      
 logger = setup_logging(logging.DEBUG)      
@@ -55,19 +55,19 @@ async def background_download(message, url):
             await bot.send_message(message.chat.id, "⚠️ **Unsupported URL.**")      
             return      
 
-        # Extract start & end time if available      
+        # Extract start & end time from URL format: "url start end"
         time_match = re.search(r"(\S+)\s+(\d+)\s+(\d+)", url)      
         start_time, end_time = None, None      
-        
+
         if time_match:      
             url, start_time, end_time = time_match.groups()      
             start_time, end_time = int(start_time), int(end_time)      
-        
+
         # YouTube-specific handling      
         if platform == "YouTube":      
             if start_time is not None and end_time is not None:      
                 logger.info(f"Trimming YouTube video: Start={start_time}s, End={end_time}s")      
-                result = await process_youtube(url, trim=True, start=start_time, end=end_time)      
+                result = await download_and_trim_video(url, start=start_time, end=end_time)      
             else:      
                 result = await process_youtube(url)      
         else:      
