@@ -77,5 +77,3 @@ async def extract_audio(url):
     except Exception as e:
         logger.error(f"⚠️ Error extracting audio: {e}")
         return None, 0
-
-
