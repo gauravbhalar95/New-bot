@@ -3,7 +3,6 @@ import gc
 import logging      
 import asyncio      
 import aiofiles      
-import requests      
 import re      
 import telebot      
 import psutil      
@@ -18,7 +17,7 @@ from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging      
 from utils.streaming import *      
 from utils.thumb_generator import *      
-from handlers.trim_handlers import download_and_trim_video  # Trimming function import
+from handlers.trim_handlers import download_and_trim_video      
 
 # Logging setup      
 logger = setup_logging(logging.DEBUG)      
@@ -117,5 +116,9 @@ async def handle_message(message):
     await bot.send_message(message.chat.id, "✅ **Added to download queue!**")      
 
 # Run bot      
+async def main():      
+    asyncio.create_task(worker())  # Worker runs in the background      
+    await bot.polling()  # Start bot polling      
+
 if __name__ == "__main__":      
-    asyncio.run(worker())
+    asyncio.run(main())
