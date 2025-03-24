@@ -48,16 +48,7 @@ def log_memory_usage():
     memory = psutil.virtual_memory()      
     logger.info(f"Memory Usage: {memory.percent}% - Free: {memory.available / (1024 * 1024):.2f} MB")      
 
-async def trim_video_ffmpeg(input_path, output_path, start_time, end_time):  
-    """Trims the video using FFmpeg and returns the new file path."""  
-    command = [  
-        "ffmpeg", "-i", input_path,  
-        "-ss", str(start_time), "-to", str(end_time),  
-        "-c", "copy", output_path  
-    ]  
-    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)  
-    await process.communicate()  
-    return output_path if os.path.exists(output_path) else None  
+  
 
 # Background download function      
 async def background_download(message, url):      
