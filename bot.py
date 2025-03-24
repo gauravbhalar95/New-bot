@@ -18,7 +18,7 @@ from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging      
 from utils.streaming import *      
 from utils.thumb_generator import *      
-from utils.trim_handlers import download_and_trimvideo # Import trimming feature instead of rewriting
+from handlers.trim_handlers import download_and_trim_video # Import trimming feature instead of rewriting
 
 # Logging setup      
 logger = setup_logging(logging.DEBUG)      
