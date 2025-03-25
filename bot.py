@@ -4,11 +4,8 @@ import logging
 import asyncio
 import aiofiles
 import re
-import multiprocessing
 import telebot
-import psutil
 from telebot.async_telebot import AsyncTeleBot
-
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube
 from handlers.instagram_handler import process_instagram
@@ -104,19 +101,11 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-def start_download_process(message, url):
-    """Runs the download function in a separate process."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(background_download(message, url))
-    loop.close()
-
 async def worker():
-    """Worker function for parallel downloads using multiprocessing."""
+    """Worker function for parallel downloads."""
     while True:
         message, url = await download_queue.get()
-        process = multiprocessing.Process(target=start_download_process, args=(message, url))
-        process.start()
+        asyncio.create_task(background_download(message, url))
         download_queue.task_done()
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
@@ -131,8 +120,7 @@ async def main():
     num_workers = min(3, os.cpu_count() or 1)  # Limit workers based on CPU cores
     for _ in range(num_workers):
         asyncio.create_task(worker())  # Start workers in background
-    await bot.polling()
+    await bot.infinity_polling(timeout=30, long_polling_timeout=10)
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("fork")  # Ensures proper process spawning
     asyncio.run(main())
