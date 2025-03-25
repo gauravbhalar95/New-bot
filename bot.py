@@ -120,7 +120,7 @@ async def main():
     num_workers = min(3, os.cpu_count() or 1)  # Limit workers based on CPU cores
     for _ in range(num_workers):
         asyncio.create_task(worker())  # Start workers in background
-    await bot.infinity_polling(timeout=30, long_polling_timeout=10)
+    await bot.infinity_polling(timeout=30)
 
 if __name__ == "__main__":
     asyncio.run(main())
