@@ -7,6 +7,7 @@ import re
 import telebot      
 import psutil      
 from telebot.async_telebot import AsyncTeleBot      
+from urllib.parse import urlparse  
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT      
 from handlers.youtube_handler import process_youtube      
@@ -15,8 +16,6 @@ from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult      
 from handlers.x_handler import download_twitter_media      
 from utils.logger import setup_logging      
-from utils.streaming import *      
-from utils.thumb_generator import *      
 from handlers.trim_handlers import process_youtube_request      
 
 # Logging setup      
@@ -26,23 +25,29 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")      
 download_queue = asyncio.Queue()      
 
-# Supported platforms and handlers      
-SUPPORTED_PLATFORMS = {      
-    "YouTube": (["youtube.com", "youtu.be"], process_youtube),      
-    "Instagram": (["instagram.com"], process_instagram),      
-    "Facebook": (["facebook.com"], process_facebook),      
-    "Twitter/X": (["x.com", "twitter.com"], download_twitter_media),      
-    "Adult": (["pornhub.com", "xvideos.com", "redtube.com", "xhamster.com", "xnxx.com"], process_adult),      
-}      
+# Supported platforms mapped to their handlers      
+PLATFORM_MAP = {
+    "youtube.com": process_youtube,
+    "youtu.be": process_youtube,
+    "instagram.com": process_instagram,
+    "facebook.com": process_facebook,
+    "x.com": download_twitter_media,
+    "twitter.com": download_twitter_media,
+    "pornhub.com": process_adult,
+    "xvideos.com": process_adult,
+    "redtube.com": process_adult,
+    "xhamster.com": process_adult,
+    "xnxx.com": process_adult,
+}
 
-def detect_platform(url, is_trim_request=False):      
-    """Detects the platform of the given URL and returns the corresponding handler function."""      
-    for platform, (domains, handler) in SUPPORTED_PLATFORMS.items():      
-        if any(domain in url for domain in domains):      
-            if platform == "YouTube" and is_trim_request:
-                return platform, process_youtube_request  
-            return platform, handler      
-    return None, None      
+def detect_platform(url, is_trim_request=False):
+    """Detects the platform based on the domain name using urllib.parse."""
+    domain = urlparse(url).netloc.replace("www.", "")
+    handler = PLATFORM_MAP.get(domain)
+    
+    if handler and "youtube" in domain and is_trim_request:
+        return "YouTube", process_youtube_request
+    return "YouTube" if handler else None, handler
 
 # Background download function      
 async def background_download(message, url):      
