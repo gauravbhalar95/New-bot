@@ -7,7 +7,6 @@ import re
 import telebot      
 import psutil      
 from telebot.async_telebot import AsyncTeleBot      
-from urllib.parse import urlparse  
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT      
 from handlers.youtube_handler import process_youtube      
@@ -25,29 +24,21 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")      
 download_queue = asyncio.Queue()      
 
-# Supported platforms mapped to their handlers      
-PLATFORM_MAP = {
-    "youtube.com": process_youtube,
-    "youtu.be": process_youtube,
-    "instagram.com": process_instagram,
-    "facebook.com": process_facebook,
-    "x.com": download_twitter_media,
-    "twitter.com": download_twitter_media,
-    "pornhub.com": process_adult,
-    "xvideos.com": process_adult,
-    "redtube.com": process_adult,
-    "xhamster.com": process_adult,
-    "xnxx.com": process_adult,
+# Precompile regex patterns for faster matching      
+PLATFORM_PATTERNS = {
+    "YouTube": (re.compile(r"(youtube\.com|youtu\.be)"), process_youtube, process_youtube_request),
+    "Instagram": (re.compile(r"instagram\.com"), process_instagram),
+    "Facebook": (re.compile(r"facebook\.com"), process_facebook),
+    "Twitter/X": (re.compile(r"(x\.com|twitter\.com)"), download_twitter_media),
+    "Adult": (re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"), process_adult),
 }
 
 def detect_platform(url, is_trim_request=False):
-    """Detects the platform based on the domain name using urllib.parse."""
-    domain = urlparse(url).netloc.replace("www.", "")
-    handler = PLATFORM_MAP.get(domain)
-    
-    if handler and "youtube" in domain and is_trim_request:
-        return "YouTube", process_youtube_request
-    return "YouTube" if handler else None, handler
+    """Efficiently detects the platform using regex matching."""
+    for platform, (pattern, handler, *trim_handler) in PLATFORM_PATTERNS.items():
+        if pattern.search(url):
+            return platform, trim_handler[0] if is_trim_request and trim_handler else handler
+    return None, None
 
 # Background download function      
 async def background_download(message, url):      
