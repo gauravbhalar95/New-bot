@@ -26,36 +26,31 @@ PLATFORM_HANDLERS = {
     "YouTube": {
         "pattern": re.compile(r"(youtube\.com|youtu\.be)"),
         "video": process_youtube,
-        "audio": extract_audio_ffmpeg,
         "trim": process_youtube_request,
     },
     "Instagram": {
         "pattern": re.compile(r"instagram\.com"),
         "video": process_instagram,
-        "audio": extract_audio_ffmpeg,
     },
     "Facebook": {
         "pattern": re.compile(r"facebook\.com"),
         "video": process_facebook,
-        "audio": extract_audio_ffmpeg,
     },
     "Twitter/X": {
         "pattern": re.compile(r"(x\.com|twitter\.com)"),
         "video": download_twitter_media,
-        "audio": extract_audio_ffmpeg,
     },
     "Adult": {
         "pattern": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),
         "video": process_adult,
-        "audio": extract_audio_ffmpeg,
     },
 }
 
-def detect_platform(url, request_type="video"):
+def detect_platform(url):
     """Detects the platform and returns the corresponding handler."""
     for platform, handlers in PLATFORM_HANDLERS.items():
         if handlers["pattern"].search(url):
-            return platform, handlers.get(request_type)
+            return platform, handlers.get("video")
     return None, None
 
 async def send_message(chat_id, text):
@@ -79,14 +74,16 @@ async def process_download(message, url, request_type="video"):
             start_time, end_time = int(start_time), int(end_time)
 
         # Detect platform & get the correct handler
-        platform, handler = detect_platform(url, request_type)
+        platform, handler = detect_platform(url)
         if not handler:
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        # Process download request
+        # Process request
         if request_type == "trim":
-            result = await handler(url, start_time, end_time)
+            result = await process_youtube_request(url, start_time, end_time)
+        elif request_type == "audio":
+            result = await extract_audio_ffmpeg(url)
         else:
             result = await handler(url)
 
