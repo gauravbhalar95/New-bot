@@ -4,6 +4,7 @@ import logging
 import asyncio
 import aiofiles
 import re
+import telebot
 from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
@@ -14,96 +15,81 @@ from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
 from handlers.trim_handlers import process_youtube_request
 
-# Initialize logging
+# Logging setup
 logger = setup_logging(logging.DEBUG)
 
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# Define platform handlers
-PLATFORM_HANDLERS = {
-    "YouTube": {
-        "pattern": re.compile(r"(youtube\.com|youtu\.be)"),
-        "video": process_youtube,
-        "trim": process_youtube_request,
-    },
-    "Instagram": {
-        "pattern": re.compile(r"instagram\.com"),
-        "video": process_instagram,
-    },
-    "Facebook": {
-        "pattern": re.compile(r"facebook\.com"),
-        "video": process_facebook,
-    },
-    "Twitter/X": {
-        "pattern": re.compile(r"(x\.com|twitter\.com)"),
-        "video": download_twitter_media,
-    },
-    "Adult": {
-        "pattern": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),
-        "video": process_adult,
-    },
+# Precompile regex patterns for faster matching
+PLATFORM_PATTERNS = {
+    "YouTube": (re.compile(r"(youtube\.com|youtu\.be)"), process_youtube, process_youtube_request),
+    "Instagram": (re.compile(r"instagram\.com"), process_instagram),
+    "Facebook": (re.compile(r"facebook\.com"), process_facebook),
+    "Twitter/X": (re.compile(r"(x\.com|twitter\.com)"), download_twitter_media),
+    "Adult": (re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"), process_adult),
 }
 
-def detect_platform(url):
-    """Detects the platform and returns the corresponding handler."""
-    for platform, handlers in PLATFORM_HANDLERS.items():
-        if handlers["pattern"].search(url):
-            return platform, handlers.get("video")
+def detect_platform(url, is_trim_request=False):
+    """Efficiently detects the platform using regex matching."""
+    for platform, (pattern, handler, *trim_handler) in PLATFORM_PATTERNS.items():
+        if pattern.search(url):
+            return platform, trim_handler[0] if is_trim_request and trim_handler else handler
     return None, None
 
 async def send_message(chat_id, text):
-    """Sends a message asynchronously with error handling."""
+    """Sends a message asynchronously, with error handling."""
     try:
         await bot.send_message(chat_id, text)
     except Exception as e:
         logger.error(f"Error sending message: {e}")
 
-async def process_download(message, url, request_type="video"):
-    """Handles downloading (video/audio) and sending files to Telegram."""
+async def background_download(message, url):
+    """Handles the entire download process and sends the video to Telegram."""
     try:
-        await send_message(message.chat.id, f"📥 **Processing {request_type}...**")
-        logger.info(f"Processing {request_type}: {url}")
+        await send_message(message.chat.id, "📥 **Download started...**")
+        logger.info(f"Processing URL: {url}")
 
-        # Check if it's a YouTube trim request
-        trim_match = re.search(r"(\S+)\s+(\d+)\s+(\d+)", url)
-        if trim_match:
-            url, start_time, end_time = trim_match.groups()
-            request_type = "trim"
+        # Extract start & end time from URL format: "url start end"
+        time_match = re.search(r"(\S+)\s+(\d+)\s+(\d+)", url)
+        start_time, end_time = None, None
+        is_trim_request = False
+
+        if time_match:
+            url, start_time, end_time = time_match.groups()
             start_time, end_time = int(start_time), int(end_time)
+            is_trim_request = True
 
-        # Detect platform & get the correct handler
-        platform, handler = detect_platform(url)
+        platform, handler = detect_platform(url, is_trim_request)
         if not handler:
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        # Process request
-        if request_type == "trim":
+        # Process request based on platform
+        if platform == "YouTube" and is_trim_request:
+            logger.info(f"Trimming YouTube video: Start={start_time}s, End={end_time}s")
             result = await process_youtube_request(url, start_time, end_time)
-        elif request_type == "audio":
-            result = await extract_audio_ffmpeg(url)
         else:
             result = await handler(url)
 
-        # Extract result
-        file_path, file_size, download_url = result if isinstance(result, tuple) else (result, None, None)
+        if isinstance(result, tuple):
+            file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
 
-        # Handle large files
-        if not file_path or (file_size and file_size > TELEGRAM_FILE_LIMIT):
+        # If file is too large, provide a direct download link instead
+        if not file_path or file_size > TELEGRAM_FILE_LIMIT:
             if download_url:
-                await send_message(message.chat.id, f"⚠️ **File too large for Telegram.**\n📥 [Download here]({download_url})")
+                await send_message(
+                    message.chat.id,
+                    f"⚠️ **The video is too large for Telegram.**\n📥 [Download here]({download_url})"
+                )
             else:
                 await send_message(message.chat.id, "❌ **Download failed.**")
             return
 
-        # Send video/audio file
-        async with aiofiles.open(file_path, "rb") as file:
-            if request_type == "audio":
-                await bot.send_audio(message.chat.id, file, timeout=600)
-            else:
-                await bot.send_video(message.chat.id, file, supports_streaming=True, timeout=600)
+        # Send video file with increased timeout
+        async with aiofiles.open(file_path, "rb") as video:
+            await bot.send_video(message.chat.id, video, supports_streaming=True, timeout=600)
 
         # Cleanup
         if file_path and os.path.exists(file_path):
@@ -115,28 +101,74 @@ async def process_download(message, url, request_type="video"):
         logger.error(f"Error: {e}")
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
+async def background_audio_download(message, url):
+    """Handles YouTube audio extraction and sends the audio file to Telegram."""
+    try:
+        await send_message(message.chat.id, "🎵 **Extracting audio...**")
+        logger.info(f"Extracting audio from URL: {url}")
+
+        platform, handler = detect_platform(url)
+        if platform != "YouTube":
+            await send_message(message.chat.id, "⚠️ **Audio extraction is only supported for YouTube.**")
+            return
+        
+        result = await extract_audio_ffmpeg(url)
+
+        if isinstance(result, tuple):
+            file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
+
+            if not file_path or file_size > TELEGRAM_FILE_LIMIT:
+                if download_url:
+                    await send_message(
+                        message.chat.id,
+                        f"⚠️ **Audio file is too large for Telegram.**\n🎵 [Download here]({download_url})"
+                    )
+                else:
+                    await send_message(message.chat.id, "❌ **Audio extraction failed.**")
+                return
+
+            # Send extracted audio file
+            async with aiofiles.open(file_path, "rb") as audio:
+                await bot.send_audio(message.chat.id, audio, timeout=600)
+
+            # Cleanup
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+
+            gc.collect()
+        else:
+            await send_message(message.chat.id, "❌ **Failed to extract audio.**")
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
 async def worker():
-    """Worker function for processing downloads."""
+    """Worker function for parallel downloads."""
     while True:
-        message, url, request_type = await download_queue.get()
-        asyncio.create_task(process_download(message, url, request_type))
+        message, url, is_audio = await download_queue.get()
+        if is_audio:
+            asyncio.create_task(background_audio_download(message, url))
+        else:
+            asyncio.create_task(background_download(message, url))
         download_queue.task_done()
 
-@bot.message_handler(commands=["audio"])
+@bot.message_handler(func=lambda message: message.text.startswith("/audio "), content_types=["text"])
 async def handle_audio_request(message):
-    """Handles audio extraction requests."""
-    url = message.text.replace("/audio", "").strip()
+    """Handles audio extraction requests from YouTube."""
+    url = message.text.split(maxsplit=1)[1].strip()
     if not url:
-        await send_message(message.chat.id, "⚠️ **Please provide a URL.**")
+        await send_message(message.chat.id, "⚠️ **Please provide a valid YouTube URL.**")
         return
-    await download_queue.put((message, url, "audio"))
-    await send_message(message.chat.id, "✅ **Added to audio queue!**")
+    
+    await download_queue.put((message, url, True))
+    await send_message(message.chat.id, "🎵 **Audio extraction added to queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
-    """Handles general download requests (video)."""
+    """Handles incoming URLs and adds them to the download queue."""
     url = message.text.strip()
-    await download_queue.put((message, url, "video"))
+    await download_queue.put((message, url, False))
     await send_message(message.chat.id, "✅ **Added to download queue!**")
 
 async def main():
