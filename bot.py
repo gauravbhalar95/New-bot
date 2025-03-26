@@ -11,8 +11,8 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from utils.logger import setup_logging
 from handlers.trim_handlers import process_youtube_request
+from utils.logger import setup_logging
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
@@ -53,20 +53,11 @@ def detect_platform(url):
             return platform
     return None
 
-async def process_download(message, url, is_audio=False):
+async def process_download(message, url, is_audio=False, is_trim_request=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram."""
     try:
         await send_message(message.chat.id, "📥 **Processing your request...**")
         logger.info(f"Processing URL: {url}")
-
-        # Check if it's a trimming request (e.g., `/trim <url> <start_time> <end_time>`)
-        trim_match = re.search(r"(\S+)\s+(\d+)\s+(\d+)", url)
-        if trim_match:
-            url, start_time, end_time = trim_match.groups()
-            start_time, end_time = int(start_time), int(end_time)
-            is_trim_request = True
-        else:
-            is_trim_request = False
 
         # Detect platform
         platform = detect_platform(url)
@@ -77,8 +68,8 @@ async def process_download(message, url, is_audio=False):
         # Handle request based on type
         if is_audio:
             result = await extract_audio_ffmpeg(url)
-        elif platform == "YouTube" and is_trim_request:
-            result = await process_youtube_request(url, start_time, end_time)
+        elif is_trim_request and platform == "YouTube":
+            result = await process_youtube_request(f"{url} {start_time} {end_time}")
         else:
             result = await PLATFORM_HANDLERS[platform](url)
 
@@ -119,8 +110,8 @@ async def process_download(message, url, is_audio=False):
 async def worker():
     """Worker function for parallel processing of downloads."""
     while True:
-        message, url, is_audio = await download_queue.get()
-        await process_download(message, url, is_audio)
+        message, url, is_audio, is_trim_request, start_time, end_time = await download_queue.get()
+        await process_download(message, url, is_audio, is_trim_request, start_time, end_time)
         download_queue.task_done()
 
 @bot.message_handler(commands=["audio"])
@@ -130,24 +121,29 @@ async def handle_audio_request(message):
     if not url:
         await send_message(message.chat.id, "⚠️ **Please provide a URL.**")
         return
-    await download_queue.put((message, url, True))
+    await download_queue.put((message, url, True, False, None, None))
     await send_message(message.chat.id, "✅ **Added to audio queue!**")
 
 @bot.message_handler(commands=["trim"])
 async def handle_trim_request(message):
     """Handles YouTube video trimming requests."""
     url_parts = message.text.replace("/trim", "").strip()
-    if not url_parts:
-        await send_message(message.chat.id, "⚠️ **Please provide a URL, start time, and end time.**")
+    
+    # Extract URL and timestamps
+    match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", url_parts)
+    if not match:
+        await send_message(message.chat.id, "⚠️ **Invalid format.** Please use:\n`/trim <YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`")
         return
-    await download_queue.put((message, url_parts, False))
+    
+    url, start_time, end_time = match.groups()
+    await download_queue.put((message, url, False, True, start_time, end_time))
     await send_message(message.chat.id, "✂️ **Added to trimming queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
     """Handles general video download requests."""
     url = message.text.strip()
-    await download_queue.put((message, url, False))
+    await download_queue.put((message, url, False, False, None, None))
     await send_message(message.chat.id, "✅ **Added to download queue!**")
 
 async def main():
