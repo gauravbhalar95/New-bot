@@ -10,7 +10,7 @@ from utils.logger import setup_logging
 logger = setup_logging(logging.DEBUG)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-async def extract_url_and_time(text):
+async def extract_url_and_time(url):
     """Extract URL and Start/End Time using HH:MM:SS format"""
     match = re.match(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", text)
     if match:
@@ -38,7 +38,7 @@ async def download_youtube_clip(url, start_time, end_time):
 
 async def process_youtube_request(url):
     """Process YouTube Download for a Specific Clip"""
-    url, start, end = await extract_url_and_time(text)
+    url, start, end = await extract_url_and_time(url)
     if not url:
         return "❌ **Invalid Format.** Please send: `<YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
 
