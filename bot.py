@@ -7,10 +7,10 @@ import re
 from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import process_instagram, extract_audio_instagram
-from handlers.facebook_handlers import process_facebook, extract_audio_facebook
-from handlers.common_handler import process_adult, extract_audio_adult
-from handlers.x_handler import download_twitter_media, extract_audio_twitter
+from handlers.instagram_handler import process_instagram
+from handlers.facebook_handlers import process_facebook
+from handlers.common_handler import process_adult
+from handlers.x_handler import download_twitter_media
 from utils.logger import setup_logging
 from handlers.trim_handlers import process_youtube_request
 
@@ -32,22 +32,22 @@ PLATFORM_HANDLERS = {
     "Instagram": {
         "pattern": re.compile(r"instagram\.com"),
         "video": process_instagram,
-        "audio": extract_audio_instagram,
+        "audio": extract_audio_ffmpeg,
     },
     "Facebook": {
         "pattern": re.compile(r"facebook\.com"),
         "video": process_facebook,
-        "audio": extract_audio_facebook,
+        "audio": extract_audio_ffmpeg,
     },
     "Twitter/X": {
         "pattern": re.compile(r"(x\.com|twitter\.com)"),
         "video": download_twitter_media,
-        "audio": extract_audio_twitter,
+        "audio": extract_audio_ffmpeg,
     },
     "Adult": {
         "pattern": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),
         "video": process_adult,
-        "audio": extract_audio_adult,
+        "audio": extract_audio_ffmpeg,
     },
 }
 
