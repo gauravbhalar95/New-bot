@@ -32,7 +32,6 @@ flask[async]
 fastapi
 flask==3.1.0
 pytelegrambotapi==4.14.0
-mega.py @ git+https://github.com/odwyersoftware/mega.py.git
 tenacity==5.1.5
 psutil
 aiofiles
