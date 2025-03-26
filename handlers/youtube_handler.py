@@ -46,7 +46,7 @@ async def process_youtube(url):
         logger.error(f"⚠️ Error downloading video: {e}")
         return None, 0, str(e)
 
-async def extract_audio(url):
+async def extract_audio_ffmpeg(url):
     """Download and extract audio from a YouTube video asynchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     audio_opts = {
