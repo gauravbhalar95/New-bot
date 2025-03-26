@@ -56,7 +56,7 @@ async def extract_audio_ffmpeg(url):
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredquality': '320',
         }],
         'logger': logger,
         'verbose': True,
