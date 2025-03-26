@@ -36,7 +36,7 @@ async def download_youtube_clip(url, start_time, end_time):
         info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
         return ydl.prepare_filename(info).replace('.webm', '.mp4')
 
-async def process_youtube_request(text):
+async def process_youtube_request(url):
     """Process YouTube Download for a Specific Clip"""
     url, start, end = await extract_url_and_time(text)
     if not url:
