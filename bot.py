@@ -7,7 +7,7 @@ import re
 import telebot
 from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
-from handlers.youtube_handler import process_youtube
+from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
@@ -101,18 +101,74 @@ async def background_download(message, url):
         logger.error(f"Error: {e}")
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
+async def background_audio_download(message, url):
+    """Handles YouTube audio extraction and sends the audio file to Telegram."""
+    try:
+        await send_message(message.chat.id, "🎵 **Extracting audio...**")
+        logger.info(f"Extracting audio from URL: {url}")
+
+        platform, handler = detect_platform(url)
+        if platform != "YouTube":
+            await send_message(message.chat.id, "⚠️ **Audio extraction is only supported for YouTube.**")
+            return
+        
+        result = await extract_audio_ffmpeg(url)
+
+        if isinstance(result, tuple):
+            file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
+
+            if not file_path or file_size > TELEGRAM_FILE_LIMIT:
+                if download_url:
+                    await send_message(
+                        message.chat.id,
+                        f"⚠️ **Audio file is too large for Telegram.**\n🎵 [Download here]({download_url})"
+                    )
+                else:
+                    await send_message(message.chat.id, "❌ **Audio extraction failed.**")
+                return
+
+            # Send extracted audio file
+            async with aiofiles.open(file_path, "rb") as audio:
+                await bot.send_audio(message.chat.id, audio, timeout=600)
+
+            # Cleanup
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+
+            gc.collect()
+        else:
+            await send_message(message.chat.id, "❌ **Failed to extract audio.**")
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
 async def worker():
     """Worker function for parallel downloads."""
     while True:
-        message, url = await download_queue.get()
-        asyncio.create_task(background_download(message, url))
+        message, url, is_audio = await download_queue.get()
+        if is_audio:
+            asyncio.create_task(background_audio_download(message, url))
+        else:
+            asyncio.create_task(background_download(message, url))
         download_queue.task_done()
+
+@bot.message_handler(func=lambda message: message.text.startswith("/audio "), content_types=["text"])
+async def handle_audio_request(message):
+    """Handles audio extraction requests from YouTube."""
+    url = message.text.split(maxsplit=1)[1].strip()
+    if not url:
+        await send_message(message.chat.id, "⚠️ **Please provide a valid YouTube URL.**")
+        return
+    
+    await download_queue.put((message, url, True))
+    await send_message(message.chat.id, "🎵 **Audio extraction added to queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
     """Handles incoming URLs and adds them to the download queue."""
     url = message.text.strip()
-    await download_queue.put((message, url))
+    await download_queue.put((message, url, False))
     await send_message(message.chat.id, "✅ **Added to download queue!**")
 
 async def main():
