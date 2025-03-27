@@ -129,7 +129,10 @@ async def handle_trim_request(message):
     """Handles YouTube video trimming requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
-        await send_message(message.chat.id, "⚠️ **Invalid format.** Please use:\n`/trim <YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`")
+        await send_message(
+            message.chat.id,
+            "⚠️ Invalid format. Please send: `/trim <YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
+        )
         return
 
     url, start_time, end_time = match.groups()
