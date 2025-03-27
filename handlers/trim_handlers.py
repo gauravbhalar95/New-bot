@@ -4,7 +4,7 @@ import asyncio
 import yt_dlp
 import logging
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR
+from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.logger import setup_logging
 
 # Setup logging
@@ -34,6 +34,7 @@ async def download_youtube_clip(url, start_time, end_time):
         'format': 'best',
         'outtmpl': output_path,
         'merge_output_format': 'mp4',
+        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'quiet': True,
         'noplaylist': True,
         'download_ranges': [{'start_time': start_time, 'end_time': end_time}],
