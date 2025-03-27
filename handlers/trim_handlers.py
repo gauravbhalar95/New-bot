@@ -53,13 +53,12 @@ async def download_youtube_clip(url, start_time, end_time):
         logger.error(f"Error downloading YouTube clip: {e}")
         return None
 
-async def process_youtube_request(text):
+async def process_youtube_request(url, start_time, end_time):
     """Processes a YouTube download request for a specific clip."""
-    url, start_time, end_time = await extract_url_and_time(text)
     if not url:
-        return "❌ **Invalid Format\\.** Please send: `YouTube\\_URL Start\\_Time\HH\\:MM\\:SS\ End\\_Time\HH\\:MM\\:SS\`"
+        return None  # Fix: Return None instead of an invalid error message
 
     logger.info(f"Downloading Clip: {url}, Start: {start_time}, End: {end_time}")
 
     clip_path = await download_youtube_clip(url, start_time, end_time)
-    return f"✅ **Clip Ready:** `{clip_path}`" if clip_path else "❌ **Download Failed.**"
+    return clip_path  # Fix: Return only the file path (or None if it fails)
