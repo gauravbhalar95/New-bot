@@ -13,12 +13,17 @@ logger = setup_logging(logging.DEBUG)
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+def time_to_seconds(time_str):
+    """Converts HH:MM:SS to seconds."""
+    h, m, s = map(int, time_str.split(":"))
+    return h * 3600 + m * 60 + s
+
 async def extract_url_and_time(text):
     """Extracts the YouTube URL and Start/End Time in HH:MM:SS format."""
     match = re.match(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", text)
     if match:
         url, start_time, end_time = match.groups()
-        return url, start_time, end_time
+        return url, time_to_seconds(start_time), time_to_seconds(end_time)
     return None, None, None
 
 async def download_youtube_clip(url, start_time, end_time):
@@ -31,7 +36,7 @@ async def download_youtube_clip(url, start_time, end_time):
         'merge_output_format': 'mp4',
         'quiet': True,
         'noplaylist': True,
-        'download_sections': [f"*{start_time}-{end_time}"],  # Using HH:MM:SS format
+        'download_ranges': [{'start_time': start_time, 'end_time': end_time}],
     }
 
     loop = asyncio.get_running_loop()
@@ -39,7 +44,11 @@ async def download_youtube_clip(url, start_time, end_time):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             file_path = ydl.prepare_filename(info).replace('.webm', '.mp4')
-            return file_path if os.path.exists(file_path) else None
+            if os.path.exists(file_path):
+                return file_path
+            else:
+                logger.error(f"File not found: {file_path}")
+                return None
     except Exception as e:
         logger.error(f"Error downloading YouTube clip: {e}")
         return None
@@ -48,7 +57,7 @@ async def process_youtube_request(text):
     """Processes a YouTube download request for a specific clip."""
     url, start_time, end_time = await extract_url_and_time(text)
     if not url:
-        return "❌ **Invalid Format.** Please send: `<YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
+        return "❌ **Invalid Format\\.** Please send: `YouTube\\_URL Start\\_Time\HH\\:MM\\:SS\ End\\_Time\HH\\:MM\\:SS\`"
 
     logger.info(f"Downloading Clip: {url}, Start: {start_time}, End: {end_time}")
 
