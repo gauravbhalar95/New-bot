@@ -53,7 +53,7 @@ def detect_platform(url):
             return platform
     return None
 
-async def process_download(message, url, start_time=None, end_time=None, is_audio=False, is_trim_request=False):
+async def process_download(message, url, is_audio=False, is_trim_request=False):
     """Handles video/audio download and sends it to Telegram."""
     try:
         await send_message(message.chat.id, "📥 **Processing your request...**")
@@ -69,7 +69,7 @@ async def process_download(message, url, start_time=None, end_time=None, is_audi
         if is_audio:
             result = await extract_audio_ffmpeg(url)
         elif is_trim_request and platform == "YouTube":
-            result = await process_youtube_request(url, start_time, end_time)
+            result = await process_youtube_request(message.text)  # ✅ FIXED: Pass full text message
         else:
             result = await PLATFORM_HANDLERS[platform](url)
 
@@ -110,8 +110,8 @@ async def process_download(message, url, start_time=None, end_time=None, is_audi
 async def worker():
     """Worker function for parallel processing of downloads."""
     while True:
-        message, url, start_time, end_time, is_audio, is_trim_request = await download_queue.get()
-        await process_download(message, url, start_time, end_time, is_audio, is_trim_request)
+        message, url, is_audio, is_trim_request = await download_queue.get()
+        await process_download(message, url, is_audio, is_trim_request)
         download_queue.task_done()
 
 @bot.message_handler(commands=["audio"])
@@ -121,7 +121,7 @@ async def handle_audio_request(message):
     if not url:
         await send_message(message.chat.id, "⚠️ **Please provide a URL.**")
         return
-    await download_queue.put((message, url, None, None, True, False))
+    await download_queue.put((message, url, True, False))
     await send_message(message.chat.id, "✅ **Added to audio queue!**")
 
 @bot.message_handler(commands=["trim"])
@@ -136,14 +136,14 @@ async def handle_trim_request(message):
         return
 
     url, start_time, end_time = match.groups()
-    await download_queue.put((message, url, start_time, end_time, False, True))
+    await download_queue.put((message, url, False, True))
     await send_message(message.chat.id, "✂️ **Added to trimming queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
     """Handles general video download requests."""
     url = message.text.strip()
-    await download_queue.put((message, url, None, None, False, False))
+    await download_queue.put((message, url, False, False))
     await send_message(message.chat.id, "✅ **Added to download queue!**")
 
 async def main():
