@@ -3,6 +3,7 @@ import re
 import asyncio
 import yt_dlp
 import logging
+import subprocess
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.logger import setup_logging
@@ -26,9 +27,9 @@ async def extract_url_and_time(text):
         return url, time_to_seconds(start_time), time_to_seconds(end_time)
     return None, None, None
 
-async def download_youtube_clip(url, start_time, end_time):
-    """Downloads only the required clip using yt-dlp."""
-    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s_%(id)s.mp4")
+async def download_youtube_video(url):
+    """Downloads the full YouTube video using yt-dlp."""
+    output_path = os.path.join(DOWNLOAD_DIR, "%(title)s_%(id)s.%(ext)s")
 
     ydl_opts = {
         'format': 'best',
@@ -37,29 +38,49 @@ async def download_youtube_clip(url, start_time, end_time):
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
         'quiet': True,
         'noplaylist': True,
-        'download_ranges': [{'start_time': start_time, 'end_time': end_time}],
     }
 
     loop = asyncio.get_running_loop()
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
-            file_path = ydl.prepare_filename(info).replace('.webm', '.mp4')
-            if os.path.exists(file_path):
-                return file_path
-            else:
-                logger.error(f"File not found: {file_path}")
-                return None
+            file_path = ydl.prepare_filename(info).replace('.webm', '.mp4')  # Ensure MP4 format
+            return file_path if os.path.exists(file_path) else None
     except Exception as e:
-        logger.error(f"Error downloading YouTube clip: {e}")
+        logger.error(f"Error downloading YouTube video: {e}")
         return None
 
+async def trim_video(input_path, start_time, end_time):
+    """Trims the video using ffmpeg."""
+    output_path = input_path.replace(".mp4", f"_{start_time}_{end_time}.mp4")
+
+    command = [
+        "ffmpeg", "-i", input_path, "-ss", str(start_time), "-to", str(end_time),
+        "-c", "copy", "-y", output_path
+    ]
+
+    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    await process.communicate()
+
+    return output_path if os.path.exists(output_path) else None
+
 async def process_youtube_request(url, start_time, end_time):
-    """Processes a YouTube download request for a specific clip."""
+    """Processes a YouTube request by downloading and trimming the video."""
     if not url:
-        return None  # Fix: Return None instead of an invalid error message
+        return None
 
-    logger.info(f"Downloading Clip: {url}, Start: {start_time}, End: {end_time}")
+    logger.info(f"Downloading Video: {url}")
+    video_path = await download_youtube_video(url)
+    
+    if not video_path:
+        logger.error("Failed to download video.")
+        return None
 
-    clip_path = await download_youtube_clip(url, start_time, end_time)
-    return clip_path  # Fix: Return only the file path (or None if it fails)
+    logger.info(f"Trimming Video: Start: {start_time}s, End: {end_time}s")
+    trimmed_path = await trim_video(video_path, start_time, end_time)
+
+    if trimmed_path:
+        return trimmed_path
+    else:
+        logger.error("Failed to trim video.")
+        return None
