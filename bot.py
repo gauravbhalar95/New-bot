@@ -4,8 +4,10 @@ import logging
 import asyncio
 import aiofiles
 import re
+import dropbox
+from dropbox.exceptions import AuthError, ApiError
 from telebot.async_telebot import AsyncTeleBot
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -20,6 +22,9 @@ logger = setup_logging(logging.DEBUG)
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
+
+# Dropbox client setup
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -53,8 +58,41 @@ def detect_platform(url):
             return platform
     return None
 
+async def upload_to_dropbox(file_path, filename):
+    """
+    Uploads a file to Dropbox and returns a shareable link.
+    
+    Args:
+        file_path (str): Path to the file to upload
+        filename (str): Name to use for the file in Dropbox
+    
+    Returns:
+        str: Shareable link to the uploaded file
+    """
+    try:
+        # Create uploads directory if it doesn't exist
+        dropbox_path = f"/telegram_uploads/{filename}"
+        
+        # Upload file
+        with open(file_path, "rb") as f:
+            dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+        
+        # Create shared link
+        shared_link = dbx.sharing_create_shared_link_with_settings(dropbox_path)
+        return shared_link.url.replace('dl=0', 'dl=1')  # Make link directly downloadable
+    
+    except AuthError:
+        logger.error("Dropbox authentication failed")
+        return None
+    except ApiError as e:
+        logger.error(f"Dropbox API error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error uploading to Dropbox: {e}")
+        return None
+
 async def process_download(message, url, is_audio=False, is_trim_request=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram."""
+    """Handles video/audio download and sends it to Telegram or Dropbox."""
     try:
         await send_message(message.chat.id, "📥 **Processing your request...**")
         logger.info(f"Processing URL: {url}")
@@ -69,7 +107,7 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
         if is_audio:
             result = await extract_audio_ffmpeg(url)
         elif is_trim_request and platform == "YouTube":
-            result = await process_youtube_request(url, start_time, end_time)  # ✅ Fixed: Passing required arguments
+            result = await process_youtube_request(url, start_time, end_time)
         else:
             result = await PLATFORM_HANDLERS[platform](url)
 
@@ -79,15 +117,35 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
         else:
             file_path, file_size, download_url = result, None, None
 
-        # If file is too large for Telegram, send direct download link
+        # If file is too large for Telegram, upload to Dropbox
         if not file_path or (file_size and file_size > TELEGRAM_FILE_LIMIT):
-            if download_url:
-                await send_message(
-                    message.chat.id,
-                    f"⚠️ **File too large for Telegram.**\n📥 [Download here]({download_url})"
-                )
-            else:
-                await send_message(message.chat.id, "❌ **Download failed.**")
+            if file_path and os.path.exists(file_path):
+                # Generate a unique filename
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                
+                # Upload to Dropbox
+                dropbox_link = await upload_to_dropbox(file_path, filename)
+                
+                if dropbox_link:
+                    await send_message(
+                        message.chat.id,
+                        f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                    )
+                else:
+                    # Fallback to original download URL if Dropbox upload fails
+                    if download_url:
+                        await send_message(
+                            message.chat.id,
+                            f"⚠️ **File too large for Telegram.**\n📥 [Download here]({download_url})"
+                        )
+                    else:
+                        await send_message(message.chat.id, "❌ **Download failed.**")
+            
+            # Cleanup
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+            
+            gc.collect()
             return
 
         # Send file to Telegram
@@ -107,12 +165,15 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
         logger.error(f"Error: {e}")
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
+# Rest of the code remains the same as in the original script
 async def worker():
     """Worker function for parallel processing of downloads."""
     while True:
         message, url, is_audio, is_trim_request, start_time, end_time = await download_queue.get()
         await process_download(message, url, is_audio, is_trim_request, start_time, end_time)
         download_queue.task_done()
+
+# ... (rest of the original script remains unchanged)
 
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
