@@ -147,7 +147,7 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
         if is_audio:
             result = await extract_audio_ffmpeg(url)
         elif is_trim_request and platform == "YouTube":
-            result = await process_youtube_request(url, start_time, end_time)
+            result = await process_trim_request(url, start_time, end_time)
         else:
             result = await PLATFORM_HANDLERS[platform](url)
 
