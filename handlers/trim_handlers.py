@@ -16,49 +16,51 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def time_to_seconds(time_str):
     """Converts HH:MM:SS to seconds."""
-    h, m, s = map(int, time_str.split(":"))
-    return h * 3600 + m * 60 + s
+    try:
+        h, m, s = map(int, time_str.split(":"))
+        return h * 3600 + m * 60 + s
+    except ValueError:
+        return None
 
-async def extract_url_and_time(text):
+def extract_url_and_time(text):
     """Extracts the URL and Start/End Time in HH:MM:SS format."""
-    match = re.match(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", text)
+    match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", text)
     if match:
         url, start_time, end_time = match.groups()
-        return url, time_to_seconds(start_time), time_to_seconds(end_time)
+        start_sec, end_sec = time_to_seconds(start_time), time_to_seconds(end_time)
+        if start_sec is None or end_sec is None:
+            return None, None, None
+        return url, start_sec, end_sec
     return None, None, None
 
 async def download_media(url, is_audio=False):
     """Downloads video or audio using yt-dlp."""
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s_%(id)s.%(ext)s")
-    
+
     ydl_opts = {
         'format': 'bestaudio' if is_audio else 'bestvideo+bestaudio',
         'outtmpl': output_path,
         'merge_output_format': 'mp4' if not is_audio else 'mp3',
         'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
-        'quiet': True,
+        'quiet': False,  # Set to False for debugging
         'noplaylist': True,
     }
-    
+
     loop = asyncio.get_running_loop()
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             file_path = ydl.prepare_filename(info)
-            if is_audio:
-                file_path = file_path.replace('.webm', '.mp3').replace('.m4a', '.mp3')
-            else:
-                file_path = file_path.replace('.webm', '.mp4').replace('.mkv', '.mp4')
-            
+            file_path = file_path.rsplit(".", 1)[0] + (".mp3" if is_audio else ".mp4")  # Ensure correct file extension
             return file_path if os.path.exists(file_path) else None
-    except Exception as e:
+    except yt_dlp.utils.DownloadError as e:
         logger.error(f"Error downloading media: {e}")
         return None
 
 async def trim_media(input_path, start_time, end_time, is_audio=False):
     """Trims the video or audio using ffmpeg."""
     ext = "mp3" if is_audio else "mp4"
-    output_path = input_path.replace(f".{ext}", f"_{start_time}_{end_time}.{ext}")
+    output_path = input_path.rsplit(".", 1)[0] + f"_{start_time}_{end_time}.{ext}"
 
     command = [
         "ffmpeg", "-i", input_path, "-ss", str(start_time), "-to", str(end_time),
@@ -66,13 +68,24 @@ async def trim_media(input_path, start_time, end_time, is_audio=False):
     ]
 
     process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    await process.communicate()
+    stdout, stderr = await process.communicate()
 
-    return output_path if os.path.exists(output_path) else None
+    if process.returncode == 0 and os.path.exists(output_path):
+        return output_path
+    else:
+        logger.error(f"FFmpeg error: {stderr.decode()}")
+        return None
 
-async def process_trim_request(url, start_time, end_time, is_audio=False):
-    """Processes a trim request by downloading and trimming the media."""
-    if not url:
+async def process_trim_request(text, is_audio=False):
+    """Processes a trim request by extracting URL, downloading, and trimming the media."""
+    url, start_time, end_time = extract_url_and_time(text)
+
+    if not url or start_time is None or end_time is None:
+        logger.error("Invalid input format. Expected: '<url> <start_time> <end_time>'")
+        return None
+
+    if start_time >= end_time:
+        logger.error("Invalid trim range: Start time must be less than end time.")
         return None
 
     logger.info(f"Downloading {'Audio' if is_audio else 'Video'}: {url}")
