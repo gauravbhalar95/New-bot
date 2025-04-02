@@ -144,10 +144,11 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
             return
 
         # Handle request based on type
-        if is_audio:
+        if is_trim_request:
+            logger.info(f"Processing trim request: Audio={is_audio}, Start={start_time}, End={end_time}")
+            result = await process_trim_request(url, start_time, end_time, is_audio=is_audio)
+        elif is_audio:
             result = await extract_audio_ffmpeg(url)
-        elif is_trim_request and platform == "YouTube":
-            result = await process_trim_request(url, start_time, end_time, is_audio=False)
         else:
             result = await PLATFORM_HANDLERS[platform](url)
 
@@ -227,8 +228,11 @@ async def send_welcome(message):
         "Commands:\n"
         "• Send a direct URL to download video\n"
         "• /audio <URL> - Extract audio\n"
-        "• /trim <YouTube URL> <Start Time> <End Time> - Trim YouTube video\n\n"
-        "Example: `/trim https://youtube.com/video 00:01:00 00:02:30`"
+        "• /trim <URL> <Start Time> <End Time> - Trim video\n"
+        "• /trimAudio <URL> <Start Time> <End Time> - Trim and extract audio\n\n"
+        "Examples:\n"
+        "• `/trim https://youtube.com/video 00:01:00 00:02:30`\n"
+        "• `/trimAudio https://youtube.com/video 00:01:00 00:02:30`"
     )
     await send_message(message.chat.id, welcome_text)
 
@@ -244,18 +248,33 @@ async def handle_audio_request(message):
 
 @bot.message_handler(commands=["trim"])
 async def handle_trim_request(message):
-    """Handles YouTube video trimming requests."""
+    """Handles video trimming requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
         await send_message(
             message.chat.id,
-            "⚠️ Invalid format. Please send: `/trim <YouTube URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
+            "⚠️ Invalid format. Please send: `/trim <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
         )
         return
 
     url, start_time, end_time = match.groups()
     await download_queue.put((message, url, False, True, start_time, end_time))
-    await send_message(message.chat.id, "✂️ **Added to trimming queue!**")
+    await send_message(message.chat.id, "✂️ **Added to video trimming queue!**")
+
+@bot.message_handler(commands=["trimAudio"])
+async def handle_audio_trim_request(message):
+    """Handles audio trimming requests."""
+    match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
+    if not match:
+        await send_message(
+            message.chat.id,
+            "⚠️ Invalid format. Please send: `/trimAudio <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"
+        )
+        return
+
+    url, start_time, end_time = match.groups()
+    await download_queue.put((message, url, True, True, start_time, end_time))
+    await send_message(message.chat.id, "✂️🎵 **Added to audio trimming queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
