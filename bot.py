@@ -15,7 +15,7 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import process_trim_request
+from handlers.trim_handlers import process_video_trim, process_audio_trim
 from utils.logger import setup_logging
 
 # Logging setup
@@ -131,11 +131,19 @@ async def upload_to_dropbox(file_path, filename):
         logger.error(f"Unexpected Dropbox upload error: {e}")
         return None
 
-async def process_download(message, url, is_audio=False, is_trim_request=False, start_time=None, end_time=None):
+async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or Dropbox."""
     try:
-        await send_message(message.chat.id, "📥 **Processing your request...**")
-        logger.info(f"Processing URL: {url}")
+        request_type = "Video Download"
+        if is_audio:
+            request_type = "Audio Download"
+        elif is_video_trim:
+            request_type = "Video Trimming"
+        elif is_audio_trim:
+            request_type = "Audio Trimming"
+            
+        await send_message(message.chat.id, f"📥 **Processing your {request_type.lower()}...**")
+        logger.info(f"Processing URL: {url}, Type: {request_type}")
 
         # Detect platform
         platform = detect_platform(url)
@@ -144,21 +152,29 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
             return
 
         # Handle request based on type
-        if is_trim_request:
-            logger.info(f"Processing trim request: Audio={is_audio}, Start={start_time}, End={end_time}")
-            result = await process_trim_request(url, start_time, end_time, is_audio=is_audio)
+        if is_video_trim:
+            logger.info(f"Processing video trim request: Start={start_time}, End={end_time}")
+            file_path, file_size = await process_video_trim(url, start_time, end_time)
+            download_url = None
+        elif is_audio_trim:
+            logger.info(f"Processing audio trim request: Start={start_time}, End={end_time}")
+            file_path, file_size = await process_audio_trim(url, start_time, end_time)
+            download_url = None
         elif is_audio:
             result = await extract_audio_ffmpeg(url)
+            if isinstance(result, tuple):
+                file_path, file_size = result if len(result) == 2 else (result, None)
+                download_url = None
+            else:
+                file_path, file_size, download_url = result, None, None
         else:
             result = await PLATFORM_HANDLERS[platform](url)
+            if isinstance(result, tuple):
+                file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
+            else:
+                file_path, file_size, download_url = result, None, None
 
-        # Process result
-        if isinstance(result, tuple):
-            file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
-        else:
-            file_path, file_size, download_url = result, None, None
-
-        # If file is too large for Telegram, upload to Dropbox
+        # Handle case where file is too large for Telegram
         if not file_path or (file_size and file_size > TELEGRAM_FILE_LIMIT):
             if file_path and os.path.exists(file_path):
                 # Generate a unique filename
@@ -196,7 +212,7 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
 
         # Send file to Telegram
         async with aiofiles.open(file_path, "rb") as file:
-            if is_audio:
+            if is_audio or is_audio_trim:
                 await bot.send_audio(message.chat.id, file, timeout=600)
             else:
                 await bot.send_video(message.chat.id, file, supports_streaming=True, timeout=600)
@@ -214,8 +230,8 @@ async def process_download(message, url, is_audio=False, is_trim_request=False, 
 async def worker():
     """Worker function for parallel processing of downloads."""
     while True:
-        message, url, is_audio, is_trim_request, start_time, end_time = await download_queue.get()
-        await process_download(message, url, is_audio, is_trim_request, start_time, end_time)
+        message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = await download_queue.get()
+        await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
         download_queue.task_done()
 
 @bot.message_handler(commands=["start", "help"])
@@ -227,12 +243,12 @@ async def send_welcome(message):
         "• YouTube\n• Instagram\n• Facebook\n• Twitter/X\n\n"
         "Commands:\n"
         "• Send a direct URL to download video\n"
-        "• /audio <URL> - Extract audio\n"
-        "• /trim <URL> <Start Time> <End Time> - Trim video\n"
-        "• /trimAudio <URL> <Start Time> <End Time> - Trim and extract audio\n\n"
+        "• /audio <URL> - Extract full audio from video\n"
+        "• /trim <URL> <Start Time> <End Time> - Trim video segment\n"
+        "• /trimAudio <URL> <Start Time> <End Time> - Extract audio segment\n\n"
         "Examples:\n"
-        "• `/trim https://youtube.com/video 00:01:00 00:02:30`\n"
-        "• `/trimAudio https://youtube.com/video 00:01:00 00:02:30`"
+        "• `/trim https://youtube.com/watch?v=example 00:01:00 00:02:30`\n"
+        "• `/trimAudio https://youtube.com/watch?v=example 00:01:00 00:02:30`"
     )
     await send_message(message.chat.id, welcome_text)
 
@@ -243,11 +259,11 @@ async def handle_audio_request(message):
     if not url:
         await send_message(message.chat.id, "⚠️ **Please provide a URL.**")
         return
-    await download_queue.put((message, url, True, False, None, None))
-    await send_message(message.chat.id, "✅ **Added to audio queue!**")
+    await download_queue.put((message, url, True, False, False, None, None))
+    await send_message(message.chat.id, "🎵 **Added to audio extraction queue!**")
 
 @bot.message_handler(commands=["trim"])
-async def handle_trim_request(message):
+async def handle_video_trim_request(message):
     """Handles video trimming requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
@@ -258,12 +274,12 @@ async def handle_trim_request(message):
         return
 
     url, start_time, end_time = match.groups()
-    await download_queue.put((message, url, False, True, start_time, end_time))
-    await send_message(message.chat.id, "✂️ **Added to video trimming queue!**")
+    await download_queue.put((message, url, False, True, False, start_time, end_time))
+    await send_message(message.chat.id, "✂️🎬 **Added to video trimming queue!**")
 
 @bot.message_handler(commands=["trimAudio"])
 async def handle_audio_trim_request(message):
-    """Handles audio trimming requests."""
+    """Handles audio segment extraction requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
         await send_message(
@@ -273,15 +289,15 @@ async def handle_audio_trim_request(message):
         return
 
     url, start_time, end_time = match.groups()
-    await download_queue.put((message, url, True, True, start_time, end_time))
-    await send_message(message.chat.id, "✂️🎵 **Added to audio trimming queue!**")
+    await download_queue.put((message, url, False, False, True, start_time, end_time))
+    await send_message(message.chat.id, "✂️🎵 **Added to audio segment extraction queue!**")
 
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
     """Handles general video download requests."""
     url = message.text.strip()
-    await download_queue.put((message, url, False, False, None, None))
-    await send_message(message.chat.id, "✅ **Added to download queue!**")
+    await download_queue.put((message, url, False, False, False, None, None))
+    await send_message(message.chat.id, "🎬 **Added to video download queue!**")
 
 async def main():
     """Runs the bot and initializes worker processes."""
