@@ -22,84 +22,255 @@ def time_to_seconds(time_str):
     except ValueError:
         return None
 
-def extract_url_and_time(text):
-    """Extracts the URL and Start/End Time in HH:MM:SS format."""
-    match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", text)
-    if match:
-        url, start_time, end_time = match.groups()
-        start_sec, end_sec = time_to_seconds(start_time), time_to_seconds(end_time)
-        if start_sec is None or end_sec is None:
-            return None, None, None
-        return url, start_sec, end_sec
-    return None, None, None
-
 async def download_media(url, is_audio=False):
-    """Downloads video or audio using yt-dlp."""
+    """
+    Downloads video or audio using yt-dlp.
+    
+    Args:
+        url (str): URL of the media to download
+        is_audio (bool): Whether to download as audio only
+        
+    Returns:
+        str: Path to the downloaded file or None if download failed
+    """
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s_%(id)s.%(ext)s")
 
-    ydl_opts = {
-        'format': 'bestaudio' if is_audio else 'bestvideo+bestaudio',
-        'outtmpl': output_path,
-        'merge_output_format': 'mp4' if not is_audio else 'mp3',
-        'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
-        'quiet': False,  # Set to False for debugging
-        'noplaylist': True,
-    }
+    # Set different options based on whether we're downloading audio or video
+    if is_audio:
+        ydl_opts = {
+            'format': 'bestaudio',
+            'outtmpl': output_path,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+            'quiet': False,
+            'noplaylist': True,
+        }
+    else:
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio',
+            'outtmpl': output_path,
+            'merge_output_format': 'mp4',
+            'cookiefile': YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+            'quiet': False,
+            'noplaylist': True,
+        }
 
     loop = asyncio.get_running_loop()
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
             file_path = ydl.prepare_filename(info)
-            file_path = file_path.rsplit(".", 1)[0] + (".mp3" if is_audio else ".mp4")  # Ensure correct file extension
+            
+            # Ensure correct file extension
+            if is_audio:
+                file_path = file_path.rsplit(".", 1)[0] + ".mp3"
+            else:
+                file_path = file_path.rsplit(".", 1)[0] + ".mp4"
+                
             return file_path if os.path.exists(file_path) else None
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"Error downloading media: {e}")
         return None
 
-async def trim_media(input_path, start_time, end_time, is_audio=False):
-    """Trims the video or audio using ffmpeg."""
-    ext = "mp3" if is_audio else "mp4"
-    output_path = input_path.rsplit(".", 1)[0] + f"_{start_time}_{end_time}.{ext}"
-
+async def trim_video(input_path, start_time, end_time):
+    """
+    Trims a video file using ffmpeg.
+    
+    Args:
+        input_path (str): Path to the video file
+        start_time (int): Start time in seconds
+        end_time (int): End time in seconds
+        
+    Returns:
+        tuple: (file_path, file_size) if successful, or (None, None) if failed
+    """
+    output_path = input_path.rsplit(".", 1)[0] + f"_video_trim_{start_time}_{end_time}.mp4"
+    
     command = [
-        "ffmpeg", "-i", input_path, "-ss", str(start_time), "-to", str(end_time),
-        "-c", "copy", "-y", output_path
+        "ffmpeg", "-i", input_path, 
+        "-ss", str(start_time), 
+        "-to", str(end_time),
+        "-c:v", "libx264", 
+        "-c:a", "aac", 
+        "-preset", "fast",
+        "-y", output_path
     ]
-
-    process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    
+    logger.debug(f"Running FFmpeg video trim command: {' '.join(command)}")
+    
+    process = await asyncio.create_subprocess_exec(
+        *command, 
+        stdout=asyncio.subprocess.PIPE, 
+        stderr=asyncio.subprocess.PIPE
+    )
+    
     stdout, stderr = await process.communicate()
 
     if process.returncode == 0 and os.path.exists(output_path):
-        return output_path
+        file_size = os.path.getsize(output_path)
+        logger.info(f"Video trimming successful. Output file: {output_path}, Size: {file_size} bytes")
+        return output_path, file_size
     else:
-        logger.error(f"FFmpeg error: {stderr.decode()}")
-        return None
+        logger.error(f"FFmpeg video trim error (return code {process.returncode}): {stderr.decode()}")
+        return None, None
 
-async def process_trim_request(text, is_audio=False):
-    """Processes a trim request by extracting URL, downloading, and trimming the media."""
-    url, start_time, end_time = extract_url_and_time(text)
+async def trim_audio(input_path, start_time, end_time):
+    """
+    Trims an audio file using ffmpeg.
+    
+    Args:
+        input_path (str): Path to the audio file
+        start_time (int): Start time in seconds
+        end_time (int): End time in seconds
+        
+    Returns:
+        tuple: (file_path, file_size) if successful, or (None, None) if failed
+    """
+    output_path = input_path.rsplit(".", 1)[0] + f"_audio_trim_{start_time}_{end_time}.mp3"
+    
+    command = [
+        "ffmpeg", "-i", input_path, 
+        "-ss", str(start_time), 
+        "-to", str(end_time),
+        "-acodec", "libmp3lame", 
+        "-q:a", "2",
+        "-y", output_path
+    ]
+    
+    logger.debug(f"Running FFmpeg audio trim command: {' '.join(command)}")
+    
+    process = await asyncio.create_subprocess_exec(
+        *command, 
+        stdout=asyncio.subprocess.PIPE, 
+        stderr=asyncio.subprocess.PIPE
+    )
+    
+    stdout, stderr = await process.communicate()
 
-    if not url or start_time is None or end_time is None:
-        logger.error("Invalid input format. Expected: '<url> <start_time> <end_time>'")
-        return None
-
-    if start_time >= end_time:
-        logger.error("Invalid trim range: Start time must be less than end time.")
-        return None
-
-    logger.info(f"Downloading {'Audio' if is_audio else 'Video'}: {url}")
-    media_path = await download_media(url, is_audio)
-
-    if not media_path:
-        logger.error("Failed to download media.")
-        return None
-
-    logger.info(f"Trimming {'Audio' if is_audio else 'Video'}: Start: {start_time}s, End: {end_time}s")
-    trimmed_path = await trim_media(media_path, start_time, end_time, is_audio)
-
-    if trimmed_path:
-        return trimmed_path
+    if process.returncode == 0 and os.path.exists(output_path):
+        file_size = os.path.getsize(output_path)
+        logger.info(f"Audio trimming successful. Output file: {output_path}, Size: {file_size} bytes")
+        return output_path, file_size
     else:
-        logger.error("Failed to trim media.")
-        return None
+        logger.error(f"FFmpeg audio trim error (return code {process.returncode}): {stderr.decode()}")
+        return None, None
+
+async def process_video_trim(url, start_time, end_time):
+    """
+    Process a video trim request - downloads video and trims it.
+    
+    Args:
+        url (str): URL of the video to download and trim
+        start_time (str): Start time in HH:MM:SS format
+        end_time (str): End time in HH:MM:SS format
+        
+    Returns:
+        tuple: (file_path, file_size) if successful, or (None, None) if failed
+    """
+    try:
+        # Convert time format if necessary
+        start_seconds = time_to_seconds(start_time) if isinstance(start_time, str) else start_time
+        end_seconds = time_to_seconds(end_time) if isinstance(end_time, str) else end_time
+        
+        if start_seconds is None or end_seconds is None:
+            logger.error("Invalid time format for video trim")
+            return None, None
+            
+        if start_seconds >= end_seconds:
+            logger.error(f"Invalid video trim range: Start time ({start_seconds}s) must be less than end time ({end_seconds}s)")
+            return None, None
+
+        # Download the video
+        logger.info(f"Downloading video for trimming from: {url}")
+        video_path = await download_media(url, is_audio=False)
+
+        if not video_path:
+            logger.error("Failed to download video for trimming")
+            return None, None
+
+        # Get original file size for logging
+        orig_size = os.path.getsize(video_path)
+        logger.info(f"Downloaded video file: {video_path}, Size: {orig_size} bytes")
+
+        # Trim the video
+        logger.info(f"Trimming video: Start: {start_seconds}s, End: {end_seconds}s")
+        trimmed_path, file_size = await trim_video(video_path, start_seconds, end_seconds)
+
+        # Clean up the original downloaded file
+        try:
+            os.remove(video_path)
+            logger.info(f"Removed original video file: {video_path}")
+        except Exception as e:
+            logger.warning(f"Could not remove original video file {video_path}: {e}")
+
+        if trimmed_path:
+            return trimmed_path, file_size
+        else:
+            logger.error("Failed to trim video")
+            return None, None
+            
+    except Exception as e:
+        logger.error(f"Error in process_video_trim: {e}", exc_info=True)
+        return None, None
+
+async def process_audio_trim(url, start_time, end_time):
+    """
+    Process an audio trim request - downloads audio and trims it.
+    
+    Args:
+        url (str): URL of the media to download audio from and trim
+        start_time (str): Start time in HH:MM:SS format
+        end_time (str): End time in HH:MM:SS format
+        
+    Returns:
+        tuple: (file_path, file_size) if successful, or (None, None) if failed
+    """
+    try:
+        # Convert time format if necessary
+        start_seconds = time_to_seconds(start_time) if isinstance(start_time, str) else start_time
+        end_seconds = time_to_seconds(end_time) if isinstance(end_time, str) else end_time
+        
+        if start_seconds is None or end_seconds is None:
+            logger.error("Invalid time format for audio trim")
+            return None, None
+            
+        if start_seconds >= end_seconds:
+            logger.error(f"Invalid audio trim range: Start time ({start_seconds}s) must be less than end time ({end_seconds}s)")
+            return None, None
+
+        # Download the audio
+        logger.info(f"Downloading audio for trimming from: {url}")
+        audio_path = await download_media(url, is_audio=True)
+
+        if not audio_path:
+            logger.error("Failed to download audio for trimming")
+            return None, None
+
+        # Get original file size for logging
+        orig_size = os.path.getsize(audio_path)
+        logger.info(f"Downloaded audio file: {audio_path}, Size: {orig_size} bytes")
+
+        # Trim the audio
+        logger.info(f"Trimming audio: Start: {start_seconds}s, End: {end_seconds}s")
+        trimmed_path, file_size = await trim_audio(audio_path, start_seconds, end_seconds)
+
+        # Clean up the original downloaded file
+        try:
+            os.remove(audio_path)
+            logger.info(f"Removed original audio file: {audio_path}")
+        except Exception as e:
+            logger.warning(f"Could not remove original audio file {audio_path}: {e}")
+
+        if trimmed_path:
+            return trimmed_path, file_size
+        else:
+            logger.error("Failed to trim audio")
+            return None, None
+            
+    except Exception as e:
+        logger.error(f"Error in process_audio_trim: {e}", exc_info=True)
+        return None, None
