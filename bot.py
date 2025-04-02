@@ -15,7 +15,7 @@ from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import process_youtube_request
+from handlers.trim_handlers import process_trim_request
 from utils.logger import setup_logging
 
 # Logging setup
