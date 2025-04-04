@@ -19,7 +19,7 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 
 INSTALOADER_INSTANCE.load_session_from_file("INSTAGRAM_USERNAME", filename="instagram_cookies.txt")
 
-async def handle_instagram_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_instagram_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     if not url.startswith("https://www.instagram.com/p/"):
         return
