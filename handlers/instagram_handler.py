@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
+import instaloader
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
@@ -56,11 +57,11 @@ def download_progress_hook(d: dict) -> None:
     elif d['status'] == 'finished':
         logger.info(f"✅ Download finished: {d['filename']}")
 
-# Instagram Media Downloader
-async def process_instagram(url: str) -> tuple[list[str] | None, int, str | None]:
+# Instagram Media Downloader using yt-dlp (for regular posts and reels)
+async def process_instagram_ytdlp(url: str) -> tuple[list[str] | None, int, str | None]:
     """
-    Download Instagram media (videos, images, stories, carousels) asynchronously 
-    and return paths, total size, and any errors.
+    Download Instagram media (videos, images, carousels) asynchronously 
+    using yt-dlp and return paths, total size, and any errors.
     """
     # Clean URL to avoid unwanted parameters (Keep query parameters)
     url = url.split('#')[0]    
@@ -73,7 +74,7 @@ async def process_instagram(url: str) -> tuple[list[str] | None, int, str | None
 
     # Identify content type for logging
     content_type = identify_instagram_content(url)
-    logger.info(f"Processing Instagram {content_type}: {url}")
+    logger.info(f"Processing Instagram {content_type} with yt-dlp: {url}")
 
     ydl_opts = {
         'format': 'bv+ba/b',  # Best quality for all media types
@@ -115,19 +116,19 @@ async def process_instagram(url: str) -> tuple[list[str] | None, int, str | None
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             logger.info(f"Starting extraction for {url}")
             info_dict = await asyncio.to_thread(ydl.extract_info, url, False)
-            
+
             # Handle different content types
             if info_dict:
                 logger.info(f"Successfully extracted info for {url}")
-                
+
                 # Check if it's a carousel/playlist with multiple entries
                 if '_type' in info_dict and info_dict['_type'] == 'playlist':
                     logger.info(f"Detected carousel with {len(info_dict.get('entries', []))} items")
-                    
+
                     # Download all entries in the carousel
                     media_paths = []
                     total_size = 0
-                    
+
                     for entry in info_dict.get('entries', []):
                         entry_info = await asyncio.to_thread(ydl.process_ie_result, entry, download=True)
                         if entry_info:
@@ -138,27 +139,120 @@ async def process_instagram(url: str) -> tuple[list[str] | None, int, str | None
                                 file_size = entry_info.get('filesize', media_path.stat().st_size)
                                 total_size += file_size
                                 logger.info(f"Downloaded carousel item: {filename}, size: {file_size}")
-                    
+
                     return media_paths, total_size, None
                 else:
-                    # Single media item (image, video, or story)
+                    # Single media item (image, video)
                     info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
-                    video_path = Path(ydl.prepare_filename(info_dict))
-                    
-                    if video_path.exists():
-                        file_size = info_dict.get('filesize', video_path.stat().st_size)
-                        logger.info(f"Downloaded single media: {video_path}, size: {file_size}")
-                        return [str(video_path)], file_size, None
-            
-            logger.error("❌ Failed to extract any media")
-            return None, 0, "Failed to extract media information"
-            
+                    media_path = Path(ydl.prepare_filename(info_dict))
+
+                    if media_path.exists():
+                        file_size = info_dict.get('filesize', media_path.stat().st_size)
+                        logger.info(f"Downloaded single media: {media_path}, size: {file_size}")
+                        return [str(media_path)], file_size, None
+
+            logger.error("❌ Failed to extract any media with yt-dlp")
+            return None, 0, "Failed to extract media information with yt-dlp"
+
     except yt_dlp.utils.DownloadError as e:
-        logger.error(f"❌ Instagram download error: {e}")
+        logger.error(f"❌ Instagram download error with yt-dlp: {e}")
         return None, 0, str(e)
     except Exception as e:
-        logger.error(f"⚠️ Unexpected error downloading Instagram media: {e}")
+        logger.error(f"⚠️ Unexpected error downloading Instagram media with yt-dlp: {e}")
         return None, 0, str(e)
+
+# Instagram Story Downloader using Instaloader
+async def process_instagram_stories(url: str) -> tuple[list[str] | None, int, str | None]:
+    """
+    Download Instagram stories asynchronously using Instaloader
+    and return paths, total size, and any errors.
+    """
+    # Clean URL to avoid unwanted parameters
+    url = url.split('#')[0]
+    
+    logger.info(f"Processing Instagram story with Instaloader: {url}")
+    
+    try:
+        # Extract username and story ID from URL
+        url_parts = url.split('/')
+        username = None
+        for i, part in enumerate(url_parts):
+            if part == 'stories':
+                username = url_parts[i+1]
+                break
+        
+        if not username:
+            return None, 0, "Could not extract username from story URL"
+            
+        # Create temporary directory for downloaded stories
+        download_path = Path(DOWNLOAD_DIR) / f"story_{username}"
+        download_path.mkdir(exist_ok=True)
+        
+        # Use instaloader to download the story
+        L = instaloader.Instaloader(
+            download_pictures=True,
+            download_videos=True,
+            download_video_thumbnails=False,
+            download_geotags=False,
+            download_comments=False,
+            save_metadata=False,
+            compress_json=False,
+            dirname_pattern=str(download_path)
+        )
+        
+        # Try to load session from cookies file
+        cookie_path = Path(INSTAGRAM_FILE)
+        if cookie_path.exists():
+            try:
+                L.load_session_from_file(None, str(cookie_path))
+                logger.info("Successfully loaded Instagram session from cookies file")
+            except Exception as e:
+                logger.warning(f"Could not load session from cookies file: {e}")
+        
+        # Download the story
+        logger.info(f"Attempting to download story from user: {username}")
+        
+        # Get profile
+        profile = await asyncio.to_thread(instaloader.Profile.from_username, L.context, username)
+        
+        # Download all stories for the profile
+        media_paths = []
+        total_size = 0
+        
+        # This needs to be run in a separate thread to avoid blocking
+        await asyncio.to_thread(L.download_stories, [profile.userid])
+        
+        # Find all downloaded files
+        for file_path in download_path.glob('*'):
+            if file_path.is_file() and file_path.suffix.lower() in ['.jpg', '.mp4']:
+                media_paths.append(str(file_path))
+                file_size = file_path.stat().st_size
+                total_size += file_size
+                logger.info(f"Downloaded story item: {file_path}, size: {file_size}")
+        
+        if not media_paths:
+            logger.warning("No story files were downloaded")
+            return None, 0, "No story files were downloaded"
+            
+        return media_paths, total_size, None
+        
+    except Exception as e:
+        logger.error(f"⚠️ Error downloading Instagram story: {e}")
+        return None, 0, str(e)
+
+# Main Instagram processor
+async def process_instagram(url: str) -> tuple[list[str] | None, int, str | None]:
+    """
+    Process an Instagram URL by choosing the appropriate downloader based on content type.
+    """
+    content_type = identify_instagram_content(url)
+    
+    if content_type == CONTENT_TYPES['STORY']:
+        # Use Instaloader for stories
+        return await process_instagram_stories(url)
+    else:
+        # Use yt-dlp for regular posts, reels, and carousel
+        return await process_instagram_ytdlp(url)
 
 # Send Media to User
 async def send_media_to_user(bot, chat_id: int, media_paths: list[str]) -> None:
@@ -166,39 +260,43 @@ async def send_media_to_user(bot, chat_id: int, media_paths: list[str]) -> None:
     if not media_paths:
         await bot.send_message(chat_id, "Sorry, no media was found or downloaded.")
         return
-        
+
     for media_path in media_paths:
         path = Path(media_path)
         if not path.exists():
             logger.error(f"❌ Media file not found: {media_path}")
             continue
-            
+
         try:
             # Determine file type based on extension
             file_ext = path.suffix.lower()
-            
+
             if file_ext in ['.mp4', '.mov', '.avi']:
                 # Send as video
-                with open(media_path, 'rb') as video:
+                with open(str(path), 'rb') as video:  # Convert Path to string
                     await bot.send_video(chat_id, video)
                 logger.info(f"✅ Video successfully sent to user {chat_id}: {media_path}")
             elif file_ext in ['.jpg', '.jpeg', '.png', '.webp']:
                 # Send as photo
-                with open(media_path, 'rb') as photo:
+                with open(str(path), 'rb') as photo:  # Convert Path to string
                     await bot.send_photo(chat_id, photo)
                 logger.info(f"✅ Image successfully sent to user {chat_id}: {media_path}")
             else:
                 # Send as document (fallback)
-                with open(media_path, 'rb') as document:
+                with open(str(path), 'rb') as document:  # Convert Path to string
                     await bot.send_document(chat_id, document)
                 logger.info(f"✅ Document successfully sent to user {chat_id}: {media_path}")
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to send media to user {chat_id}: {e}")
 
 # Cleanup Downloaded Files
 def cleanup_media(media_paths: list[str]) -> None:
     """Remove the downloaded media files to free up space."""
+    if not media_paths:
+        logger.warning("No media paths to clean up")
+        return
+        
     for media_path in media_paths:
         file_path = Path(media_path)
         try:
@@ -207,7 +305,7 @@ def cleanup_media(media_paths: list[str]) -> None:
                 logger.info(f"🧹 Cleaned up {media_path}")
         except Exception as e:
             logger.error(f"❌ Failed to clean up {media_path}: {e}")
-    
+
     # Force garbage collection
     gc.collect()
     logger.info("🧹 Completed media cleanup and garbage collection")
