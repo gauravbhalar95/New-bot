@@ -141,7 +141,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             request_type = "Video Trimming"
         elif is_audio_trim:
             request_type = "Audio Trimming"
-            
+
         await send_message(message.chat.id, f"📥 **Processing your {request_type.lower()}...**")
         logger.info(f"Processing URL: {url}, Type: {request_type}")
 
@@ -156,27 +156,62 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             logger.info(f"Processing video trim request: Start={start_time}, End={end_time}")
             file_path, file_size = await process_video_trim(url, start_time, end_time)
             download_url = None
+            file_paths = [file_path] if file_path else []
         elif is_audio_trim:
             logger.info(f"Processing audio trim request: Start={start_time}, End={end_time}")
             file_path, file_size = await process_audio_trim(url, start_time, end_time)
             download_url = None
+            file_paths = [file_path] if file_path else []
         elif is_audio:
             result = await extract_audio_ffmpeg(url)
             if isinstance(result, tuple):
-                file_path, file_size = result if len(result) == 2 else (result, None)
+                file_path, file_size = result if len(result) == 2 else (result[0], None)
                 download_url = None
+                file_paths = [file_path] if file_path else []
             else:
                 file_path, file_size, download_url = result, None, None
+                file_paths = [file_path] if file_path else []
         else:
             result = await PLATFORM_HANDLERS[platform](url)
-            if isinstance(result, tuple):
-                file_path, file_size, download_url = result if len(result) == 3 else (*result, None)
+            
+            # Handle different return formats from platform handlers
+            if isinstance(result, tuple) and len(result) >= 3:
+                file_paths, file_size, download_url = result
+                # Ensure file_paths is always a list
+                if not isinstance(file_paths, list):
+                    file_paths = [file_paths] if file_paths else []
+            elif isinstance(result, tuple) and len(result) == 2:
+                file_paths, file_size = result
+                download_url = None
+                # Ensure file_paths is always a list
+                if not isinstance(file_paths, list):
+                    file_paths = [file_paths] if file_paths else []
             else:
-                file_path, file_size, download_url = result, None, None
+                file_paths = result if isinstance(result, list) else [result] if result else []
+                file_size = None
+                download_url = None
 
-        # Handle case where file is too large for Telegram
-        if not file_path or (file_size and file_size > TELEGRAM_FILE_LIMIT):
-            if file_path and os.path.exists(file_path):
+        # Log what we received
+        logger.info(f"Platform handler returned: file_paths={file_paths}, file_size={file_size}, download_url={download_url}")
+
+        # Skip processing if no files were returned
+        if not file_paths or all(not path for path in file_paths):
+            logger.warning("No valid file paths returned from platform handler")
+            await send_message(message.chat.id, "❌ **Download failed. No media found.**")
+            return
+
+        # Process each file (for handlers that may return multiple files like Instagram carousels)
+        for file_path in file_paths:
+            if not file_path or not os.path.exists(file_path):
+                logger.warning(f"File path does not exist: {file_path}")
+                continue
+
+            # Get file size if not provided
+            if file_size is None:
+                file_size = os.path.getsize(file_path)
+
+            # Handle case where file is too large for Telegram
+            if file_size > TELEGRAM_FILE_LIMIT:
                 # Generate a unique filename
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
 
@@ -202,25 +237,23 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                         )
                     else:
                         await send_message(message.chat.id, "❌ **Download failed.**")
-
-            # Cleanup
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-
-            gc.collect()
-            return
-
-        # Send file to Telegram
-        async with aiofiles.open(file_path, "rb") as file:
-            if is_audio or is_audio_trim:
-                await bot.send_audio(message.chat.id, file, timeout=600)
             else:
-                await bot.send_video(message.chat.id, file, supports_streaming=True, timeout=600)
+                # Send file to Telegram
+                async with aiofiles.open(file_path, "rb") as file:
+                    if is_audio or is_audio_trim:
+                        await bot.send_audio(message.chat.id, file, timeout=600)
+                    else:
+                        await bot.send_video(message.chat.id, file, supports_streaming=True, timeout=600)
 
-        # Cleanup
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+            # Cleanup the current file
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Cleaned up file: {file_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up file {file_path}: {cleanup_error}")
 
+        # Force garbage collection
         gc.collect()
 
     except Exception as e:
