@@ -123,4 +123,3 @@ def cleanup_video(video_path: str) -> None:
             logger.info(f"🧹 Cleaned up {video_path}")
     except Exception as e:
         logger.error(f"❌ Failed to clean up {video_path}: {e}")
-
