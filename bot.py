@@ -174,14 +174,14 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 file_paths = [file_path] if file_path else []
         else:
             if platform == "Instagram":
-    # Determine if it's an image (photo post) or video/reel
-    if "/p/" in url or "/reel/" not in url:
-        result = await process_instagram_image(url)
-    else:
-        result = await process_instagram(url)
-else:
-    result = await PLATFORM_HANDLERS[platform](url)
-            
+                # Determine if it's an image (photo post) or video/reel
+                if "/p/" in url or "/reel/" not in url:
+                    result = await process_instagram_image(url)
+                else:
+                    result = await process_instagram(url)
+            else:
+                result = await PLATFORM_HANDLERS[platform](url)
+
             # Handle different return formats from platform handlers
             if isinstance(result, tuple) and len(result) >= 3:
                 file_paths, file_size, download_url = result
