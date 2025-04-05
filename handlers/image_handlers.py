@@ -3,7 +3,7 @@ import tempfile
 import instaloader
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
-from utils.file_server import generate_direct_download_link
+from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_FILE
 
 # Create instaloader instance without loading the session initially
