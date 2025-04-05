@@ -4,7 +4,7 @@ import instaloader
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from utils.file_server import get_direct_download_link
-from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME, INSTAGRAM_PASSEORD, INSTAGRAM_FILE
+from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_FILE
 
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
