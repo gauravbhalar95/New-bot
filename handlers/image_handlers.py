@@ -8,7 +8,7 @@ import functools
 import instaloader
 from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
-from utils.logger import logging
+from utils.logger import setup_logging
 
 # Assuming logger, sanitize_filename, 
 # are defined elsewhere as in your original code.
