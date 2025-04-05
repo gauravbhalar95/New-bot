@@ -1,8 +1,6 @@
 import os
 import tempfile
 import instaloader
-from telegram import Update
-from telegram.ext import ContextTypes
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from utils.file_server import generate_direct_download_link
@@ -19,10 +17,10 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 
 INSTALOADER_INSTANCE.load_session_from_file("INSTAGRAM_USERNAME", filename="instagram_cookies.txt")
 
-async def process_instagram_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
+async def process_instagram_image(url):
+    """Process Instagram photo posts and return downloaded image paths."""
     if not url.startswith("https://www.instagram.com/p/"):
-        return
+        return []
 
     try:
         shortcode = url.split("/p/")[1].split("/")[0]
@@ -30,18 +28,26 @@ async def process_instagram_image(update: Update, context: ContextTypes.DEFAULT_
         images = []
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            for idx, node in enumerate(post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]):
-                image_url = node.display_url
-                filename = sanitize_filename(f"{shortcode}_{idx}.jpg")
-                filepath = os.path.join(tmpdir, filename)
+            # Handle both single posts and carousels
+            nodes = post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]
+            
+            for idx, node in enumerate(nodes):
+                if not node.is_video:  # Only download images, skip videos
+                    image_url = node.display_url
+                    filename = sanitize_filename(f"{shortcode}_{idx}.jpg")
+                    filepath = os.path.join(tmpdir, filename)
 
-                INSTALOADER_INSTANCE.context.get_and_write_raw(node.display_url, filepath)
-                images.append(filepath)
+                    # Download the image
+                    INSTALOADER_INSTANCE.context.get_and_write_raw(node.display_url, filepath)
+                    
+                    # Copy to a permanent location for the bot to use
+                    permanent_path = os.path.join(DOWNLOAD_DIR, filename)
+                    os.system(f"cp {filepath} {permanent_path}")
+                    images.append(permanent_path)
 
-            for img_path in images:
-                file_link = generate_direct_download_link(img_path)
-                await update.message.reply_photo(photo=open(img_path, "rb"), caption=f"[Direct Link]({file_link})", parse_mode="Markdown")
+        logger.info(f"Downloaded {len(images)} images from Instagram post {shortcode}")
+        return images
 
     except Exception as e:
         logger.error(f"Instagram image handler error: {e}")
-        await update.message.reply_text("Failed to download Instagram image. Please try again.")
+        return []
