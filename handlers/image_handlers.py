@@ -11,7 +11,7 @@ from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
 
-# Create instaloader instance
+# Create instaloader instance without loading the session initially
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -32,6 +32,7 @@ def initialize_instagram_session():
         logger.error(f"Failed to load Instagram session: {e}")
         logger.info("Continuing without Instagram login")
 
+# Try to initialize the session
 try:
     initialize_instagram_session()
 except Exception as e:
@@ -67,7 +68,8 @@ async def process_instagram_image(url):
                 download_tasks = []
 
                 for idx, node in enumerate(nodes):
-                    if not node.is_video:
+                    is_fake_video = node.is_video and getattr(node, 'video_duration', 0) == 0
+                    if not node.is_video or is_fake_video:
                         image_url = node.display_url
                         filename = sanitize_filename(f"{shortcode}_{idx}.jpg")
                         temp_path = os.path.join(temp_dir, filename)
