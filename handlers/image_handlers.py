@@ -6,12 +6,15 @@ import aiohttp
 import shutil
 import functools
 import instaloader
+from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
+from utils.sanitize import sanitize_filename
+from utils.logger import logging
 
-# Assuming logger, sanitize_filename, DOWNLOAD_DIR, INSTAGRAM_USERNAME
+# Assuming logger, sanitize_filename, 
 # are defined elsewhere as in your original code.
 # Example placeholders for missing parts:
-DOWNLOAD_DIR = "downloads"
-INSTAGRAM_USERNAME = "your_username_here" # Replace if needed
+
+ Replace if needed
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
@@ -21,8 +24,7 @@ class MockLogger: # Simple logger mock for demonstration
     def error(self, msg): print(f"ERROR: {msg}")
 logger = MockLogger()
 
-def sanitize_filename(name): # Simple sanitize mock
-    return "".join(c for c in name if c.isalnum() or c in ('_', '-')).rstrip()
+
 
 # --- Instaloader setup code from your original snippet ---
 INSTALOADER_INSTANCE = instaloader.Instaloader(
