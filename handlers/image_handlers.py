@@ -164,7 +164,7 @@ async def process_instagram_image(url):
                         image_url = node.display_url
                         # Create a unique filename, sanitize it
                         filename_base = f"{post.owner_username}_{shortcode}_{idx}" if post.owner_username else f"{shortcode}_{idx}"
-                        filename = sanitize_filename(f"{filename_base}.jpg")
+                        filename = sanitize_filename(f"{filename_base}.png")
                         temp_path = os.path.join(temp_dir, filename)
                         permanent_path = os.path.join(DOWNLOAD_DIR, filename)
 
