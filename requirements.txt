@@ -36,3 +36,4 @@ tenacity==5.1.5
 psutil
 aiofiles
 rclone
+telegram
