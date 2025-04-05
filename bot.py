@@ -218,17 +218,16 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             if file_size is None:
                 file_size = os.path.getsize(file_path)
 
-            # Handle case where file is too large for Telegram
-            if file_size > TELEGRAM_FILE_LIMIT:
+            # Handle case where file is too large for Telegram - use a safe limit
+            if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:  # Using 49MB as a safe limit
                 # Generate a unique filename
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-
-                logger.info(f"Attempting Dropbox upload for file: {filename}")
-                logger.info(f"File size: {file_size}")
-
+                
+                logger.info(f"File too large for Telegram: {file_size} bytes. Using Dropbox.")
+                
                 # Upload to Dropbox
                 dropbox_link = await upload_to_dropbox(file_path, filename)
-
+                
                 if dropbox_link:
                     logger.info(f"Successfully uploaded to Dropbox: {dropbox_link}")
                     await send_message(
@@ -246,12 +245,48 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                     else:
                         await send_message(message.chat.id, "❌ **Download failed.**")
             else:
-                # Send file to Telegram
-                async with aiofiles.open(file_path, "rb") as file:
-                    if is_audio or is_audio_trim:
-                        await bot.send_audio(message.chat.id, file, timeout=600)
+                # Send file to Telegram with additional safety check
+                try:
+                    async with aiofiles.open(file_path, "rb") as file:
+                        file_content = await file.read()
+                        file_size_actual = len(file_content)
+                        
+                        # Second check to be absolutely sure
+                        if file_size_actual > TELEGRAM_FILE_LIMIT:
+                            logger.warning(f"File size check passed but actual size exceeds limit: {file_size_actual}")
+                            filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                            dropbox_link = await upload_to_dropbox(file_path, filename)
+                            
+                            if dropbox_link:
+                                await send_message(
+                                    message.chat.id,
+                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                )
+                            else:
+                                await send_message(message.chat.id, "❌ **File too large. Upload failed.**")
+                        else:
+                            if is_audio or is_audio_trim:
+                                await bot.send_audio(message.chat.id, file_content, timeout=600)
+                            else:
+                                await bot.send_video(message.chat.id, file_content, supports_streaming=True, timeout=600)
+                except Exception as send_error:
+                    logger.error(f"Error sending file to Telegram: {send_error}")
+                    
+                    # If we get a 413 error, try Dropbox as fallback
+                    if "413" in str(send_error):
+                        logger.info("Got 413 error, attempting Dropbox upload as fallback")
+                        filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                        dropbox_link = await upload_to_dropbox(file_path, filename)
+                        
+                        if dropbox_link:
+                            await send_message(
+                                message.chat.id,
+                                f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                            )
+                        else:
+                            await send_message(message.chat.id, "❌ **File too large for Telegram and Dropbox upload failed.**")
                     else:
-                        await bot.send_video(message.chat.id, file, supports_streaming=True, timeout=600)
+                        await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
 
             # Cleanup the current file
             try:
