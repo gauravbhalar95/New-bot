@@ -1,6 +1,7 @@
 from quart import Quart, send_file, request
 from urllib.parse import quote
 import os
+from config import DOWNLOAD_DIR
 
 app = Quart(__name__)
 DOWNLOAD_DIR = 'downloads'  # Make sure this directory exists
