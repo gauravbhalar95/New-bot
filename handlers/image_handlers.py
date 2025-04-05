@@ -1,5 +1,7 @@
 import os
 import tempfile
+import aiofiles
+import aiohttp
 import instaloader
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
@@ -35,7 +37,7 @@ except Exception as e:
     logger.error(f"Instagram session initialization error: {e}")
 
 async def process_instagram_image(url):
-    """Process Instagram photo posts and return downloaded image paths."""
+    """Process Instagram photo posts and return downloaded image paths asynchronously."""
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Not an Instagram URL: {url}")
         return []
@@ -47,44 +49,101 @@ async def process_instagram_image(url):
         else:
             logger.warning(f"Not a valid Instagram post URL: {url}")
             return []
-            
-        # Fetch the post
+
+        # Fetch the post - this is synchronous and can't be made async with the current instaloader API
+        # We could consider moving this to a thread pool if needed
         post = instaloader.Post.from_shortcode(INSTALOADER_INSTANCE.context, shortcode)
         images = []
 
         # Create a temporary directory
         temp_dir = tempfile.mkdtemp()
-        
+
         try:
             # Handle both single posts and carousels
             nodes = post.get_sidecar_nodes() if post.typename == 'GraphSidecar' else [post]
             
-            for idx, node in enumerate(nodes):
-                if not node.is_video:  # Only download images, skip videos
-                    image_url = node.display_url
-                    filename = sanitize_filename(f"{shortcode}_{idx}.jpg")
-                    filepath = os.path.join(temp_dir, filename)
-
-                    # Download the image
-                    INSTALOADER_INSTANCE.context.get_and_write_raw(node.display_url, filepath)
+            # Use an async HTTP client for downloading
+            async with aiohttp.ClientSession() as session:
+                # Process image nodes concurrently
+                download_tasks = []
+                
+                for idx, node in enumerate(nodes):
+                    if not node.is_video:  # Only download images, skip videos
+                        image_url = node.display_url
+                        filename = sanitize_filename(f"{shortcode}_{idx}.jpg")
+                        filepath = os.path.join(temp_dir, filename)
+                        permanent_path = os.path.join(DOWNLOAD_DIR, filename)
+                        
+                        # Add the download task
+                        download_tasks.append(
+                            download_image(session, image_url, filepath, permanent_path)
+                        )
+                
+                # Wait for all downloads to complete
+                if download_tasks:
+                    results = await asyncio.gather(*download_tasks, return_exceptions=True)
                     
-                    # Copy to download directory
-                    permanent_path = os.path.join(DOWNLOAD_DIR, filename)
-                    os.system(f"cp {filepath} {permanent_path}")
-                    images.append(permanent_path)
-                    logger.info(f"Downloaded image to {permanent_path}")
-            
+                    # Process results and collect successful downloads
+                    for result in results:
+                        if isinstance(result, Exception):
+                            logger.error(f"Error downloading image: {result}")
+                        elif result:
+                            images.append(result)
+
             return images
-            
+
         finally:
-            # Clean up temp directory
-            try:
-                for file in os.listdir(temp_dir):
-                    os.remove(os.path.join(temp_dir, file))
-                os.rmdir(temp_dir)
-            except Exception as cleanup_error:
-                logger.error(f"Error cleaning up temp directory: {cleanup_error}")
+            # Clean up temp directory asynchronously
+            await cleanup_temp_dir(temp_dir)
 
     except Exception as e:
         logger.error(f"Instagram image handler error: {e}")
         return []
+
+async def download_image(session, url, temp_path, permanent_path):
+    """Download an image asynchronously and save it to the given paths."""
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                # Save to temporary file
+                async with aiofiles.open(temp_path, 'wb') as f:
+                    await f.write(await response.read())
+                
+                # Copy to permanent location
+                # We use asyncio.create_subprocess_exec for better async performance
+                proc = await asyncio.create_subprocess_exec(
+                    'cp', temp_path, permanent_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+                
+                logger.info(f"Downloaded image to {permanent_path}")
+                return permanent_path
+            else:
+                logger.error(f"Failed to download image, status code: {response.status}")
+                return None
+    except Exception as e:
+        logger.error(f"Error downloading image: {e}")
+        return None
+
+async def cleanup_temp_dir(temp_dir):
+    """Clean up temporary directory asynchronously."""
+    try:
+        for file in os.listdir(temp_dir):
+            file_path = os.path.join(temp_dir, file)
+            proc = await asyncio.create_subprocess_exec(
+                'rm', file_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+        
+        proc = await asyncio.create_subprocess_exec(
+            'rmdir', temp_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate()
+    except Exception as cleanup_error:
+        logger.error(f"Error cleaning up temp directory: {cleanup_error}")
