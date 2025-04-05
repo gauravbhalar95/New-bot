@@ -9,10 +9,9 @@ import instaloader
 
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
-from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
 
-# Create instaloader instance without loading the session initially
+# Create instaloader instance
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -33,7 +32,6 @@ def initialize_instagram_session():
         logger.error(f"Failed to load Instagram session: {e}")
         logger.info("Continuing without Instagram login")
 
-# Try to initialize the session
 try:
     initialize_instagram_session()
 except Exception as e:
@@ -46,7 +44,7 @@ async def get_post(shortcode):
     )
 
 async def process_instagram_image(url):
-    """Process Instagram photo posts and return direct download links asynchronously."""
+    """Process Instagram photo posts and return local file paths asynchronously."""
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Not an Instagram URL: {url}")
         return []
@@ -59,7 +57,7 @@ async def process_instagram_image(url):
             return []
 
         post = await get_post(shortcode)
-        images = []
+        image_paths = []
         temp_dir = tempfile.mkdtemp()
 
         try:
@@ -86,12 +84,9 @@ async def process_instagram_image(url):
                         if isinstance(result, Exception):
                             logger.error(f"Error downloading image: {result}")
                         elif result:
-                            # Convert to direct link
-                            link = get_direct_download_link(result)
-                            if link:
-                                images.append(link)
+                            image_paths.append(result)
 
-            return images
+            return image_paths
 
         finally:
             await cleanup_temp_dir(temp_dir)
