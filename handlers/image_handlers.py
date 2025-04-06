@@ -6,6 +6,7 @@ import aiohttp
 import shutil
 import functools
 import instaloader
+from PIL import Image
 from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
@@ -67,6 +68,28 @@ async def cleanup_temp_dir(temp_dir):
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
+def create_instagram_collage(image_paths, collage_path="collage.jpg"):
+    try:
+        images = [Image.open(p) for p in image_paths if os.path.exists(p)]
+        if not images:
+            return None
+
+        widths, heights = zip(*(img.size for img in images))
+        total_width = sum(widths)
+        max_height = max(heights)
+
+        collage = Image.new("RGB", (total_width, max_height), (255, 255, 255))
+        x_offset = 0
+        for img in images:
+            collage.paste(img, (x_offset, 0))
+            x_offset += img.width
+
+        collage.save(collage_path)
+        return collage_path
+    except Exception as e:
+        logger.error(f"Failed to create collage: {e}")
+        return None
+
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Invalid Instagram URL: {url}")
@@ -121,6 +144,14 @@ async def process_instagram_image(url):
 
                 results = await asyncio.gather(*tasks)
                 image_paths += [res for res in results if res]
+
+            # Create collage if multiple images exist
+            if len(image_paths) >= 2:
+                collage_output = os.path.join(DOWNLOAD_DIR, f"{post.owner_username}_{shortcode}_collage.jpg")
+                collage_path = create_instagram_collage(image_paths, collage_output)
+                if collage_path:
+                    logger.info(f"Collage created at: {collage_path}")
+                    image_paths.append(collage_path)
 
             return image_paths
 
