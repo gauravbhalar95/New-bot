@@ -7,17 +7,13 @@ import shutil
 import functools
 import instaloader
 from PIL import Image
-from config import DOWNLOAD_DIR, INSTAGRAM_USERNAME
-from utils.sanitize import sanitize_filename
-from utils.logger import setup_logging
+import re
+from utils.logger import logger  # Adjust path if logger is elsewhere
+from utils.sanitaize import get_sanotaize
 
-# Set up logger
-logger = setup_logging()
-
-# Ensure download directory exists
+DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Instaloader setup
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -26,6 +22,9 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_comments=False,
     post_metadata_txt_pattern=''
 )
+
+INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
+
 
 def initialize_instagram_session():
     logger.info("Initializing Instagram session...")
@@ -42,10 +41,7 @@ initialize_instagram_session()
 
 async def get_post(shortcode):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        None,
-        functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode)
-    )
+    return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
 
 async def download_image(session, url, temp_path, permanent_path):
     try:
@@ -68,27 +64,6 @@ async def cleanup_temp_dir(temp_dir):
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
-def create_instagram_collage(image_paths, collage_path="collage.jpg"):
-    try:
-        images = [Image.open(p) for p in image_paths if os.path.exists(p)]
-        if not images:
-            return None
-
-        widths, heights = zip(*(img.size for img in images))
-        total_width = sum(widths)
-        max_height = max(heights)
-
-        collage = Image.new("RGB", (total_width, max_height), (255, 255, 255))
-        x_offset = 0
-        for img in images:
-            collage.paste(img, (x_offset, 0))
-            x_offset += img.width
-
-        collage.save(collage_path)
-        return collage_path
-    except Exception as e:
-        logger.error(f"Failed to create collage: {e}")
-        return None
 
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
@@ -145,7 +120,6 @@ async def process_instagram_image(url):
                 results = await asyncio.gather(*tasks)
                 image_paths += [res for res in results if res]
 
-            # Create collage if multiple images exist
             if len(image_paths) >= 2:
                 collage_output = os.path.join(DOWNLOAD_DIR, f"{post.owner_username}_{shortcode}_collage.jpg")
                 collage_path = create_instagram_collage(image_paths, collage_output)
@@ -161,21 +135,3 @@ async def process_instagram_image(url):
     except Exception as e:
         logger.error(f"Error processing Instagram post: {e}")
         return []
-
-# --- Example usage ---
-async def main():
-    url = "https://www.instagram.com/p/C5Zkx9ySf4E/"  # Replace with your target image post URL
-    print(f"Processing: {url}")
-    paths = await process_instagram_image(url)
-    if paths:
-        print("Downloaded images:")
-        for p in paths:
-            print("-", p)
-    else:
-        print("No images found or downloaded.")
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Stopped.")
