@@ -69,8 +69,8 @@ async def process_instagram_image(url):
     shortcode = None
     if "/p/" in url:
         shortcode = url.split("/p/")[1].split("/")[0]
-    elif "/reel/" in url:
-        shortcode = url.split("/reel/")[1].split("/")[0]
+    elif "/stories/" in url:
+        shortcode = url.split("/stories/")[1].split("/")[0]
     else:
         logger.warning(f"Unrecognized Instagram URL structure: {url}")
         return []
