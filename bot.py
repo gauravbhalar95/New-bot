@@ -411,7 +411,7 @@ async def send_welcome(message):
         "• `/trim https://youtube.com/watch?v=example 00:01:00 00:02:30`\n"  
         "• `/trimAudio https://youtube.com/watch?v=example 00:01:00 00:02:30`"  
     )  
-    await send_message(message.chat.id, welcome_text)  
+    await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=["audio"])  
 async def handle_audio_request(message):  
