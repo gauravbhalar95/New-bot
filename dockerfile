@@ -35,4 +35,4 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8080
 
 # Start the bot and webhook server
-CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:8080 webhook:app & python bot.py && tail -f /dev/null"]
+CMD ["bash", "-c", "/app/update.sh && gunicorn --bind 0.0.0.0:8080 webhook:app & python bot_init.py & python utils.py & python  media_processor.py & python image_processor.py & python handlers.py && tail -f /dev/null"]
