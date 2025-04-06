@@ -40,6 +40,23 @@ async def get_post(shortcode):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
 
+async def get_story_images(username):
+    try:
+        loop = asyncio.get_event_loop()
+        profile = await loop.run_in_executor(None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username))
+        stories = await loop.run_in_executor(None, lambda: INSTALOADER_INSTANCE.get_stories(userids=[profile.userid]))
+
+        image_urls = []
+        for story in stories:
+            for item in story.get_items():
+                if not item.is_video:
+                    image_urls.append(item.url)
+
+        return image_urls
+    except Exception as e:
+        logger.error(f"Error fetching stories for {username}: {e}")
+        return []
+
 async def download_image(session, url, temp_path, permanent_path):
     try:
         async with session.get(url) as response:
@@ -66,33 +83,20 @@ async def process_instagram_image(url):
         logger.warning(f"Invalid Instagram URL: {url}")
         return []
 
-    shortcode = None
-    if "/p/" in url:
-        shortcode = url.split("/p/")[1].split("/")[0]
-    elif "/stories/" in url:
-        shortcode = url.split("/stories/")[1].split("/")[0]
-    else:
-        logger.warning(f"Unrecognized Instagram URL structure: {url}")
-        return []
-
-    if not shortcode:
-        logger.warning("Shortcode not found.")
-        return []
-
-    try:
-        post = await get_post(shortcode)
-        image_paths = []
-        temp_dir = tempfile.mkdtemp()
-
+    image_paths = []
+    temp_dir = tempfile.mkdtemp()
+    async with aiohttp.ClientSession() as session:
         try:
-            if hasattr(post, 'get_sidecar_nodes'):
-                nodes = post.get_sidecar_nodes()
-            else:
-                nodes = [post]
+            if "/p/" in url:
+                shortcode = url.split("/p/")[1].split("/")[0]
+                post = await get_post(shortcode)
 
-            async with aiohttp.ClientSession() as session:
+                if hasattr(post, 'get_sidecar_nodes'):
+                    nodes = post.get_sidecar_nodes()
+                else:
+                    nodes = [post]
+
                 tasks = []
-
                 for idx, node in enumerate(nodes):
                     if not node.is_video:
                         image_url = node.url
@@ -105,19 +109,42 @@ async def process_instagram_image(url):
                             image_paths.append(final_path)
                             continue
 
-                        logger.info(f"Downloading image: {image_url}")
                         tasks.append(download_image(session, image_url, temp_path, final_path))
                     else:
                         logger.info(f"Skipping video node {idx}.")
 
                 results = await asyncio.gather(*tasks)
-                image_paths += [res for res in results if res]
+                image_paths.extend([res for res in results if res])
+
+            elif "/stories/" in url:
+                username = url.split("/stories/")[1].split("/")[0]
+                story_image_urls = await get_story_images(username)
+
+                tasks = []
+                for idx, image_url in enumerate(story_image_urls):
+                    filename = sanitize_filename(f"{username}_story_{idx}.png")
+                    temp_path = os.path.join(temp_dir, filename)
+                    final_path = os.path.join(DOWNLOAD_DIR, filename)
+
+                    if os.path.exists(final_path):
+                        logger.info(f"File already exists: {final_path}")
+                        image_paths.append(final_path)
+                        continue
+
+                    tasks.append(download_image(session, image_url, temp_path, final_path))
+
+                results = await asyncio.gather(*tasks)
+                image_paths.extend([res for res in results if res])
+
+            else:
+                logger.warning("Unrecognized Instagram URL format.")
+                return []
 
             return image_paths
 
+        except Exception as e:
+            logger.error(f"Error processing Instagram image: {e}")
+            return []
+
         finally:
             await cleanup_temp_dir(temp_dir)
-
-    except Exception as e:
-        logger.error(f"Error processing Instagram post: {e}")
-        return []
