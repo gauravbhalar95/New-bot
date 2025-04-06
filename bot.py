@@ -18,7 +18,8 @@ from config import (
     CHUNK_SIZE,   # Add this to config.py (default: 4*1024*1024 - 4MB)
 )
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import process_instagram, process_instagram_image
+from handlers.instagram_handler import process_instagram
+from utils.image_handlers import process_instagram_image
 from handlers.facebook_handlers import process_facebook  
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
