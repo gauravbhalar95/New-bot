@@ -7,7 +7,7 @@ import re
 import dropbox  
 from dropbox.exceptions import AuthError, ApiError  
 from telebot.async_telebot import AsyncTeleBot  
-  
+
 # Import local modules  
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN  
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg  
@@ -18,17 +18,17 @@ from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim  
 from utils.logger import setup_logging  
 from handlers.image_handlers import process_instagram_image  
-  
+
 # Logging setup  
 logger = setup_logging(logging.DEBUG)  
-  
+
 # Async Telegram bot setup  
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")  
 download_queue = asyncio.Queue()  
-  
+
 # Dropbox client setup  
 dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)  
-  
+
 # Regex patterns for different platforms  
 PLATFORM_PATTERNS = {  
     "YouTube": re.compile(r"(youtube\.com|youtu\.be)"),  
@@ -37,7 +37,7 @@ PLATFORM_PATTERNS = {
     "Twitter/X": re.compile(r"(x\.com|twitter\.com)"),  
     "Adult": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),  
 }  
-  
+
 # Platform handlers  
 PLATFORM_HANDLERS = {  
     "YouTube": process_youtube,  
@@ -46,21 +46,21 @@ PLATFORM_HANDLERS = {
     "Twitter/X": download_twitter_media,  
     "Adult": process_adult,  
 }  
-  
+
 async def send_message(chat_id, text):  
     """Sends a message asynchronously."""  
     try:  
         await bot.send_message(chat_id, text)  
     except Exception as e:  
         logger.error(f"Error sending message: {e}")  
-  
+
 def detect_platform(url):  
     """Detects the platform based on URL patterns."""  
     for platform, pattern in PLATFORM_PATTERNS.items():  
         if pattern.search(url):  
             return platform  
     return None  
-  
+
 async def upload_to_dropbox(file_path, filename):  
     """  
     Uploads a file to Dropbox and returns a shareable link.  
@@ -79,13 +79,13 @@ async def upload_to_dropbox(file_path, filename):
         except Exception as auth_error:  
             logger.error(f"Dropbox authentication failed: {auth_error}")  
             return None  
-  
+
         dropbox_path = f"/telegram_uploads/{filename}"  
-  
+
         # Use file upload with error handling  
         with open(file_path, "rb") as f:  
             file_size = os.path.getsize(file_path)  
-  
+
             # Check if file is too large for single upload  
             if file_size > 140 * 1024 * 1024:  # 140 MB threshold  
                 logger.info("Large file detected, using upload session")  
@@ -94,7 +94,7 @@ async def upload_to_dropbox(file_path, filename):
                     session_id=upload_session.session_id,   
                     offset=f.tell()  
                 )  
-  
+
                 while f.tell() < file_size:  
                     if (file_size - f.tell()) <= 4*1024*1024:  
                         dbx.files_upload_session_finish(  
@@ -112,7 +112,7 @@ async def upload_to_dropbox(file_path, filename):
             else:  
                 # Regular upload for smaller files  
                 dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)  
-  
+
         # Create shared link with longer expiration  
         shared_link = dbx.sharing_create_shared_link_with_settings(  
             dropbox_path,  
@@ -121,7 +121,7 @@ async def upload_to_dropbox(file_path, filename):
             )  
         )  
         return shared_link.url.replace('dl=0', 'dl=1')  
-  
+
     except dropbox.exceptions.AuthError as auth_error:  
         logger.error(f"Dropbox authentication error: {auth_error}")  
         return None  
@@ -131,7 +131,7 @@ async def upload_to_dropbox(file_path, filename):
     except Exception as e:  
         logger.error(f"Unexpected Dropbox upload error: {e}")  
         return None  
-  
+
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):  
     """Handles video/audio download and sends it to Telegram or Dropbox."""  
     try:  
@@ -142,16 +142,16 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             request_type = "Video Trimming"  
         elif is_audio_trim:  
             request_type = "Audio Trimming"  
-  
+
         await send_message(message.chat.id, f"📥 **Processing your {request_type.lower()}...**")  
         logger.info(f"Processing URL: {url}, Type: {request_type}")  
-  
+
         # Detect platform  
         platform = detect_platform(url)  
         if not platform:  
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")  
             return  
-  
+
         # Handle request based on type  
         if is_video_trim:  
             logger.info(f"Processing video trim request: Start={start_time}, End={end_time}")  
@@ -181,7 +181,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                     result = await process_instagram(url)  
             else:  
                 result = await PLATFORM_HANDLERS[platform](url)  
-  
+
             # Handle different return formats from platform handlers  
             if isinstance(result, tuple) and len(result) >= 3:  
                 file_paths, file_size, download_url = result  
@@ -198,36 +198,36 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 file_paths = result if isinstance(result, list) else [result] if result else []  
                 file_size = None  
                 download_url = None  
-  
+
         # Log what we received  
         logger.info(f"Platform handler returned: file_paths={file_paths}, file_size={file_size}, download_url={download_url}")  
-  
+
         # Skip processing if no files were returned  
         if not file_paths or all(not path for path in file_paths):  
             logger.warning("No valid file paths returned from platform handler")  
             await send_message(message.chat.id, "❌ **Download failed. No media found.**")  
             return  
-  
+
         # Process each file (for handlers that may return multiple files like Instagram carousels)  
         for file_path in file_paths:  
             if not file_path or not os.path.exists(file_path):  
                 logger.warning(f"File path does not exist: {file_path}")  
                 continue  
-  
+
             # Get file size if not provided  
             if file_size is None:  
                 file_size = os.path.getsize(file_path)  
-  
+
             # Handle case where file is too large for Telegram - use a safe limit  
             if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:  # Using 49MB as a safe limit  
                 # Generate a unique filename  
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"  
-  
+
                 logger.info(f"File too large for Telegram: {file_size} bytes. Using Dropbox.")  
-  
+
                 # Upload to Dropbox  
                 dropbox_link = await upload_to_dropbox(file_path, filename)  
-  
+
                 if dropbox_link:  
                     logger.info(f"Successfully uploaded to Dropbox: {dropbox_link}")  
                     await send_message(  
@@ -250,13 +250,13 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                     async with aiofiles.open(file_path, "rb") as file:  
                         file_content = await file.read()  
                         file_size_actual = len(file_content)  
-  
+
                         # Second check to be absolutely sure  
                         if file_size_actual > TELEGRAM_FILE_LIMIT:  
                             logger.warning(f"File size check passed but actual size exceeds limit: {file_size_actual}")  
                             filename = f"{message.chat.id}_{os.path.basename(file_path)}"  
                             dropbox_link = await upload_to_dropbox(file_path, filename)  
-  
+
                             if dropbox_link:  
                                 await send_message(  
                                     message.chat.id,  
@@ -271,13 +271,13 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                                 await bot.send_video(message.chat.id, file_content, supports_streaming=True, timeout=600)  
                 except Exception as send_error:  
                     logger.error(f"Error sending file to Telegram: {send_error}")  
-  
+
                     # If we get a 413 error, try Dropbox as fallback  
                     if "413" in str(send_error):  
                         logger.info("Got 413 error, attempting Dropbox upload as fallback")  
                         filename = f"{message.chat.id}_{os.path.basename(file_path)}"  
                         dropbox_link = await upload_to_dropbox(file_path, filename)  
-  
+
                         if dropbox_link:  
                             await send_message(  
                                 message.chat.id,  
@@ -287,7 +287,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                             await send_message(message.chat.id, "❌ **File too large for Telegram and Dropbox upload failed.**")  
                     else:  
                         await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")  
-  
+
             # Cleanup the current file  
             try:  
                 if os.path.exists(file_path):  
@@ -295,21 +295,104 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                     logger.info(f"Cleaned up file: {file_path}")  
             except Exception as cleanup_error:  
                 logger.error(f"Failed to clean up file {file_path}: {cleanup_error}")  
-  
+
         # Force garbage collection  
         gc.collect()  
-  
+
     except Exception as e:  
         logger.error(f"Comprehensive error in process_download: {e}", exc_info=True)  
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")  
-  
+
+async def process_image_download(message, url):
+    """Handles image download and sends it to Telegram or Dropbox."""
+    try:
+        await send_message(message.chat.id, "🖼️ **Processing Instagram image...**")
+        logger.info(f"Processing Instagram image URL: {url}")
+        
+        # Process the Instagram image
+        result = await process_instagram_image(url)
+        
+        # Handle different return formats
+        if isinstance(result, list):
+            file_paths = result
+        elif isinstance(result, tuple) and len(result) >= 2:
+            file_paths = result[0] if isinstance(result[0], list) else [result[0]]
+        else:
+            file_paths = [result] if result else []
+            
+        if not file_paths or all(not path for path in file_paths):
+            logger.warning("No valid image paths returned from Instagram handler")
+            await send_message(message.chat.id, "❌ **Download failed. No images found.**")
+            return
+            
+        # Process each image
+        for file_path in file_paths:
+            if not file_path or not os.path.exists(file_path):
+                logger.warning(f"Image path does not exist: {file_path}")
+                continue
+                
+            # Get file size
+            file_size = os.path.getsize(file_path)
+                
+            # Handle case where file is too large for Telegram
+            if file_size > TELEGRAM_FILE_LIMIT:
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                logger.info(f"Image too large for Telegram: {file_size} bytes. Using Dropbox.")
+                
+                # Upload to Dropbox
+                dropbox_link = await upload_to_dropbox(file_path, filename)
+                
+                if dropbox_link:
+                    logger.info(f"Successfully uploaded image to Dropbox: {dropbox_link}")
+                    await send_message(
+                        message.chat.id,
+                        f"⚠️ **Image too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                    )
+                else:
+                    logger.warning("Dropbox upload failed")
+                    await send_message(message.chat.id, "❌ **Image download failed.**")
+            else:
+                # Send image to Telegram
+                try:
+                    async with aiofiles.open(file_path, "rb") as file:
+                        file_content = await file.read()
+                        await bot.send_photo(message.chat.id, file_content, timeout=60)
+                        logger.info(f"Successfully sent image to Telegram")
+                except Exception as send_error:
+                    logger.error(f"Error sending image to Telegram: {send_error}")
+                    await send_message(message.chat.id, f"❌ **Error sending image: {str(send_error)}**")
+                    
+            # Cleanup the file
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Cleaned up image file: {file_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up image file {file_path}: {cleanup_error}")
+                
+        # Send success message
+        await send_message(message.chat.id, "✅ **Instagram image(s) downloaded successfully!**")
+        
+    except Exception as e:
+        logger.error(f"Error processing Instagram image: {e}", exc_info=True)
+        await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
 async def worker():  
     """Worker function for parallel processing of downloads."""  
     while True:  
-        message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = await download_queue.get()  
-        await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)  
+        task = await download_queue.get()
+        
+        if len(task) == 2:
+            # Image processing task
+            message, url = task
+            await process_image_download(message, url)
+        else:
+            # Regular download task
+            message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = task
+            await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
+            
         download_queue.task_done()  
-  
+
 @bot.message_handler(commands=["start", "help"])  
 async def send_welcome(message):  
     """Sends welcome message with bot instructions."""  
@@ -320,14 +403,16 @@ async def send_welcome(message):
         "Commands:\n"  
         "• Send a direct URL to download video\n"  
         "• /audio <URL> - Extract full audio from video\n"  
+        "• /image <URL> - Download Instagram images\n"  
         "• /trim <URL> <Start Time> <End Time> - Trim video segment\n"  
         "• /trimAudio <URL> <Start Time> <End Time> - Extract audio segment\n\n"  
         "Examples:\n"  
+        "• `/image https://instagram.com/p/example`\n"
         "• `/trim https://youtube.com/watch?v=example 00:01:00 00:02:30`\n"  
         "• `/trimAudio https://youtube.com/watch?v=example 00:01:00 00:02:30`"  
     )  
     await send_message(message.chat.id, welcome_text)  
-  
+
 @bot.message_handler(commands=["audio"])  
 async def handle_audio_request(message):  
     """Handles audio extraction requests for all platforms."""  
@@ -337,7 +422,24 @@ async def handle_audio_request(message):
         return  
     await download_queue.put((message, url, True, False, False, None, None))  
     await send_message(message.chat.id, "🎵 **Added to audio extraction queue!**")  
-  
+
+@bot.message_handler(commands=["image"])
+async def handle_image_request(message):
+    """Handles Instagram image download requests."""
+    url = message.text.replace("/image", "").strip()
+    if not url:
+        await send_message(message.chat.id, "⚠️ **Please provide an Instagram image URL.**")
+        return
+    
+    # Check if URL is Instagram
+    if not PLATFORM_PATTERNS["Instagram"].search(url):
+        await send_message(message.chat.id, "⚠️ **This command only works with Instagram image URLs.**")
+        return
+        
+    # Add to download queue
+    await download_queue.put((message, url))
+    await send_message(message.chat.id, "🖼️ **Added to image download queue!**")
+
 @bot.message_handler(commands=["trim"])  
 async def handle_video_trim_request(message):  
     """Handles video trimming requests."""  
@@ -348,11 +450,11 @@ async def handle_video_trim_request(message):
             "⚠️ Invalid format. Please send: `/trim <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"  
         )  
         return  
-  
+
     url, start_time, end_time = match.groups()  
     await download_queue.put((message, url, False, True, False, start_time, end_time))  
     await send_message(message.chat.id, "✂️🎬 **Added to video trimming queue!**")  
-  
+
 @bot.message_handler(commands=["trimAudio"])  
 async def handle_audio_trim_request(message):  
     """Handles audio segment extraction requests."""  
@@ -363,28 +465,28 @@ async def handle_audio_trim_request(message):
             "⚠️ Invalid format. Please send: `/trimAudio <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>`"  
         )  
         return  
-  
+
     url, start_time, end_time = match.groups()  
     await download_queue.put((message, url, False, False, True, start_time, end_time))  
     await send_message(message.chat.id, "✂️🎵 **Added to audio segment extraction queue!**")  
-  
+
 @bot.message_handler(func=lambda message: True, content_types=["text"])  
 async def handle_message(message):  
     """Handles general video download requests."""  
     url = message.text.strip()  
     await download_queue.put((message, url, False, False, False, None, None))  
     await send_message(message.chat.id, "🎬 **Added to video download queue!**")  
-  
+
 async def main():  
     """Runs the bot and initializes worker processes."""  
     num_workers = min(3, os.cpu_count() or 1)  # Limit workers based on CPU cores  
     for _ in range(num_workers):  
         asyncio.create_task(worker())  # Start workers in background  
-  
+
     try:  
         await bot.infinity_polling(timeout=30)  
     except Exception as e:  
         logger.error(f"Bot polling error: {e}")  
-  
+
 if __name__ == "__main__":  
     asyncio.run(main())
