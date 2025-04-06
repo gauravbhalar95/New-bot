@@ -8,11 +8,9 @@ import functools
 import instaloader
 from PIL import Image
 import re
-from utils.logger import logger  # Adjust path if logger is elsewhere
-from utils.sanitaize import get_sanotaize
-
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+from utils.logger import logger
+from utils.sanitize import sanitize_filename
+from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
@@ -24,7 +22,6 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 )
 
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
-
 
 def initialize_instagram_session():
     logger.info("Initializing Instagram session...")
@@ -64,6 +61,24 @@ async def cleanup_temp_dir(temp_dir):
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
+def create_instagram_collage(image_paths, collage_path="collage.jpg"):
+    try:
+        images = [Image.open(p) for p in image_paths if os.path.exists(p)]
+        if not images:
+            return None
+        widths, heights = zip(*(img.size for img in images))
+        total_width = sum(widths)
+        max_height = max(heights)
+        collage = Image.new("RGB", (total_width, max_height), (255, 255, 255))
+        x_offset = 0
+        for img in images:
+            collage.paste(img, (x_offset, 0))
+            x_offset += img.width
+        collage.save(collage_path)
+        return collage_path
+    except Exception as e:
+        logger.error(f"Failed to create collage: {e}")
+        return None
 
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
