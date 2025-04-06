@@ -57,28 +57,9 @@ async def download_image(session, url, temp_path, permanent_path):
 async def cleanup_temp_dir(temp_dir):
     try:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, shutil.rmtree, temp_dir, ignore_errors=True)
+        await loop.run_in_executor(None, functools.partial(shutil.rmtree, temp_dir, ignore_errors=True))
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
-
-def create_instagram_collage(image_paths, collage_path="collage.jpg"):
-    try:
-        images = [Image.open(p) for p in image_paths if os.path.exists(p)]
-        if not images:
-            return None
-        widths, heights = zip(*(img.size for img in images))
-        total_width = sum(widths)
-        max_height = max(heights)
-        collage = Image.new("RGB", (total_width, max_height), (255, 255, 255))
-        x_offset = 0
-        for img in images:
-            collage.paste(img, (x_offset, 0))
-            x_offset += img.width
-        collage.save(collage_path)
-        return collage_path
-    except Exception as e:
-        logger.error(f"Failed to create collage: {e}")
-        return None
 
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
@@ -104,12 +85,9 @@ async def process_instagram_image(url):
         temp_dir = tempfile.mkdtemp()
 
         try:
-            if post.typename == 'GraphSidecar':
+            if hasattr(post, 'get_sidecar_nodes'):
                 nodes = post.get_sidecar_nodes()
-            elif post.typename in ['GraphImage', 'GraphVideo']:
-                nodes = [post]
             else:
-                logger.warning(f"Unknown typename {post.typename}")
                 nodes = [post]
 
             async with aiohttp.ClientSession() as session:
@@ -117,7 +95,7 @@ async def process_instagram_image(url):
 
                 for idx, node in enumerate(nodes):
                     if not node.is_video:
-                        image_url = node.display_url
+                        image_url = node.url
                         filename = sanitize_filename(f"{post.owner_username}_{shortcode}_{idx}.png")
                         temp_path = os.path.join(temp_dir, filename)
                         final_path = os.path.join(DOWNLOAD_DIR, filename)
@@ -134,13 +112,6 @@ async def process_instagram_image(url):
 
                 results = await asyncio.gather(*tasks)
                 image_paths += [res for res in results if res]
-
-            if len(image_paths) >= 2:
-                collage_output = os.path.join(DOWNLOAD_DIR, f"{post.owner_username}_{shortcode}_collage.jpg")
-                collage_path = create_instagram_collage(image_paths, collage_output)
-                if collage_path:
-                    logger.info(f"Collage created at: {collage_path}")
-                    image_paths.append(collage_path)
 
             return image_paths
 
