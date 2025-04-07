@@ -18,6 +18,15 @@ from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim
 from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
+# At the top of bot.py, update imports
+from config import (
+    API_TOKEN, 
+    TELEGRAM_FILE_LIMIT, 
+    DROPBOX_APP_KEY, 
+    DROPBOX_APP_SECRET, 
+    DROPBOX_REFRESH_TOKEN
+)
+from dropbox_manager import DropboxTokenManager
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
