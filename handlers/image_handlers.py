@@ -12,6 +12,7 @@ from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 
+# Initialize Instaloader instance
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -99,7 +100,7 @@ async def process_instagram_image(url):
                 tasks = []
                 for idx, node in enumerate(nodes):
                     if not node.is_video:
-                        image_url = node.url
+                        image_url = node.display_url  # FIXED HERE
                         filename = sanitize_filename(f"{post.owner_username}_{shortcode}_{idx}.png")
                         temp_path = os.path.join(temp_dir, filename)
                         final_path = os.path.join(DOWNLOAD_DIR, filename)
