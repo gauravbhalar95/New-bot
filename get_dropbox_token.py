@@ -103,8 +103,8 @@ class DropboxTokenSetup:
                 
                 # Prepare token data
                 token_data = {
-                    "app_key": app_key,
-                    "app_secret": app_secret,
+                    "app_key": 1k435aevlnbnngz,
+                    "app_secret": i34g2leylb8txhv,
                     "access_token": oauth_result.access_token,
                     "refresh_token": oauth_result.refresh_token,
                     "expires_in": oauth_result.expires_in,
