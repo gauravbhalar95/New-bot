@@ -13,8 +13,8 @@ DROPBOX_ACCESS_TOKEN = "sl.u.AFqjS1Ayb-fqzoDhK5zULKoSuOJOGlKUmt_xTV9GZJIJvJqax8u
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
 RAPIDAPI_HOST = "instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com"
 
-MEGA_USERNAME = None  # Will be updated dynamically
-MEGA_PASSWORD = None  # Will be updated dynamically
+MEGA_USERNAME = "gauravbhalara95@gmail.com" # Will be updated dynamically
+MEGA_PASSWORD = "Gaurav74$"  # Will be updated dynamically
 
 
 # Instagram authentication settings
