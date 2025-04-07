@@ -27,7 +27,15 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
 # Dropbox client setup
-dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+# Replace the simple Dropbox client setup
+# dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+
+# With the token manager
+dropbox_manager = DropboxTokenManager(
+    DROPBOX_APP_KEY,
+    DROPBOX_APP_SECRET,
+    DROPBOX_REFRESH_TOKEN
+)
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
