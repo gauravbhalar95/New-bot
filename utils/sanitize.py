@@ -18,17 +18,11 @@ def sanitize_filename(filename: str, max_length: int = 250) -> str:
     Returns:
         str: Sanitized and trimmed filename.
     """
-    # Replace forbidden characters with underscore
     clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename).strip()
-
-    # Remove non-ASCII characters
     clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)
-
-    # Trim the filename to max_length
     base, ext = os.path.splitext(clean_name)
     if len(base) > max_length - len(ext):
         base = base[:max_length - len(ext)]
-
     return base + ext
 
 
@@ -46,14 +40,17 @@ async def sanitize_filename_async(filename: str, max_length: int = 250) -> str:
     return await asyncio.to_thread(sanitize_filename, filename, max_length)
 
 
-def sanitize_dropbox_path(path):
-    # Ensure it starts with a slash
+def sanitize_dropbox_path(path: str) -> str:
+    """
+    Sanitizes the Dropbox path by ensuring a leading slash and removing illegal characters.
+
+    Args:
+        path (str): Original Dropbox path.
+
+    Returns:
+        str: Sanitized Dropbox path.
+    """
     if not path.startswith("/"):
         path = "/" + path
-
-    # Remove illegal characters
     path = re.sub(r'[\\?%*:|"<>]', "_", path)
-
     return path
-
-dropbox_path = sanitize_dropbox_path(dropbox_path)
