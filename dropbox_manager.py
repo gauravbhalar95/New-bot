@@ -2,6 +2,15 @@ import time
 from dropbox import Dropbox
 from dropbox.oauth import DropboxOAuth2FlowNoRedirect
 import logging
+# At the top of bot.py, update imports
+from config import (
+    API_TOKEN, 
+    TELEGRAM_FILE_LIMIT, 
+    DROPBOX_APP_KEY, 
+    DROPBOX_APP_SECRET, 
+    DROPBOX_REFRESH_TOKEN
+)
+from dropbox_manager import DropboxTokenManager
 
 logger = logging.getLogger(__name__)
 
