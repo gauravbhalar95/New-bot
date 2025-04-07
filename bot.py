@@ -4,12 +4,11 @@ import logging
 import asyncio
 import aiofiles
 import re
-import dropbox
-from dropbox.exceptions import AuthError, ApiError
+from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, MEGA_EMAIL, MEGA_PASSWORD
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -26,8 +25,14 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# Dropbox client setup
-dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+# MEGA client setup
+mega = Mega()
+try:
+    m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
+    logger.info("Successfully logged in to MEGA")
+except Exception as e:
+    logger.error(f"Failed to login to MEGA: {e}")
+    m = None
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -46,13 +51,13 @@ PLATFORM_HANDLERS = {
     "Twitter/X": download_twitter_media,
     "Adult": process_adult,
 }
+
 async def send_message(chat_id, text):
     """Sends a message asynchronously."""
     try:
         await bot.send_message(chat_id, text)
     except Exception as e:
         logger.error(f"Error sending message: {e}")
-
 
 def detect_platform(url):
     """Detects the platform based on URL patterns."""
@@ -61,75 +66,50 @@ def detect_platform(url):
             return platform
     return None
 
-
-async def upload_to_dropbox(file_path, filename):
+async def upload_to_mega(file_path, filename):
     """
-    Uploads a file to Dropbox and returns a shareable link.
+    Uploads a file to MEGA.nz and returns a shareable link.
 
     Args:
         file_path (str): Path to the file to upload
-        filename (str): Name to use for the file in Dropbox
+        filename (str): Name to use for the file in MEGA
 
     Returns:
         str: Shareable link to the uploaded file
     """
     try:
-        # Validate access token
-        try:
-            dbx.users_get_current_account()
-        except Exception as auth_error:
-            logger.error(f"Dropbox authentication failed: {auth_error}")
+        if not m:
+            logger.error("MEGA client not initialized")
             return None
 
-        dropbox_path = f"/telegram_uploads/{filename}"
-        file_size = os.path.getsize(file_path)
+        # Create folder if it doesn't exist
+        folder_name = "telegram_uploads"
+        try:
+            folders = m.get_files()
+            folder = next((f for f in folders.values() if f['type'] == 1 and f['name'] == folder_name), None)
+            
+            if not folder:
+                folder = m.create_folder(folder_name)
+            
+            # Upload file
+            file = m.upload(file_path, folder[0])
+            
+            # Get shareable link
+            file_node = m.get_files()[file]
+            file_url = m.get_link(file)
+            
+            return file_url
 
-        with open(file_path, "rb") as f:
-            if file_size > 140 * 1024 * 1024:  # 140 MB threshold
-                logger.info("Large file detected, using upload session")
-                upload_session = dbx.files_upload_session_start(f.read(4 * 1024 * 1024))
-                cursor = dropbox.files.UploadSessionCursor(
-                    session_id=upload_session.session_id,
-                    offset=f.tell()
-                )
+        except Exception as e:
+            logger.error(f"Error in MEGA operations: {e}")
+            return None
 
-                while f.tell() < file_size:
-                    chunk_size = 4 * 1024 * 1024
-                    if (file_size - f.tell()) <= chunk_size:
-                        dbx.files_upload_session_finish(
-                            f.read(chunk_size),
-                            cursor,
-                            dropbox.files.CommitInfo(path=dropbox_path)
-                        )
-                        break
-                    else:
-                        dbx.files_upload_session_append_v2(
-                            f.read(chunk_size),
-                            cursor
-                        )
-                        cursor.offset = f.tell()
-            else:
-                dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
-
-        shared_link = dbx.sharing_create_shared_link_with_settings(
-            dropbox_path,
-            dropbox.sharing.SharedLinkSettings(
-                requested_visibility=dropbox.sharing.RequestedVisibility.public
-            )
-        )
-        return shared_link.url.replace('dl=0', 'dl=1')
-
-    except AuthError as auth_error:
-        logger.error(f"Dropbox authentication error: {auth_error}")
-        return None
-    except ApiError as api_error:
-        logger.error(f"Dropbox API error: {api_error}")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected Dropbox upload error: {e}")
+        logger.error(f"MEGA upload error: {e}")
         return None
+
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram or Dropbox."""
+    """Handles video/audio download and sends it to Telegram or MEGA."""
     try:
         request_type = "Video Download"
         if is_audio:
@@ -174,13 +154,13 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         else:
             if platform == "Instagram":
                 if "/reel/" in url or "/tv/" in url:
-                    result = await process_instagram(url)  # Handles Reels and IGTV videos
+                    result = await process_instagram(url)
                 else:
-                    result = await process_instagram_image(url)  # Handles posts and stories
+                    result = await process_instagram_image(url)
             else:
                 result = await PLATFORM_HANDLERS[platform](url)
 
-            # Handle different return formats from platform handlers
+            # Handle different return formats
             if isinstance(result, tuple) and len(result) >= 3:
                 file_paths, file_size, download_url = result
                 if not isinstance(file_paths, list):
@@ -212,17 +192,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
 
             if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                logger.info(f"File too large for Telegram: {file_size} bytes. Using Dropbox.")
-                dropbox_link = await upload_to_dropbox(file_path, filename)
+                logger.info(f"File too large for Telegram: {file_size} bytes. Using MEGA.")
+                mega_link = await upload_to_mega(file_path, filename)
 
-                if dropbox_link:
-                    logger.info(f"Successfully uploaded to Dropbox: {dropbox_link}")
+                if mega_link:
+                    logger.info(f"Successfully uploaded to MEGA: {mega_link}")
                     await send_message(
                         message.chat.id,
-                        f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                        f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                     )
                 else:
-                    logger.warning("Dropbox upload failed")
+                    logger.warning("MEGA upload failed")
                     if download_url:
                         await send_message(
                             message.chat.id,
@@ -239,12 +219,12 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                         if file_size_actual > TELEGRAM_FILE_LIMIT:
                             logger.warning(f"Actual size exceeds limit: {file_size_actual}")
                             filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                            dropbox_link = await upload_to_dropbox(file_path, filename)
+                            mega_link = await upload_to_mega(file_path, filename)
 
-                            if dropbox_link:
+                            if mega_link:
                                 await send_message(
                                     message.chat.id,
-                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                                 )
                             else:
                                 await send_message(message.chat.id, "❌ **File too large. Upload failed.**")
@@ -257,17 +237,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 except Exception as send_error:
                     logger.error(f"Error sending file to Telegram: {send_error}")
                     if "413" in str(send_error):
-                        logger.info("Got 413 error, attempting Dropbox upload as fallback")
+                        logger.info("Got 413 error, attempting MEGA upload as fallback")
                         filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                        dropbox_link = await upload_to_dropbox(file_path, filename)
+                        mega_link = await upload_to_mega(file_path, filename)
 
-                        if dropbox_link:
+                        if mega_link:
                             await send_message(
                                 message.chat.id,
-                                f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                             )
                         else:
-                            await send_message(message.chat.id, "❌ **File too large and Dropbox upload failed.**")
+                            await send_message(message.chat.id, "❌ **File too large and MEGA upload failed.**")
                     else:
                         await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
 
@@ -285,15 +265,14 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
 async def process_image_download(message, url):
-    """Handles image download and sends it to Telegram or Dropbox."""
+    """Handles image download and sends it to Telegram or MEGA."""
     try:
         await send_message(message.chat.id, "🖼️ Processing Instagram image...")
         logger.info(f"Processing Instagram image URL: {url}")
-        # Process the Instagram image
+        
         try:
             result = await process_instagram_image(url)
 
-            # Handle different return formats
             if isinstance(result, list):
                 file_paths = result
             elif isinstance(result, tuple) and len(result) >= 2:
@@ -306,45 +285,39 @@ async def process_image_download(message, url):
                 await send_message(message.chat.id, "❌ **Download failed. No images found.**")
                 return
 
-            # Process each image
             for file_path in file_paths:
                 if not file_path or not os.path.exists(file_path):
                     logger.warning(f"Image path does not exist: {file_path}")
                     continue
 
-                # Get file size
                 file_size = os.path.getsize(file_path)
 
-                # Handle case where file is too large for Telegram
                 if file_size > TELEGRAM_FILE_LIMIT:
                     filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using Dropbox.")
+                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using MEGA.")
 
-                    # Upload to Dropbox
-                    dropbox_link = await upload_to_dropbox(file_path, filename)
+                    mega_link = await upload_to_mega(file_path, filename)
 
-                    if dropbox_link:
-                        logger.info(f"Successfully uploaded image to Dropbox: {dropbox_link}")
+                    if mega_link:
+                        logger.info(f"Successfully uploaded image to MEGA: {mega_link}")
                         await send_message(
                             message.chat.id,
-                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})",
+                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from MEGA]({mega_link})",
                             parse_mode="Markdown"
                         )
                     else:
-                        logger.warning("Dropbox upload failed")
+                        logger.warning("MEGA upload failed")
                         await send_message(message.chat.id, "❌ **Image download failed.**")
                 else:
-                    # Send image to Telegram
                     try:
                         async with aiofiles.open(file_path, "rb") as file:
                             file_content = await file.read()
                             await bot.send_photo(message.chat.id, file_content, timeout=60)
-                            logger.info(f"Successfully sent image to Telegram")
+                            logger.info("Successfully sent image to Telegram")
                     except Exception as send_error:
                         logger.error(f"Error sending image to Telegram: {send_error}")
                         await send_message(message.chat.id, f"❌ **Error sending image: {str(send_error)}**")
 
-                # Cleanup the file
                 try:
                     if os.path.exists(file_path):
                         os.remove(file_path)
@@ -352,7 +325,6 @@ async def process_image_download(message, url):
                 except Exception as cleanup_error:
                     logger.error(f"Failed to clean up image file {file_path}: {cleanup_error}")
 
-            # Send success message
             await send_message(message.chat.id, "✅ **Instagram image(s) downloaded successfully!**")
 
         except Exception as e:
@@ -421,12 +393,10 @@ async def handle_image_request(message):
         await send_message(message.chat.id, "⚠️ Please provide an Instagram image URL.")
         return
 
-    # Check if URL is Instagram
     if not PLATFORM_PATTERNS["Instagram"].search(url):
         await send_message(message.chat.id, "⚠️ **This command only works with Instagram image URLs.**")
         return
 
-    # Add to download queue
     await download_queue.put((message, url))
     await send_message(message.chat.id, "🖼️ **Added to image download queue!**")
 
