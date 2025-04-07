@@ -37,14 +37,14 @@ class DropboxTokenSetup:
         try:
             token_data['generated_at'] = datetime.utcnow().isoformat()
             token_data['generated_by'] = os.getenv('USER', 'unknown')
-            
+
             with open(self.tokens_file, 'w', encoding='utf-8') as f:
                 json.dump(token_data, f, indent=4)
-            
+
             # Set secure permissions
             os.chmod(self.tokens_file, 0o600)
             logger.info(f"Tokens saved securely to: {self.tokens_file}")
-            
+
         except Exception as e:
             logger.error(f"Failed to save tokens: {e}")
             raise
@@ -66,7 +66,7 @@ class DropboxTokenSetup:
         try:
             print("\n=== Dropbox Token Generator ===")
             print("This script will help you set up Dropbox OAuth tokens for your bot.")
-            
+
             # Check for existing tokens
             existing_tokens = self.load_tokens()
             if existing_tokens:
@@ -100,11 +100,11 @@ class DropboxTokenSetup:
             # Complete OAuth flow
             try:
                 oauth_result = auth_flow.finish(auth_code)
-                
+
                 # Prepare token data
                 token_data = {
-                    "app_key": 1k435aevlnbnngz,
-                    "app_secret": i34g2leylb8txhv,
+                    "app_key": app_key,
+                    "app_secret": app_secret,
                     "access_token": oauth_result.access_token,
                     "refresh_token": oauth_result.refresh_token,
                     "expires_in": oauth_result.expires_in,
@@ -120,7 +120,7 @@ class DropboxTokenSetup:
                 print(f"- Access Token: {oauth_result.access_token[:10]}...")
                 print(f"- Refresh Token: {oauth_result.refresh_token[:10]}...")
                 print(f"- Expires In: {oauth_result.expires_in} seconds")
-                
+
                 return token_data
 
             except Exception as e:
@@ -138,13 +138,13 @@ def main():
     try:
         setup = DropboxTokenSetup()
         tokens = setup.generate_tokens()
-        
+
         if tokens:
             print("\nSetup completed successfully! You can now use these tokens in your bot.")
             print("Make sure to update your config.py with the new credentials.")
         else:
             print("\nSetup failed. Please check the logs and try again.")
-            
+
     except KeyboardInterrupt:
         print("\n\nSetup cancelled by user.")
     except Exception as e:
