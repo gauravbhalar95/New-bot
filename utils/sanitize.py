@@ -7,20 +7,40 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def sanitize_filename(filename, max_length=250):
+def sanitize_filename(filename: str, max_length: int = 250) -> str:
     """
-    Synchronously removes special characters from the filename and trims it to a maximum length.
+    Removes special characters from the filename and trims it to a maximum length.
+    
+    Args:
+        filename (str): Original filename to sanitize.
+        max_length (int): Maximum allowed length of the sanitized filename.
+
+    Returns:
+        str: Sanitized and trimmed filename.
     """
+    # Replace forbidden characters with underscore
     clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename).strip()
-    clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)  # Remove non-ASCII characters
+
+    # Remove non-ASCII characters
+    clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)
+
+    # Trim the filename to max_length
     base, ext = os.path.splitext(clean_name)
     if len(base) > max_length - len(ext):
         base = base[:max_length - len(ext)]
+
     return base + ext
 
 
-async def sanitize_filename_async(filename, max_length=250):
+async def sanitize_filename_async(filename: str, max_length: int = 250) -> str:
     """
-    Asynchronously removes special characters from the filename and trims it to a maximum length.
+    Asynchronously sanitizes the filename.
+
+    Args:
+        filename (str): Original filename to sanitize.
+        max_length (int): Maximum allowed length of the sanitized filename.
+
+    Returns:
+        str: Sanitized and trimmed filename.
     """
     return await asyncio.to_thread(sanitize_filename, filename, max_length)
