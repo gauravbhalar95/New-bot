@@ -44,3 +44,16 @@ async def sanitize_filename_async(filename: str, max_length: int = 250) -> str:
         str: Sanitized and trimmed filename.
     """
     return await asyncio.to_thread(sanitize_filename, filename, max_length)
+
+
+def sanitize_dropbox_path(path):
+    # Ensure it starts with a slash
+    if not path.startswith("/"):
+        path = "/" + path
+
+    # Remove illegal characters
+    path = re.sub(r'[\\?%*:|"<>]', "_", path)
+
+    return path
+
+dropbox_path = sanitize_dropbox_path(dropbox_path)
