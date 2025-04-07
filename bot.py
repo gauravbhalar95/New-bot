@@ -18,15 +18,6 @@ from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim
 from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
-# At the top of bot.py, update imports
-from config import (
-    API_TOKEN, 
-    TELEGRAM_FILE_LIMIT, 
-    DROPBOX_APP_KEY, 
-    DROPBOX_APP_SECRET, 
-    DROPBOX_REFRESH_TOKEN
-)
-from dropbox_manager import DropboxTokenManager
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
@@ -36,15 +27,7 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
 # Dropbox client setup
-# Replace the simple Dropbox client setup
-# dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
-
-# With the token manager
-dropbox_manager = DropboxTokenManager(
-    DROPBOX_APP_KEY,
-    DROPBOX_APP_SECRET,
-    DROPBOX_REFRESH_TOKEN
-)
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -91,10 +74,11 @@ async def upload_to_dropbox(file_path, filename):
         str: Shareable link to the uploaded file
     """
     try:
-        # Get a valid Dropbox client
-        dbx = await dropbox_manager.get_client()
-        if not dbx:
-            logger.error("Failed to initialize Dropbox client")
+        # Validate access token
+        try:
+            dbx.users_get_current_account()
+        except Exception as auth_error:
+            logger.error(f"Dropbox authentication failed: {auth_error}")
             return None
 
         dropbox_path = f"/telegram_uploads/{filename}"
@@ -110,9 +94,6 @@ async def upload_to_dropbox(file_path, filename):
                 )
 
                 while f.tell() < file_size:
-                    # Get fresh client before each chunk upload
-                    dbx = await dropbox_manager.get_client()
-                    
                     chunk_size = 4 * 1024 * 1024
                     if (file_size - f.tell()) <= chunk_size:
                         dbx.files_upload_session_finish(
@@ -130,8 +111,6 @@ async def upload_to_dropbox(file_path, filename):
             else:
                 dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
 
-        # Get fresh client for creating share link
-        dbx = await dropbox_manager.get_client()
         shared_link = dbx.sharing_create_shared_link_with_settings(
             dropbox_path,
             dropbox.sharing.SharedLinkSettings(
@@ -142,21 +121,13 @@ async def upload_to_dropbox(file_path, filename):
 
     except AuthError as auth_error:
         logger.error(f"Dropbox authentication error: {auth_error}")
-        # Force token refresh on next attempt
-        dropbox_manager.access_token = None
         return None
     except ApiError as api_error:
-        if api_error.error.is_expired_access_token():
-            logger.warning("Dropbox token expired during operation, retrying...")
-            # Force token refresh and retry
-            dropbox_manager.access_token = None
-            return await upload_to_dropbox(file_path, filename)
         logger.error(f"Dropbox API error: {api_error}")
         return None
     except Exception as e:
         logger.error(f"Unexpected Dropbox upload error: {e}")
         return None
-
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or Dropbox."""
     try:
