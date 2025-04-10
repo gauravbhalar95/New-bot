@@ -94,7 +94,7 @@ async def upload_to_dropbox(file_path, filename):
                 )
 
                 while f.tell() < file_size:
-                    chunk_size = 4 * 1024 * 1024
+                    chunk_size = MAX_FILE_SIZE_MB:
                     if (file_size - f.tell()) <= chunk_size:
                         dbx.files_upload_session_finish(
                             f.read(chunk_size),
