@@ -85,7 +85,7 @@ async def upload_to_dropbox(file_path, filename):
         file_size = os.path.getsize(file_path)
 
         with open(file_path, "rb") as f:
-            if file_size > MAX_FILE_SIZE_MB # 140 MB threshold
+            if file_size > MAX_FILE_SIZE_MB: # 140 MB threshold
                 logger.info("Large file detected, using upload session")
                 upload_session = dbx.files_upload_session_start(f.read(4 * 1024 * 1024))
                 cursor = dropbox.files.UploadSessionCursor(
