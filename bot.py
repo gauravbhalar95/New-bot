@@ -9,7 +9,7 @@ from dropbox.exceptions import AuthError, ApiError
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import API_TOKEN, MAX_FILE_SIZE_MB, DROPBOX_ACCESS_TOKEN
+from config import API_TOKEN, MAX_FILE_SIZE_MB, DROPBOX_ACCESS_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
