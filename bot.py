@@ -20,8 +20,7 @@ from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
 from utils.dropbox_auth import DropboxTokenManager
 
-dropbox_token_manager = DropboxTokenManager()
-access_token = await dropbox_token_manager.get_access_token()
+
 
 
 # Logging setup
@@ -68,17 +67,11 @@ def detect_platform(url):
 
 
 async def upload_to_dropbox(file_path, filename):
-    """
-    Uploads a file to Dropbox and returns a shareable link.
-
-    Args:
-        file_path (str): Path to the file to upload
-        filename (str): Name to use for the file in Dropbox
-
-    Returns:
-        str: Shareable link to the uploaded file
-    """
     try:
+        # Get access token dynamically
+        access_token = await dropbox_token_manager.get_access_token()
+        dbx = dropbox.Dropbox(access_token)
+
         # Validate access token
         try:
             dbx.users_get_current_account()
@@ -90,7 +83,7 @@ async def upload_to_dropbox(file_path, filename):
         file_size = os.path.getsize(file_path)
 
         with open(file_path, "rb") as f:
-            if file_size > MAX_FILE_SIZE_MB: # 140 MB threshold
+            if file_size > MAX_FILE_SIZE_MB:
                 logger.info("Large file detected, using upload session")
                 upload_session = dbx.files_upload_session_start(f.read(4 * 1024 * 1024))
                 cursor = dropbox.files.UploadSessionCursor(
