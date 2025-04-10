@@ -18,6 +18,7 @@ from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim
 from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
+from utils.dropbox_auth import get_access_token
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
