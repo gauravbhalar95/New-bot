@@ -71,7 +71,7 @@ def detect_platform(url):
 async def upload_to_dropbox(file_path, filename):
     try:
         # Get access token dynamically
-        access_token = await dropbox_token_manager.get_access_token(self)
+        access_token = await dropbox_token_manager.get_access_token()
         dbx = dropbox.Dropbox(access_token)
 
         # Validate access token
