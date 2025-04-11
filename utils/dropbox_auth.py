@@ -1,5 +1,3 @@
-# utils/dropbox_auth.py
-
 import os
 import time
 import logging
@@ -34,6 +32,7 @@ class DropboxTokenManager:
             async with session.post(token_url, data=data) as resp:
                 if resp.status != 200:
                     logger.error(f"Dropbox token refresh failed: {resp.status}")
+                    logger.error(await resp.text())
                     raise Exception("Failed to refresh Dropbox token")
 
                 response = await resp.json()
