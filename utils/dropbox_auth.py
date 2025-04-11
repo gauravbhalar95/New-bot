@@ -39,5 +39,5 @@ class DropboxTokenManager:
                 response = await resp.json()
                 self.access_token = response["access_token"]
                 expires_in = response.get("expires_in", 14400)
-                self.expires_at = time.time() + expires_in - 60  # refresh 1 min early
+                self.expires_at = time.time() + expires_in - 60
                 logger.info("Dropbox token refreshed successfully.")
