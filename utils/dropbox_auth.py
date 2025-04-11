@@ -3,13 +3,14 @@ import time
 import logging
 import aiohttp
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DropboxTokenManager:
     def __init__(self):
-        self.app_key = os.getenv("DROPBOX_APP_KEY")
-        self.app_secret = os.getenv("DROPBOX_APP_SECRET")
-        self.refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN")
+        self.app_key = os.getenv("DROPBOX_APP_KEY", "1k435aevlnbnngz")
+        self.app_secret = os.getenv("DROPBOX_APP_SECRET", "i34g2leylb8txhv")
+        self.refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "YOUR_VALID_REFRESH_TOKEN")
         self.access_token = None
         self.expires_at = 0
 
@@ -37,6 +38,6 @@ class DropboxTokenManager:
 
                 response = await resp.json()
                 self.access_token = response["access_token"]
-                expires_in = response.get("expires_in", 14400)
+                expires_in = response.get("expires_in", 14400)  # 4 hours default
                 self.expires_at = time.time() + expires_in - 60
                 logger.info("Dropbox token refreshed successfully.")
