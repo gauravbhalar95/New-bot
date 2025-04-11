@@ -21,7 +21,7 @@ from utils.logger import setup_logging
 from utils.dropbox_auth import DropboxTokenManager
 
 
-dropbox_token_manager = DropboxTokenManager
+dropbox_token_manager = DropboxTokenManager()
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
