@@ -70,11 +70,12 @@ RUN python -m venv /app/venv && \
 # Copy application files
 COPY . /app/
 
-# Setup supervisor configuration
+# Create supervisor configuration
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
 logfile=/var/log/supervisor/supervisord.log\n\
 pidfile=/var/run/supervisord.pid\n\
+user=root\n\
 \n\
 [program:telegram_bot]\n\
 command=/app/venv/bin/python /app/bot.py\n\
@@ -82,7 +83,7 @@ directory=/app\n\
 user=root\n\
 autostart=true\n\
 autorestart=true\n\
-startretries=10\n\
+startretries=5\n\
 startsecs=10\n\
 stopwaitsecs=10\n\
 stdout_logfile=/app/logs/bot.log\n\
@@ -90,17 +91,40 @@ stderr_logfile=/app/logs/bot.log\n\
 environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
 \n\
 [program:flask_webhook]\n\
-command=/app/venv/bin/gunicorn -b 0.0.0.0:8080 app:app\n\
+command=/app/venv/bin/gunicorn --bind 0.0.0.0:8080 --workers 4 --threads 2 --timeout 120 app:app\n\
 directory=/app\n\
 user=root\n\
 autostart=true\n\
 autorestart=true\n\
+startretries=5\n\
+startsecs=10\n\
+stopwaitsecs=10\n\
 stdout_logfile=/app/logs/flask.log\n\
-stderr_logfile=/app/logs/flask.log\n' > /etc/supervisor/conf.d/supervisord.conf
+stderr_logfile=/app/logs/flask.log\n\
+environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
+\n\
+[program:mega_sync]\n\
+command=/usr/bin/mega-cmd-server\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/app/logs/mega.log\n\
+stderr_logfile=/app/logs/mega.log\n' > /etc/supervisor/conf.d/supervisord.conf
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
 set -e\n\
+\n\
+# Function to check if port is available\n\
+check_port() {\n\
+    for i in {1..30}; do\n\
+        if netstat -tln | grep -q ":$1 "; then\n\
+            return 0\n\
+        fi\n\
+        sleep 1\n\
+    done\n\
+    return 1\n\
+}\n\
 \n\
 # Initialize MEGA configuration\n\
 if [ ! -f "/app/config/mega_session.json" ]; then\n\
@@ -129,12 +153,22 @@ chmod -R 755 /app/logs\n\
 \n\
 # Start supervisor\n\
 echo "Starting supervisor..."\n\
-exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
+/usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf &\n\
+\n\
+# Wait for port 8080 to be available\n\
+echo "Waiting for Flask webhook to start..."\n\
+if ! check_port 8080; then\n\
+    echo "Error: Flask webhook failed to start"\n\
+    exit 1\n\
+fi\n\
+\n\
+# Keep container running\n\
+wait\n' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD python /app/healthcheck.py || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Expose port
 EXPOSE 8080
