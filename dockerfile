@@ -27,10 +27,7 @@ RUN apt-get update && \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 
-# Install rclone for cloud storage support
-RUN curl https://rclone.org/install.sh | bash
-
-# Install mega-cmd for MEGA.nz support
+# Install MEGA CMD
 RUN wget https://mega.nz/linux/repo/Debian_11/amd64/megacmd-Debian_11_amd64.deb && \
     apt-get update && \
     apt install -y ./megacmd-Debian_11_amd64.deb && \
@@ -38,34 +35,37 @@ RUN wget https://mega.nz/linux/repo/Debian_11/amd64/megacmd-Debian_11_amd64.deb 
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create necessary directories and set permissions
+# Create necessary directories
 RUN mkdir -p \
-        /app/config \
-        /app/downloads \
-        /app/logs \
-        /var/log/supervisor \
-        /app/venv && \
+    /app/config \
+    /app/downloads \
+    /app/logs \
+    /var/log/supervisor \
+    /app/venv \
+    /app/temp && \
     chmod 755 /app/config && \
     chmod 755 /app/downloads && \
-    chmod 755 /app/logs
+    chmod 755 /app/logs && \
+    chmod 755 /app/temp
 
-# Setup Python virtual environment
+# Copy requirements first
 COPY requirements.txt /app/
 
-# Install Python packages
+# Setup Python environment and install packages
 RUN python -m venv /app/venv && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir \
-        pyTelegramBotAPI>=4.14.0 \
-        aiofiles>=0.8.0 \
-        yt-dlp>=2023.3.4 \
-        mega.py>=1.0.8 \
-        flask>=2.0.1 \
-        gunicorn>=20.1.0 \
-        python-dotenv>=0.19.0 \
-        requests>=2.31.0 \
-        telebot>=0.0.5
+        pyTelegramBotAPI==4.14.0 \
+        mega.py==1.0.8 \
+        flask==3.1.0 \
+        gunicorn==23.0.0 \
+        python-dotenv==1.1.0 \
+        requests==2.31.3 \
+        aiohttp==3.11.16 \
+        aiofiles==24.1.0 \
+        yt-dlp==2025.3.31 \
+        telebot==0.0.5
 
 # Copy application files
 COPY . /app/
@@ -77,65 +77,80 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY healthcheck.py /app/
 RUN chmod +x /app/healthcheck.py
 
-# Create update script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-cd /app\n\
-git pull\n\
-pip install -r requirements.txt\n\
-supervisorctl restart all\n\
-echo "Update completed successfully"\n' > /app/update.sh && \
-    chmod +x /app/update.sh
-
-# Setup logging
-RUN touch /var/log/supervisor/telegram_bot.log && \
-    touch /var/log/supervisor/healthcheck.log && \
-    chown -R root:root /var/log/supervisor
-
-# Create entrypoint script
+# Create the entrypoint script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-# Initialize MEGA configuration if needed\n\
-if [ ! -f "/app/config/mega_config.json" ]; then\n\
+# Initialize MEGA configuration\n\
+if [ ! -f "/app/config/mega_session.json" ]; then\n\
     echo "Initializing MEGA configuration..."\n\
     if [ -z "$MEGA_EMAIL" ] || [ -z "$MEGA_PASSWORD" ]; then\n\
         echo "Error: MEGA_EMAIL and MEGA_PASSWORD must be set"\n\
         exit 1\n\
     fi\n\
-    mega-login $MEGA_EMAIL $MEGA_PASSWORD\n\
+    mega-login "$MEGA_EMAIL" "$MEGA_PASSWORD" || exit 1\n\
 fi\n\
 \n\
 # Verify environment variables\n\
-for var in BOT_TOKEN MEGA_EMAIL MEGA_PASSWORD; do\n\
-    if [ -z "${!var}" ]; then\n\
-        echo "Error: $var is not set"\n\
-        exit 1\n\
-    fi\n\
-done\n\
+if [ -z "$BOT_TOKEN" ]; then\n\
+    echo "Error: BOT_TOKEN is not set"\n\
+    exit 1\n\
+fi\n\
 \n\
-# Initialize logs\n\
-echo "$(date -u): Container starting up..." >> /app/logs/container.log\n\
+# Create log files if they don\'t exist\n\
+touch /app/logs/bot.log\n\
+touch /app/logs/flask.log\n\
+touch /app/logs/mega.log\n\
+\n\
+# Set permissions\n\
+chown -R root:root /app/logs\n\
+chmod -R 755 /app/logs\n\
 \n\
 # Start supervisor\n\
 echo "Starting supervisor..."\n\
 exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
-# Create a requirements.txt with exact versions
-RUN echo "pyTelegramBotAPI==4.14.0\n\
-mega.py==1.0.8\n\
-aiofiles==24.1.0\n\
-yt-dlp==2025.3.31\n\
-flask==3.1.0\n\
-gunicorn==23.0.0\n\
-python-dotenv==1.1.0\n\
-requests==2.31.3\n\
-telebot==0.0.5\n\
-python-telegram-bot==22.0\n" > /app/requirements.txt
+# Create supervisor configuration
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+logfile=/var/log/supervisor/supervisord.log\n\
+pidfile=/var/run/supervisord.pid\n\
+\n\
+[program:telegram_bot]\n\
+command=/app/venv/bin/python /app/bot.py\n\
+directory=/app\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+startretries=10\n\
+startsecs=10\n\
+stopwaitsecs=10\n\
+stdout_logfile=/app/logs/bot.log\n\
+stderr_logfile=/app/logs/bot.log\n\
+environment=PYTHONUNBUFFERED=1\n\
+\n\
+[program:flask_webhook]\n\
+command=/app/venv/bin/gunicorn -b 0.0.0.0:8080 app:app\n\
+directory=/app\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/app/logs/flask.log\n\
+stderr_logfile=/app/logs/flask.log\n\
+\n\
+[program:healthcheck]\n\
+command=/app/venv/bin/python /app/healthcheck.py\n\
+directory=/app\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+startsecs=10\n\
+stdout_logfile=/app/logs/healthcheck.log\n\
+stderr_logfile=/app/logs/healthcheck.log\n' > /etc/supervisor/conf.d/supervisord.conf
 
 # Health check configuration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python /app/healthcheck.py || exit 1
 
 # Expose port
