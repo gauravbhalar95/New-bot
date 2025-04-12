@@ -30,7 +30,7 @@ RUN apt-get update && \
 # Install rclone for cloud storage support
 RUN curl https://rclone.org/install.sh | bash
 
-# Install mega-cmd for better MegaNZ support
+# Install mega-cmd for MEGA.nz support
 RUN wget https://mega.nz/linux/repo/Debian_11/amd64/megacmd-Debian_11_amd64.deb && \
     apt-get update && \
     apt install -y ./megacmd-Debian_11_amd64.deb && \
@@ -58,7 +58,6 @@ RUN python -m venv /app/venv && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir \
         pyTelegramBotAPI>=4.14.0 \
-        dropbox>=11.36.0 \
         aiofiles>=0.8.0 \
         yt-dlp>=2023.3.4 \
         mega.py>=1.0.8 \
@@ -97,14 +96,18 @@ RUN touch /var/log/supervisor/telegram_bot.log && \
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-# Initialize Dropbox configuration if needed\n\
-if [ ! -f "/app/config/dropbox_tokens.json" ]; then\n\
-    echo "Initializing Dropbox configuration..."\n\
-    python /app/get_dropbox_token.py\n\
+# Initialize MEGA configuration if needed\n\
+if [ ! -f "/app/config/mega_config.json" ]; then\n\
+    echo "Initializing MEGA configuration..."\n\
+    if [ -z "$MEGA_EMAIL" ] || [ -z "$MEGA_PASSWORD" ]; then\n\
+        echo "Error: MEGA_EMAIL and MEGA_PASSWORD must be set"\n\
+        exit 1\n\
+    fi\n\
+    mega-login $MEGA_EMAIL $MEGA_PASSWORD\n\
 fi\n\
 \n\
 # Verify environment variables\n\
-for var in TELEGRAM_TOKEN DROPBOX_APP_KEY DROPBOX_APP_SECRET DROPBOX_REFRESH_TOKEN; do\n\
+for var in TELEGRAM_TOKEN MEGA_EMAIL MEGA_PASSWORD; do\n\
     if [ -z "${!var}" ]; then\n\
         echo "Error: $var is not set"\n\
         exit 1\n\
@@ -121,10 +124,9 @@ exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /ap
 
 # Create a requirements.txt with exact versions
 RUN echo "pyTelegramBotAPI==4.14.0\n\
-dropbox==12.0.2\n\
+mega.py==1.0.8\n\
 aiofiles==24.1.0\n\
 yt-dlp==2025.3.31\n\
-mega.py==1.0.8\n\
 flask==3.1.0\n\
 gunicorn==23.0.0\n\
 python-dotenv==1.1.0\n\
@@ -145,7 +147,7 @@ VOLUME ["/app/config", "/app/downloads", "/app/logs"]
 # Labels for container management
 LABEL maintainer="gauravbhalar95" \
       version="1.0" \
-      description="Telegram Download Bot with health monitoring" \
+      description="Telegram Download Bot with MEGA.nz support" \
       created="2025-04-12" \
       org.opencontainers.image.source="https://github.com/gauravbhalar95/New-bot"
 
