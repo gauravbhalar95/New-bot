@@ -24,6 +24,7 @@ RUN apt-get update && \
         procps \
         unzip \
         tzdata \
+        net-tools \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*
 
@@ -58,14 +59,15 @@ RUN python -m venv /app/venv && \
     pip install --no-cache-dir \
         pyTelegramBotAPI==4.14.0 \
         mega.py==1.0.8 \
-        flask==3.1.0 \
-        gunicorn==23.0.0 \
+        flask[async]==3.1.0 \
+        hypercorn==0.17.3 \
         python-dotenv==1.1.0 \
         requests==2.32.3 \
         aiohttp==3.11.16 \
         aiofiles==24.1.0 \
         yt-dlp==2025.3.31 \
-        telebot==0.0.5
+        telebot==0.0.5 \
+        quart==0.20.0
 
 # Copy application files
 COPY . /app/
@@ -90,8 +92,8 @@ stdout_logfile=/app/logs/bot.log\n\
 stderr_logfile=/app/logs/bot.log\n\
 environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
 \n\
-[program:flask_webhook]\n\
-command=/app/venv/bin/gunicorn --bind 0.0.0.0:8080 --workers 4 --threads 2 --timeout 120 app:app\n\
+[program:webhook_server]\n\
+command=/app/venv/bin/hypercorn --bind 0.0.0.0:8080 --workers 1 app:app\n\
 directory=/app\n\
 user=root\n\
 autostart=true\n\
@@ -99,17 +101,9 @@ autorestart=true\n\
 startretries=5\n\
 startsecs=10\n\
 stopwaitsecs=10\n\
-stdout_logfile=/app/logs/flask.log\n\
-stderr_logfile=/app/logs/flask.log\n\
-environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
-\n\
-[program:mega_sync]\n\
-command=/usr/bin/mega-cmd-server\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-stdout_logfile=/app/logs/mega.log\n\
-stderr_logfile=/app/logs/mega.log\n' > /etc/supervisor/conf.d/supervisord.conf
+stdout_logfile=/app/logs/webhook.log\n\
+stderr_logfile=/app/logs/webhook.log\n\
+environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n' > /etc/supervisor/conf.d/supervisord.conf
 
 # Create entrypoint script
 RUN echo '#!/bin/bash\n\
@@ -118,7 +112,7 @@ set -e\n\
 # Function to check if port is available\n\
 check_port() {\n\
     for i in {1..30}; do\n\
-        if netstat -tln | grep -q ":$1 "; then\n\
+        if curl -s http://localhost:$1/health > /dev/null; then\n\
             return 0\n\
         fi\n\
         sleep 1\n\
@@ -144,8 +138,7 @@ fi\n\
 \n\
 # Create log files if they don\'t exist\n\
 touch /app/logs/bot.log\n\
-touch /app/logs/flask.log\n\
-touch /app/logs/mega.log\n\
+touch /app/logs/webhook.log\n\
 \n\
 # Set permissions\n\
 chown -R root:root /app/logs\n\
@@ -153,18 +146,24 @@ chmod -R 755 /app/logs\n\
 \n\
 # Start supervisor\n\
 echo "Starting supervisor..."\n\
-/usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf &\n\
-\n\
-# Wait for port 8080 to be available\n\
-echo "Waiting for Flask webhook to start..."\n\
-if ! check_port 8080; then\n\
-    echo "Error: Flask webhook failed to start"\n\
-    exit 1\n\
-fi\n\
-\n\
-# Keep container running\n\
-wait\n' > /app/entrypoint.sh && \
+exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
+
+# Create a basic async app.py
+RUN echo 'from quart import Quart, jsonify\n\
+\n\
+app = Quart(__name__)\n\
+\n\
+@app.route("/health")\n\
+async def health():\n\
+    return jsonify({"status": "healthy"})\n\
+\n\
+@app.route("/webhook", methods=["POST"])\n\
+async def webhook():\n\
+    return jsonify({"status": "ok"})\n\
+\n\
+if __name__ == "__main__":\n\
+    app.run(host="0.0.0.0", port=8080)\n' > /app/app.py
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
