@@ -215,7 +215,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         logger.error(f"Error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ An error occurred: {str(e)}")
 
-[Rest of the code remains the same as in your original version, just replace Dropbox references with MEGA]
+#[Rest of the code remains the same as in your original version, just replace Dropbox references with MEGA]
 
 # Main bot runner
 async def main():
