@@ -13,7 +13,7 @@ DROPBOX_ACCESS_TOKEN = "sl.u.AFrbmhHWHEA2auyOi2Bm1vSnyy-Rgaw3ieoeTwyIk3Qqks0XYw_
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
 RAPIDAPI_HOST = "instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com"
 
-MEGA_USERNAME = "gauravbhalara95@gmail.com" # Will be updated dynamically
+MEGA_EMAIL = "gauravbhalara95@gmail.com" # Will be updated dynamically
 MEGA_PASSWORD = "Gaurav74$"  # Will be updated dynamically
 
 
