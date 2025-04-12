@@ -61,7 +61,7 @@ RUN python -m venv /app/venv && \
         flask==3.1.0 \
         gunicorn==23.0.0 \
         python-dotenv==1.1.0 \
-        requests==2.31.3 \
+        requests==2.32.3 \
         aiohttp==3.11.16 \
         aiofiles==24.1.0 \
         yt-dlp==2025.3.31 \
@@ -71,13 +71,34 @@ RUN python -m venv /app/venv && \
 COPY . /app/
 
 # Setup supervisor configuration
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+logfile=/var/log/supervisor/supervisord.log\n\
+pidfile=/var/run/supervisord.pid\n\
+\n\
+[program:telegram_bot]\n\
+command=/app/venv/bin/python /app/bot.py\n\
+directory=/app\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+startretries=10\n\
+startsecs=10\n\
+stopwaitsecs=10\n\
+stdout_logfile=/app/logs/bot.log\n\
+stderr_logfile=/app/logs/bot.log\n\
+environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
+\n\
+[program:flask_webhook]\n\
+command=/app/venv/bin/gunicorn -b 0.0.0.0:8080 app:app\n\
+directory=/app\n\
+user=root\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/app/logs/flask.log\n\
+stderr_logfile=/app/logs/flask.log\n' > /etc/supervisor/conf.d/supervisord.conf
 
-# Copy and setup health check script
-COPY healthcheck.py /app/
-RUN chmod +x /app/healthcheck.py
-
-# Create the entrypoint script
+# Create entrypoint script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -91,7 +112,7 @@ if [ ! -f "/app/config/mega_session.json" ]; then\n\
     mega-login "$MEGA_EMAIL" "$MEGA_PASSWORD" || exit 1\n\
 fi\n\
 \n\
-# Verify environment variables\n\
+# Verify BOT_TOKEN\n\
 if [ -z "$BOT_TOKEN" ]; then\n\
     echo "Error: BOT_TOKEN is not set"\n\
     exit 1\n\
@@ -110,44 +131,6 @@ chmod -R 755 /app/logs\n\
 echo "Starting supervisor..."\n\
 exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
-
-# Create supervisor configuration
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-logfile=/var/log/supervisor/supervisord.log\n\
-pidfile=/var/run/supervisord.pid\n\
-\n\
-[program:telegram_bot]\n\
-command=/app/venv/bin/python /app/bot.py\n\
-directory=/app\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-startretries=10\n\
-startsecs=10\n\
-stopwaitsecs=10\n\
-stdout_logfile=/app/logs/bot.log\n\
-stderr_logfile=/app/logs/bot.log\n\
-environment=PYTHONUNBUFFERED=1\n\
-\n\
-[program:flask_webhook]\n\
-command=/app/venv/bin/gunicorn -b 0.0.0.0:8080 app:app\n\
-directory=/app\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-stdout_logfile=/app/logs/flask.log\n\
-stderr_logfile=/app/logs/flask.log\n\
-\n\
-[program:healthcheck]\n\
-command=/app/venv/bin/python /app/healthcheck.py\n\
-directory=/app\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-startsecs=10\n\
-stdout_logfile=/app/logs/healthcheck.log\n\
-stderr_logfile=/app/logs/healthcheck.log\n' > /etc/supervisor/conf.d/supervisord.conf
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
