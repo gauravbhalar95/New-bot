@@ -49,13 +49,15 @@ RUN mkdir -p \
     chmod 755 /app/downloads && \
     chmod 755 /app/logs
 
-# Setup Python virtual environment and install dependencies
+# Setup Python virtual environment
 COPY requirements.txt /app/
+
+# Install Python packages
 RUN python -m venv /app/venv && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir \
-        python-telegram-bot==4.12.0 \
+        pyTelegramBotAPI>=4.14.0 \
         dropbox>=11.36.0 \
         aiofiles>=0.8.0 \
         yt-dlp>=2023.3.4 \
@@ -63,7 +65,8 @@ RUN python -m venv /app/venv && \
         flask>=2.0.1 \
         gunicorn>=20.1.0 \
         python-dotenv>=0.19.0 \
-        requests>=2.31.0
+        requests>=2.31.0 \
+        telebot>=0.0.5
 
 # Copy application files
 COPY . /app/
@@ -115,6 +118,19 @@ echo "$(date -u): Container starting up..." >> /app/logs/container.log\n\
 echo "Starting supervisor..."\n\
 exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
+
+# Create a requirements.txt with exact versions
+RUN echo "pyTelegramBotAPI==4.14.0\n\
+dropbox==12.0.2\n\
+aiofiles==24.1.0\n\
+yt-dlp==2025.3.31\n\
+mega.py==1.0.8\n\
+flask==3.1.0\n\
+gunicorn==23.0.0\n\
+python-dotenv==1.1.0\n\
+requests==2.31.3\n\
+telebot==0.0.5\n\
+python-telegram-bot==22.0\n" > /app/requirements.txt
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
