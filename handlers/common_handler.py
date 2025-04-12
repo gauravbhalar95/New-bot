@@ -8,9 +8,7 @@ from utils.logger import setup_logging
 from utils.sanitize import sanitize_filename
 from utils.renamer import rename_file
 from utils.thumb_generator import generate_thumbnail
-from utils.file_server import get_direct_download_link
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
-from flask import current_app
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -52,8 +50,7 @@ async def yt_dlp_context(ydl_opts):
 async def process_adult(url):
     """Download adult video asynchronously using yt-dlp."""
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
-
-    file_path = None  # Initialize to avoid 'referenced before assignment' error
+    file_path = None
 
     ydl_opts = {
         'format': 'bestvideo[height<=480]/best',
@@ -110,20 +107,8 @@ async def process_adult(url):
                         logger.info(f"✅ Compressed file within limit: {compressed_file}")
                         return compressed_file, compressed_size, thumbnail_path
 
-                logger.warning("⚠️ Compression failed or file still too large. Generating download link...")
-
-                try:
-                    with current_app.app_context():
-                        download_link = get_direct_download_link(str(file_path))
-                    if download_link:
-                        logger.info(f"✅ Direct download link generated: {download_link}")
-                        return None, file_size, download_link
-                    else:
-                        logger.error("❌ Direct download link generation failed.")
-                        return None, file_size, None
-                except Exception as e:
-                    logger.error(f"⚠️ Error generating download link: {e}")
-                    return None, file_size, None
+                logger.warning("⚠️ Compression failed or file still too large.")
+                return str(file_path), file_size, thumbnail_path
 
             return str(file_path), file_size, thumbnail_path
 
@@ -134,7 +119,7 @@ async def process_adult(url):
     except Exception as e:
         logger.error(f"⚠️ Unexpected error: {e}")
 
-    # Cleanup incomplete files to save disk space
+    # Cleanup incomplete files
     if file_path and file_path.exists():
         file_size = file_path.stat().st_size
         if file_size == 0:
