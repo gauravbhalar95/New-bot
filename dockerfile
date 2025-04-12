@@ -1,189 +1,32 @@
-# Use Python 3.13 as base image
-FROM python:3.13-slim
+# Use an official Python runtime as a parent image  
+FROM python:3.12-slim  
 
-# Set working directory
-WORKDIR /app
+# Set the working directory in the container  
+WORKDIR /app  
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    TZ=UTC \
-    VIRTUAL_ENV=/app/venv \
-    PATH="/app/venv/bin:$PATH"
+# Install system dependencies (e.g., ffmpeg) and clean up unnecessary files  
+RUN apt-get update && \  
+    apt-get install -y --no-install-recommends ffmpeg && \  
+    rm -rf /var/lib/apt/lists/*  
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ffmpeg \
-        supervisor \
-        curl \
-        wget \
-        gnupg \
-        git \
-        procps \
-        unzip \
-        tzdata \
-        net-tools \
-        && apt-get clean \
-        && rm -rf /var/lib/apt/lists/*
+# Copy the requirements file and install Python dependencies  
+COPY requirements.txt /app/  
+RUN pip install --no-cache-dir -r requirements.txt && \  
+    pip install --no-cache-dir --upgrade yt-dlp   
 
-# Install MEGA CMD
-RUN wget https://mega.nz/linux/repo/Debian_11/amd64/megacmd-Debian_11_amd64.deb && \
-    apt-get update && \
-    apt install -y ./megacmd-Debian_11_amd64.deb && \
-    rm megacmd-Debian_11_amd64.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Copy the rest of the application code into the container  
+COPY . /app  
 
-# Create necessary directories
-RUN mkdir -p \
-    /app/config \
-    /app/downloads \
-    /app/logs \
-    /var/log/supervisor \
-    /app/venv \
-    /app/temp && \
-    chmod 755 /app/config && \
-    chmod 755 /app/downloads && \
-    chmod 755 /app/logs && \
-    chmod 755 /app/temp
+# Ensure scripts have execute permissions  
+RUN chmod +x /app/update.sh  
 
-# Copy requirements first
-COPY requirements.txt /app/
+# Expose port 8080 for Flask  
+EXPOSE 9000 
 
-# Setup Python environment and install packages
-RUN python -m venv /app/venv && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir \
-        pyTelegramBotAPI==4.14.0 \
-        mega.py==1.0.8 \
-        flask[async]==3.1.0 \
-        hypercorn==0.17.3 \
-        python-dotenv==1.1.0 \
-        requests==2.32.3 \
-        aiohttp==3.11.16 \
-        aiofiles==24.1.0 \
-        yt-dlp==2025.3.31 \
-        telebot==0.0.5 \
-        quart==0.20.0
+# Set environment variables  
+ENV PYTHONUNBUFFERED=1 \  
+    FLASK_ENV=production \  
+    PORT=9000  
 
-# Copy application files
-COPY . /app/
-
-# Create supervisor configuration
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-logfile=/var/log/supervisor/supervisord.log\n\
-pidfile=/var/run/supervisord.pid\n\
-user=root\n\
-\n\
-[program:telegram_bot]\n\
-command=/app/venv/bin/python /app/bot.py\n\
-directory=/app\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-startretries=5\n\
-startsecs=10\n\
-stopwaitsecs=10\n\
-stdout_logfile=/app/logs/bot.log\n\
-stderr_logfile=/app/logs/bot.log\n\
-environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n\
-\n\
-[program:webhook_server]\n\
-command=/app/venv/bin/hypercorn --bind 0.0.0.0:8080 --workers 1 app:app\n\
-directory=/app\n\
-user=root\n\
-autostart=true\n\
-autorestart=true\n\
-startretries=5\n\
-startsecs=10\n\
-stopwaitsecs=10\n\
-stdout_logfile=/app/logs/webhook.log\n\
-stderr_logfile=/app/logs/webhook.log\n\
-environment=PYTHONUNBUFFERED=1,BOT_TOKEN="%(ENV_BOT_TOKEN)s"\n' > /etc/supervisor/conf.d/supervisord.conf
-
-# Create entrypoint script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Function to check if port is available\n\
-check_port() {\n\
-    for i in {1..30}; do\n\
-        if curl -s http://localhost:$1/health > /dev/null; then\n\
-            return 0\n\
-        fi\n\
-        sleep 1\n\
-    done\n\
-    return 1\n\
-}\n\
-\n\
-# Initialize MEGA configuration\n\
-if [ ! -f "/app/config/mega_session.json" ]; then\n\
-    echo "Initializing MEGA configuration..."\n\
-    if [ -z "$MEGA_EMAIL" ] || [ -z "$MEGA_PASSWORD" ]; then\n\
-        echo "Error: MEGA_EMAIL and MEGA_PASSWORD must be set"\n\
-        exit 1\n\
-    fi\n\
-    mega-login "$MEGA_EMAIL" "$MEGA_PASSWORD" || exit 1\n\
-fi\n\
-\n\
-# Verify BOT_TOKEN\n\
-if [ -z "$BOT_TOKEN" ]; then\n\
-    echo "Error: BOT_TOKEN is not set"\n\
-    exit 1\n\
-fi\n\
-\n\
-# Create log files if they don\'t exist\n\
-touch /app/logs/bot.log\n\
-touch /app/logs/webhook.log\n\
-\n\
-# Set permissions\n\
-chown -R root:root /app/logs\n\
-chmod -R 755 /app/logs\n\
-\n\
-# Start supervisor\n\
-echo "Starting supervisor..."\n\
-exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf\n' > /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh
-
-# Create a basic async app.py
-RUN echo 'from quart import Quart, jsonify\n\
-\n\
-app = Quart(__name__)\n\
-\n\
-@app.route("/health")\n\
-async def health():\n\
-    return jsonify({"status": "healthy"})\n\
-\n\
-@app.route("/webhook", methods=["POST"])\n\
-async def webhook():\n\
-    return jsonify({"status": "ok"})\n\
-\n\
-if __name__ == "__main__":\n\
-    app.run(host="0.0.0.0", port=8080)\n' > /app/app.py
-
-# Health check configuration
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Expose port
-EXPOSE 8080
-
-# Create data directory for persistent storage
-VOLUME ["/app/config", "/app/downloads", "/app/logs"]
-
-# Labels for container management
-LABEL maintainer="gauravbhalar95" \
-      version="1.0" \
-      description="Telegram Download Bot with MEGA.nz support" \
-      created="2025-04-12" \
-      org.opencontainers.image.source="https://github.com/gauravbhalar95/New-bot"
-
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
-
-# Set working directory
-WORKDIR /app
+# Run update.sh, then start webhook.py and bot.py  
+CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
