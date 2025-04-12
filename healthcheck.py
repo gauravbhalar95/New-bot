@@ -55,7 +55,7 @@ class BotHealthCheck:
     def check_telegram_token(self):
         """Verify Telegram bot token is valid"""
         try:
-            token = os.getenv('TELEGRAM_TOKEN')
+            token = os.getenv('BOT_TOKEN')
             if not token:
                 raise Exception("TELEGRAM_TOKEN environment variable not set")
 
