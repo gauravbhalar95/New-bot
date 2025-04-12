@@ -107,7 +107,7 @@ if [ ! -f "/app/config/mega_config.json" ]; then\n\
 fi\n\
 \n\
 # Verify environment variables\n\
-for var in TELEGRAM_TOKEN MEGA_EMAIL MEGA_PASSWORD; do\n\
+for var in BOT_TOKEN MEGA_EMAIL MEGA_PASSWORD; do\n\
     if [ -z "${!var}" ]; then\n\
         echo "Error: $var is not set"\n\
         exit 1\n\
