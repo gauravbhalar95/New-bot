@@ -14,7 +14,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('healthcheck.log'),
+        logging.FileHandler('/app/logs/healthcheck.log'),
         logging.StreamHandler()
     ]
 )
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class BotHealthCheck:
     def __init__(self):
         self.config_dir = Path('/app/config')
+        self.downloads_dir = Path('/app/downloads')
         self.log_dir = Path('/var/log/supervisor')
         self.status = {
             "timestamp": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
@@ -36,7 +37,8 @@ class BotHealthCheck:
         try:
             directories = {
                 "config": self.config_dir,
-                "logs": self.log_dir
+                "logs": self.log_dir,
+                "downloads": self.downloads_dir
             }
             
             for name, path in directories.items():
@@ -57,7 +59,7 @@ class BotHealthCheck:
         try:
             token = os.getenv('BOT_TOKEN')
             if not token:
-                raise Exception("TELEGRAM_TOKEN environment variable not set")
+                raise Exception("BOT_TOKEN environment variable not set")
 
             response = requests.get(
                 f"https://api.telegram.org/bot{token}/getMe",
@@ -74,28 +76,46 @@ class BotHealthCheck:
             self.status["errors"].append(f"Telegram API check failed: {str(e)}")
             return False
 
-    def check_dropbox_config(self):
-        """Verify Dropbox configuration"""
+    def check_mega_config(self):
+        """Verify MEGA.nz configuration and connectivity"""
         try:
-            required_vars = [
-                'DROPBOX_APP_KEY',
-                'DROPBOX_APP_SECRET',
-                'DROPBOX_REFRESH_TOKEN'
-            ]
-            
+            # Check environment variables
+            required_vars = ['MEGA_EMAIL', 'MEGA_PASSWORD']
             missing = [var for var in required_vars if not os.getenv(var)]
             if missing:
-                raise Exception(f"Missing Dropbox environment variables: {', '.join(missing)}")
+                raise Exception(f"Missing MEGA environment variables: {', '.join(missing)}")
 
-            tokens_file = self.config_dir / 'dropbox_tokens.json'
-            if not tokens_file.exists():
-                raise Exception("Dropbox tokens file not found")
+            # Check MEGA session
+            result = subprocess.run(
+                ['mega-whoami'],
+                capture_output=True,
+                text=True
+            )
 
-            self.status["checks"]["dropbox_config"] = "healthy"
+            if "Not logged in" in result.stdout:
+                # Try to login
+                login_result = subprocess.run(
+                    ['mega-login', os.getenv('MEGA_EMAIL'), os.getenv('MEGA_PASSWORD')],
+                    capture_output=True,
+                    text=True
+                )
+                if login_result.returncode != 0:
+                    raise Exception(f"MEGA login failed: {login_result.stderr}")
+
+            # Verify storage space
+            space_result = subprocess.run(
+                ['mega-df'],
+                capture_output=True,
+                text=True
+            )
+            if space_result.returncode != 0:
+                raise Exception("Failed to check MEGA storage space")
+
+            self.status["checks"]["mega_config"] = "healthy"
             return True
         except Exception as e:
-            self.status["checks"]["dropbox_config"] = "unhealthy"
-            self.status["errors"].append(f"Dropbox configuration check failed: {str(e)}")
+            self.status["checks"]["mega_config"] = "unhealthy"
+            self.status["errors"].append(f"MEGA configuration check failed: {str(e)}")
             return False
 
     def check_process_status(self):
@@ -146,6 +166,12 @@ class BotHealthCheck:
             if mem_usage > 90:
                 raise Exception(f"Memory usage critical: {mem_usage:.1f}%")
 
+            # Check CPU load
+            with open('/proc/loadavg', 'r') as f:
+                load = float(f.read().split()[0])
+                if load > os.cpu_count() * 2:
+                    raise Exception(f"CPU load critical: {load}")
+
             self.status["checks"]["resources"] = "healthy"
             return True
         except Exception as e:
@@ -159,7 +185,7 @@ class BotHealthCheck:
             checks = [
                 self.check_directories(),
                 self.check_telegram_token(),
-                self.check_dropbox_config(),
+                self.check_mega_config(),
                 self.check_process_status(),
                 self.check_system_resources()
             ]
@@ -188,6 +214,9 @@ def main():
     """Main entry point"""
     try:
         logger.info("Starting health check...")
+        logger.info(f"Check initiated by: {os.getenv('USER', 'unknown')}")
+        logger.info(f"Current UTC time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}")
+        
         health_check = BotHealthCheck()
         health_check.run_checks()
     except KeyboardInterrupt:
