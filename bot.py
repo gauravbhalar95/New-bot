@@ -308,7 +308,7 @@ async def worker():
             if gc.get_count()[0] > 1000:
                 gc.collect()
 
-[Previous command handlers remain the same...]
+#[Previous command handlers remain the same...]
 
 async def main():
     """Enhanced main function with proper cleanup."""
