@@ -21,12 +21,12 @@ COPY . /app
 RUN chmod +x /app/update.sh  
 
 # Expose port 8080 for Flask  
-EXPOSE 9000 
+EXPOSE 8080
 
 # Set environment variables  
 ENV PYTHONUNBUFFERED=1 \  
     FLASK_ENV=production \  
-    PORT=9000  
+    PORT=8080  
 
 # Run update.sh, then start webhook.py and bot.py  
 CMD ["bash", "-c", "/app/update.sh && python webhook.py & python bot.py && tail -f /dev/null"]
