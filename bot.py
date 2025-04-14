@@ -30,7 +30,8 @@ except ImportError:
 # Ensure these handlers are also compatible.
 try:
     from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-    from handlers.instagram_handler import process_instagram, process_instagram_image
+    from handlers.instagram_handler import process_instagram
+    from handlers.image_handlers import process_instagram_image
     from handlers.facebook_handlers import process_facebook
     from handlers.common_handler import process_adult
     from handlers.x_handler import download_twitter_media
