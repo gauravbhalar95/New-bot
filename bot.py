@@ -21,9 +21,7 @@ from config import (
     MEGA_EMAIL,
     MEGA_PASSWORD,
     DOWNLOAD_DIR,
-    TEMP_DIR,
-    INSTAGRAM_USERNAME,
-    INSTAGRAM_PASSWORD
+    TEMP_DIR
 )
 from utils.logger import setup_logging
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
@@ -291,11 +289,6 @@ async def process_instagram_image(message: Message, url: str):
     try:
         await send_message(message.chat.id, "🖼️ Processing Instagram image...")
         
-        # Initialize Instagram session if needed
-        if not await init_instagram_session():
-            await send_message(message.chat.id, "❌ Failed to initialize Instagram session")
-            return
-
         # Download image(s)
         image_paths = await process_instagram_image(url)
         if not image_paths:
@@ -391,10 +384,6 @@ async def main():
         if not await init_mega():
             logger.error("Failed to initialize MEGA. Exiting...")
             return
-
-        # Initialize Instagram session
-        if not await init_instagram_session():
-            logger.warning("Failed to initialize Instagram session. Instagram features may be limited.")
 
         # Start workers
         workers = [asyncio.create_task(worker()) for _ in range(MAX_WORKERS)]
