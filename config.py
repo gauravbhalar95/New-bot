@@ -32,8 +32,8 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Download directory
-DOWNLOAD_DIR2 = "downloads/post"
-os.makedirs(DOWNLOAD_DIR2, exist_ok=True)
+TEMP_DIR = "TEMP_DIR"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # Download directory
 DOWNLOAD_DIR3 = "downloads/story"
