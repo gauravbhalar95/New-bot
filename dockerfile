@@ -28,8 +28,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose the port for Flask
 EXPOSE 8080
 
-# Start both webhook and bot (run in parallel safely)
 CMD bash -c "/app/update.sh && \
     python webhook.py & \
     sleep 5 && \
-    python bot.py"
+    python bot.py & \
+    python processing.py"
