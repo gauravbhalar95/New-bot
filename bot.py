@@ -2,12 +2,17 @@
 
 import os
 import gc
+import time
 import logging
 import asyncio
 import aiofiles
+import re
+from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import Message
+from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 
 # Import configuration
 from config import (
@@ -16,18 +21,18 @@ from config import (
     MEGA_EMAIL,
     MEGA_PASSWORD,
     DOWNLOAD_DIR,
-    TEMP_DIR
+    TEMP_DIR,
+    INSTAGRAM_USERNAME,
+    INSTAGRAM_PASSWORD
 )
 from utils.logger import setup_logging
-from processing import (
-    init_mega,
-    upload_to_mega,
-    process_media_download,
-    process_instagram_image,
-    detect_platform,
-    cleanup_file,
-    create_directories
-)
+from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
+from handlers.instagram_handler import process_instagram, init_instagram_session
+from handlers.facebook_handlers import process_facebook
+from handlers.common_handler import process_adult
+from handlers.x_handler import download_twitter_media
+from handlers.trim_handlers import process_video_trim, process_audio_trim
+from handlers.image_handlers import process_instagram_image
 
 # Constants
 MAX_CONCURRENT_DOWNLOADS = 5
@@ -35,6 +40,24 @@ MAX_WORKERS = min(32, (os.cpu_count() or 1) * 4)
 CHUNK_SIZE = 4 * 1024 * 1024  # 4MB chunks
 MAX_RETRIES = 3
 RETRY_DELAY = 5
+
+# Platform patterns
+PLATFORM_PATTERNS = {
+    "YouTube": re.compile(r"(youtube\.com|youtu\.be)"),
+    "Instagram": re.compile(r"instagram\.com"),
+    "Facebook": re.compile(r"facebook\.com"),
+    "Twitter/X": re.compile(r"(x\.com|twitter\.com)"),
+    "Adult": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),
+}
+
+# Platform handlers
+PLATFORM_HANDLERS = {
+    "YouTube": process_youtube,
+    "Instagram": process_instagram,
+    "Facebook": process_facebook,
+    "Twitter/X": download_twitter_media,
+    "Adult": process_adult,
+}
 
 # Logging setup
 logger = setup_logging(logging.DEBUG)
@@ -47,6 +70,36 @@ download_queue = asyncio.Queue()
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 thread_pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
+# MEGA.nz setup
+mega = Mega()
+mega_instance = None
+
+async def init_mega():
+    """Initialize MEGA instance with retry mechanism."""
+    global mega_instance
+    for attempt in range(MAX_RETRIES):
+        try:
+            if not MEGA_EMAIL or not MEGA_PASSWORD:
+                logger.error("MEGA credentials not set")
+                return False
+
+            mega_instance = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
+            logger.info("MEGA.nz login successful")
+            return True
+        except Exception as e:
+            logger.error(f"MEGA.nz login attempt {attempt + 1} failed: {e}")
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY)
+    return False
+
+@lru_cache(maxsize=1000)
+def detect_platform(url: str) -> str:
+    """Detect platform from URL with caching."""
+    for platform, pattern in PLATFORM_PATTERNS.items():
+        if pattern.search(url):
+            return platform
+    return None
+
 async def send_message(chat_id: int, text: str, retry: bool = True) -> bool:
     """Send message with retries."""
     for attempt in range(MAX_RETRIES if retry else 1):
@@ -58,6 +111,50 @@ async def send_message(chat_id: int, text: str, retry: bool = True) -> bool:
             if attempt < MAX_RETRIES - 1:
                 await asyncio.sleep(RETRY_DELAY)
     return False
+
+async def upload_to_mega(file_path: str, filename: str) -> str:
+    """Upload file to MEGA with optimizations."""
+    async with download_semaphore:
+        try:
+            if not mega_instance:
+                if not await init_mega():
+                    return None
+
+            loop = asyncio.get_event_loop()
+            
+            # Find or create upload folder
+            folder = mega_instance.find('telegram_uploads')
+            if not folder:
+                folder = mega_instance.create_folder('telegram_uploads')
+
+            file_size = os.path.getsize(file_path)
+            logger.info(f"Starting MEGA upload for {filename} ({file_size / (1024*1024):.2f} MB)")
+
+            # Upload file in thread pool
+            file = await loop.run_in_executor(
+                thread_pool,
+                lambda: mega_instance.upload(file_path, folder[0])
+            )
+
+            if not file:
+                return None
+
+            # Get link
+            link = await loop.run_in_executor(
+                thread_pool,
+                lambda: mega_instance.get_link(file)
+            )
+
+            logger.info(f"MEGA upload successful for {filename}")
+            return link
+
+        except Exception as e:
+            logger.error(f"MEGA upload error: {e}")
+            if "not logged in" in str(e).lower():
+                logger.info("Attempting to reinitialize MEGA connection...")
+                if await init_mega():
+                    return await upload_to_mega(file_path, filename)
+            return None
 
 async def chunked_read(file_path: str):
     """Read file in chunks efficiently."""
@@ -97,6 +194,16 @@ async def send_large_file(message: Message, file_path: str, is_audio: bool = Fal
     except Exception as e:
         logger.error(f"Error sending file: {e}")
         return False
+
+async def cleanup_file(file_path: str):
+    """Clean up file asynchronously."""
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.debug(f"Cleaned up file: {file_path}")
+            gc.collect()  # Force garbage collection after file cleanup
+    except Exception as e:
+        logger.error(f"Cleanup error for {file_path}: {e}")
 
 async def process_and_send(message: Message, file_paths: list, is_audio: bool = False, is_image: bool = False):
     """Process and send files with optimizations."""
@@ -145,8 +252,65 @@ async def process_and_send(message: Message, file_paths: list, is_audio: bool = 
         finally:
             await cleanup_file(file_path)
 
-async def handle_media_message(message: Message, task: dict):
-    """Handle media download messages."""
+async def process_media_download(url: str, is_audio: bool = False, is_video_trim: bool = False, 
+                               is_audio_trim: bool = False, start_time: str = None, end_time: str = None):
+    """Process media downloads based on URL and type."""
+    try:
+        # Handle trimming requests
+        if is_video_trim:
+            logger.info(f"Processing video trim: {url}, {start_time}-{end_time}")
+            return await process_video_trim(url, start_time, end_time)
+
+        if is_audio_trim:
+            logger.info(f"Processing audio trim: {url}, {start_time}-{end_time}")
+            return await process_audio_trim(url, start_time, end_time)
+
+        # Handle audio extraction
+        if is_audio:
+            logger.info(f"Processing audio extraction: {url}")
+            return await extract_audio_ffmpeg(url)
+
+        # Handle regular media downloads
+        platform = detect_platform(url)
+        if not platform:
+            raise ValueError("Unsupported platform")
+
+        handler = PLATFORM_HANDLERS.get(platform)
+        if not handler:
+            raise ValueError(f"No handler for platform: {platform}")
+
+        logger.info(f"Processing {platform} download: {url}")
+        return await handler(url)
+
+    except Exception as e:
+        logger.error(f"Error in process_media_download: {e}", exc_info=True)
+        raise
+
+async def process_instagram_image(message: Message, url: str):
+    """Process Instagram image downloads."""
+    try:
+        await send_message(message.chat.id, "🖼️ Processing Instagram image...")
+        
+        # Initialize Instagram session if needed
+        if not await init_instagram_session():
+            await send_message(message.chat.id, "❌ Failed to initialize Instagram session")
+            return
+
+        # Download image(s)
+        image_paths = await process_instagram_image(url)
+        if not image_paths:
+            await send_message(message.chat.id, "❌ Failed to download image(s)")
+            return
+
+        # Send images
+        await process_and_send(message, image_paths, is_image=True)
+
+    except Exception as e:
+        logger.error(f"Error processing Instagram image: {e}")
+        await send_message(message.chat.id, "❌ Error processing Instagram image")
+
+async def process_media(message: Message, task: dict):
+    """Process media downloads."""
     url = task['url']
     is_audio = task.get('is_audio', False)
     is_video_trim = task.get('is_video_trim', False)
@@ -187,7 +351,7 @@ async def handle_media_message(message: Message, task: dict):
         await send_message(message.chat.id, f"❌ Error: {str(e)}")
 
 async def worker():
-    """Process tasks from the download queue."""
+    """Optimized worker function."""
     while True:
         try:
             task = await download_queue.get()
@@ -199,7 +363,7 @@ async def worker():
                 if task_type == "image":
                     await process_instagram_image(message, url)
                 else:
-                    await handle_media_message(message, task)
+                    await process_media(message, task)
 
         except Exception as e:
             logger.error(f"Worker error: {e}")
@@ -208,8 +372,17 @@ async def worker():
             if gc.get_count()[0] > 1000:
                 gc.collect()
 
+def create_directories():
+    """Creates necessary directories if they don't exist."""
+    try:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        os.makedirs(TEMP_DIR, exist_ok=True)
+        logger.info("Created necessary directories")
+    except Exception as e:
+        logger.error(f"Error creating directories: {e}")
+
 async def main():
-    """Main bot function."""
+    """Enhanced main function."""
     try:
         # Create necessary directories
         create_directories()
@@ -218,6 +391,10 @@ async def main():
         if not await init_mega():
             logger.error("Failed to initialize MEGA. Exiting...")
             return
+
+        # Initialize Instagram session
+        if not await init_instagram_session():
+            logger.warning("Failed to initialize Instagram session. Instagram features may be limited.")
 
         # Start workers
         workers = [asyncio.create_task(worker()) for _ in range(MAX_WORKERS)]
