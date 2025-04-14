@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*- # Recommended for wider compatibility
+
 import os
 import gc
 import logging
@@ -12,6 +14,15 @@ from typing import Optional, List, Tuple, Any, Dict # Added for type hinting
 from telebot.async_telebot import AsyncTeleBot
 from telebot.types import Message # Added for type hinting
 from mega import Mega # Import Mega library
+try:
+    # ADDED: Explicit import for specific Mega exceptions (adjust path if needed)
+    from mega.errors import AuthError, ApiError
+except ImportError:
+    # Fallback if specific errors aren't directly available (less ideal)
+    AuthError = Exception # Or a more specific base if known
+    ApiError = Exception
+    print("WARN: Could not import specific AuthError/ApiError from mega.errors. Using broader Exception.")
+
 
 # --- Local Modules ---
 # Create a 'config.py' file in the same directory with these variables:
@@ -36,7 +47,7 @@ try:
     from handlers.common_handler import process_adult
     from handlers.x_handler import download_twitter_media
     from handlers.trim_handlers import process_video_trim, process_audio_trim
-    # from handlers.image_handlers import process_instagram_image # Already imported above
+    # REMOVED: Duplicate import of process_instagram_image
     from utils.logger import setup_logging # Assuming logger setup is in utils
 except ImportError as e:
     print(f"ERROR: Failed to import handlers or utils: {e}")
@@ -66,6 +77,11 @@ async def initialize_mega() -> bool:
     if mega_logged_in:
         return True
 
+    # ADDED: Check if credentials are set before attempting login
+    if not MEGA_EMAIL or not MEGA_PASSWORD:
+        logger.error("Mega Email/Password not set in config. Bot cannot use Mega.nz features.")
+        return False
+
     try:
         logger.info("Initializing Mega.nz client...")
         mega = Mega()
@@ -80,45 +96,47 @@ async def initialize_mega() -> bool:
         # Run blocking find/create folder in a separate thread
         folder_node_tuple = await asyncio.to_thread(m.find, MEGA_FOLDER_NAME, exclude_deleted=True)
 
+        # This complex check handles variations in mega.py's find() return value
         if folder_node_tuple and isinstance(folder_node_tuple, tuple) and len(folder_node_tuple) > 0:
-             # m.find returns a tuple: ((node_dict, type),) if found, or None
-             # Or just (node_dict, type) in older versions? Check mega.py docs if needed.
-             # Let's assume the primary node is the first element of the first tuple item
-             if isinstance(folder_node_tuple[0], tuple) and len(folder_node_tuple[0]) > 0:
+             # Assumes structure like ((node_dict, type),)
+             if isinstance(folder_node_tuple[0], tuple) and len(folder_node_tuple[0]) > 0 and isinstance(folder_node_tuple[0][0], dict):
                   mega_upload_folder_node = folder_node_tuple[0][0] # Get the node dictionary
                   logger.info(f"Found Mega folder node: {mega_upload_folder_node.get('h', 'N/A')}") # Log handle 'h'
-             else:
-                  # Fallback if the structure is different (e.g., just (node, type))
+             # Fallback if the structure is different (e.g., (node_dict, type))
+             elif isinstance(folder_node_tuple[0], dict):
                   mega_upload_folder_node = folder_node_tuple[0]
                   logger.info(f"Found Mega folder node (alternative structure): {mega_upload_folder_node.get('h', 'N/A')}")
-        else:
-             logger.info(f"Mega folder '{MEGA_FOLDER_NAME}' not found. Creating...")
+             else:
+                 logger.warning(f"Found Mega item '{MEGA_FOLDER_NAME}', but structure is unexpected: {folder_node_tuple}. Trying creation...")
+                 folder_node_tuple = None # Force creation attempt
+
+        if not mega_upload_folder_node: # Covers case where it wasn't found or structure was wrong
+             logger.info(f"Mega folder '{MEGA_FOLDER_NAME}' not found or structure unexpected. Creating...")
              # Run blocking create folder in a separate thread
-             # Note: m.create_folder returns a list of nodes created [{...}]
-             created_folder_list = await asyncio.to_thread(m.create_folder, MEGA_FOLDER_NAME)
-             if created_folder_list:
+             created_folder_list = await asyncio.to_thread(m.create_folder, MEGA_FOLDER_NAME) # returns a list like [{...}]
+
+             if created_folder_list and isinstance(created_folder_list, list) and len(created_folder_list) > 0 and isinstance(created_folder_list[0], dict):
                  logger.info(f"Mega folder '{MEGA_FOLDER_NAME}' created.")
-                 # Find it again to get the node in the expected format
-                 folder_node_tuple = await asyncio.to_thread(m.find, MEGA_FOLDER_NAME, exclude_deleted=True)
-                 if folder_node_tuple and isinstance(folder_node_tuple[0], tuple) and len(folder_node_tuple[0]) > 0:
-                      mega_upload_folder_node = folder_node_tuple[0][0]
+                 # Find it again to get the node, hopefully in a consistent format now
+                 folder_node_tuple_retry = await asyncio.to_thread(m.find, MEGA_FOLDER_NAME, exclude_deleted=True)
+                 if folder_node_tuple_retry and isinstance(folder_node_tuple_retry[0], tuple) and len(folder_node_tuple_retry[0]) > 0 and isinstance(folder_node_tuple_retry[0][0], dict):
+                      mega_upload_folder_node = folder_node_tuple_retry[0][0]
                       logger.info(f"Using newly created Mega folder node: {mega_upload_folder_node.get('h', 'N/A')}")
-                 elif folder_node_tuple: # Alternative structure check
-                      mega_upload_folder_node = folder_node_tuple[0]
+                 elif folder_node_tuple_retry and isinstance(folder_node_tuple_retry[0], dict): # Alternative structure check
+                      mega_upload_folder_node = folder_node_tuple_retry[0]
                       logger.info(f"Using newly created Mega folder node (alternative structure): {mega_upload_folder_node.get('h', 'N/A')}")
                  else:
-                     logger.error(f"Failed to find created Mega folder '{MEGA_FOLDER_NAME}'. Uploads will go to root.")
-                     mega_upload_folder_node = await asyncio.to_thread(m.get_root_node) # More explicit way to get root
+                     logger.error(f"Failed to find created Mega folder '{MEGA_FOLDER_NAME}' after creation. Uploads will go to root.")
+                     mega_upload_folder_node = await asyncio.to_thread(m.get_root_node)
              else:
                   logger.error(f"Failed to create Mega folder '{MEGA_FOLDER_NAME}'. Uploads will go to root.")
                   mega_upload_folder_node = await asyncio.to_thread(m.get_root_node)
 
+        # Final fallback if node is still None
         if mega_upload_folder_node is None:
              logger.warning("Failed to obtain a valid Mega folder node. Uploads might fail or go to an unexpected location.")
-             # Fallback one last time if needed
              mega_upload_folder_node = await asyncio.to_thread(m.get_root_node)
-             logger.info(f"Falling back to root node: {mega_upload_folder_node.get('h', 'N/A')}")
-
+             logger.info(f"Falling back to root node: {mega_upload_folder_node.get('h', 'N/A') if mega_upload_folder_node else 'N/A'}")
 
         return True
 
@@ -138,10 +156,10 @@ async def initialize_mega() -> bool:
 # --- Platform Detection ---
 PLATFORM_PATTERNS = {
     "YouTube": re.compile(r"(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w-]+"),
-    "Instagram": re.compile(r"(?:https?://)?(?:www\.)?instagram\.com/(?:p/|reel/|stories/|tv/)[\w-]+"),
-    "Facebook": re.compile(r"(?:https?://)?(?:www\.|m\.|web\.)?facebook\.com/(?:watch/?\?v=|video\.php\?v=|[^/]+/videos/|[^/]+/posts/|reel/)[\d\w.]+"),
+    "Instagram": re.compile(r"(?:https?://)?(?:www\.)?instagram\.com/(?:p/|reel/|stories/|tv/)[\w-]+/?"), # Added optional trailing slash
+    "Facebook": re.compile(r"(?:https?://)?(?:www\.|m\.|web\.)?facebook\.com/(?:watch/?\?v=|video\.php\?v=|[^/]+/videos/|[^/]+/posts/|reel/)[\d\w.]+/?"), # Added optional trailing slash
     "Twitter/X": re.compile(r"(?:https?://)?(?:www\.)?(?:x\.com|twitter\.com)/[^/]+/status/\d+"),
-    "Adult": re.compile(r"(?:https?://)?(?:www\.)?(?:pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)/.+") # Simplified
+    "Adult": re.compile(r"(?:https?://)?(?:www\.)?(?:pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)/.+", re.IGNORECASE) # Added case-insensitivity
 }
 
 PLATFORM_HANDLERS = {
@@ -158,6 +176,7 @@ def detect_platform(url: str) -> Optional[str]:
     """Detects the platform based on URL patterns."""
     for platform, pattern in PLATFORM_PATTERNS.items():
         if pattern.search(url):
+            logger.info(f"Detected platform '{platform}' for URL: {url}")
             return platform
     logger.warning(f"Could not detect platform for URL: {url}")
     return None
@@ -168,7 +187,14 @@ async def send_message(chat_id: int, text: str, **kwargs):
     try:
         await bot.send_message(chat_id, text, **kwargs)
     except Exception as e:
-        logger.error(f"Error sending message to chat {chat_id}: {e}", exc_info=True)
+        # Avoid logging errors for potentially common issues like bot blocked by user
+        if "bot was blocked by the user" in str(e).lower():
+             logger.warning(f"Bot blocked by user in chat {chat_id}.")
+        elif "chat not found" in str(e).lower():
+             logger.warning(f"Chat not found: {chat_id}.")
+        else:
+             logger.error(f"Error sending message to chat {chat_id}: {e}", exc_info=True)
+
 
 async def upload_to_mega(file_path: str, filename: str) -> Optional[str]:
     """
@@ -192,51 +218,63 @@ async def upload_to_mega(file_path: str, filename: str) -> Optional[str]:
 
     if mega_upload_folder_node is None:
         logger.error("Mega upload folder node is not set. Cannot upload reliably.")
-        # Optionally fallback to root again, but indicates an earlier setup issue
-        # mega_upload_folder_node = await asyncio.to_thread(mega.get_root_node)
-        # if mega_upload_folder_node is None: return None
         return None # Safer to fail if folder setup didn't work
 
     try:
-        logger.info(f"Attempting to upload '{filename}' ({os.path.getsize(file_path)} bytes) to Mega.nz...")
+        # CHANGED: Use asyncio.to_thread for blocking os.path.getsize
+        file_size_bytes = await asyncio.to_thread(os.path.getsize, file_path)
+        logger.info(f"Attempting to upload '{filename}' ({file_size_bytes} bytes) to Mega.nz...")
+
         # Use asyncio.to_thread to run the blocking mega.py upload call
-        # mega.upload() returns the node handle ('h') of the uploaded file
-        dest_node_handle = await asyncio.to_thread(
+        # Pass the handle 'h' of the destination folder
+        dest_folder_handle = mega_upload_folder_node.get('h')
+        if not dest_folder_handle:
+            logger.error(f"Mega destination folder node has no handle ('h'). Cannot upload '{filename}'. Node: {mega_upload_folder_node}")
+            return None
+
+        uploaded_file_node = await asyncio.to_thread(
             mega.upload,
             file_path,
-            dest=mega_upload_folder_node.get('h') # Pass the handle 'h' of the destination folder
+            dest=dest_folder_handle
         )
 
-        if not dest_node_handle:
+        if not uploaded_file_node:
             logger.error(f"Mega.nz upload failed for '{filename}' (returned None).")
             return None
 
-        logger.info(f"Successfully uploaded '{filename}' (Node: {dest_node_handle}). Generating export link...")
+        # mega.upload typically returns the node *handle* ('h') directly, not the full node dict
+        # Let's assume uploaded_file_node is the handle string 'h'
+        logger.info(f"Successfully uploaded '{filename}' (Node handle: {uploaded_file_node}). Generating export link...")
 
         # Use asyncio.to_thread for the blocking export call
         # mega.export() needs the file's node handle or path on Mega
-        link = await asyncio.to_thread(mega.export, dest_node_handle)
+        link = await asyncio.to_thread(mega.export, uploaded_file_node)
 
         if not link:
-             logger.error(f"Failed to generate Mega.nz export link for '{filename}' (Node: {dest_node_handle}).")
+             logger.error(f"Failed to generate Mega.nz export link for '{filename}' (Node handle: {uploaded_file_node}).")
              return None
 
         logger.info(f"Mega.nz link generated: {link}")
         return link
 
+    except FileNotFoundError:
+        logger.error(f"File not found for Mega upload: {file_path}")
+        return None
+    except AuthError as auth_e: # More specific catch
+         logger.error(f"Mega.nz authentication error during upload/export for '{filename}': {auth_e}", exc_info=True)
+         mega_logged_in = False # Assume session might be invalid
+         return None
     except ApiError as api_e:
          logger.error(f"Mega.nz API error during upload/export for '{filename}': {api_e}", exc_info=True)
          # Consider re-login attempt or specific error handling based on ApiError details
-         mega_logged_in = False # Assume session might be invalid
+         # For now, assume session might be invalid
+         mega_logged_in = False
          return None
     except Exception as e:
         logger.error(f"Unexpected Mega.nz upload/export error for '{filename}': {e}", exc_info=True)
-        # Attempt re-login in case of session issues
+        # Attempt re-login in case of session issues? Maybe too aggressive.
         mega_logged_in = False # Assume login might be invalid
         return None
-    finally:
-        # Optional: Check Mega client status after operation
-        pass
 
 async def process_download(message: Message, url: str, is_audio: bool = False,
                            is_video_trim: bool = False, is_audio_trim: bool = False,
@@ -248,151 +286,157 @@ async def process_download(message: Message, url: str, is_audio: bool = False,
     elif is_video_trim: request_type = "Video Trimming"
     elif is_audio_trim: request_type = "Audio Trimming"
 
+    processing_msg = None
     try:
-        await send_message(chat_id, f"⏳ **Processing your {request_type.lower()} request...**\nURL: {url}")
+        # Send initial message and store it to potentially edit later
+        processing_msg = await bot.send_message(chat_id, f"⏳ **Processing your {request_type.lower()} request...**\nURL: `{url}`")
         logger.info(f"Processing URL: {url}, Type: {request_type}, ChatID: {chat_id}")
 
         # Detect platform
         platform = detect_platform(url)
         if not platform:
-            await send_message(chat_id, "⚠️ **Unsupported URL or platform.** Please send a valid link from supported sites.")
+            await bot.edit_message_text("⚠️ **Unsupported URL or platform.** Please send a valid link from supported sites.", chat_id, processing_msg.message_id)
             return
 
         # --- Call appropriate handler ---
         file_paths: List[str] = []
-        file_size: Optional[int] = None
-        download_url: Optional[str] = None # Keep track of original download URL if available
+        # IDEA: Use a dataclass or NamedTuple for handler results for clarity
+        # from collections import namedtuple
+        # MediaResult = namedtuple("MediaResult", ["paths", "size", "source_url"])
+        handler_result: Any = None # Placeholder for result
 
         try:
+            await bot.edit_message_text(f"⏳ **Detected {platform}. Calling handler...**\nURL: `{url}`", chat_id, processing_msg.message_id)
+
             if is_video_trim:
                 logger.info(f"Calling process_video_trim: Start={start_time}, End={end_time}")
                 if start_time and end_time:
-                    result = await process_video_trim(url, start_time, end_time)
-                    if result:
-                        file_path, file_size = result
-                        file_paths = [file_path] if file_path else []
+                    handler_result = await process_video_trim(url, start_time, end_time)
                 else:
                      raise ValueError("Start and end times required for trimming.")
 
             elif is_audio_trim:
                 logger.info(f"Calling process_audio_trim: Start={start_time}, End={end_time}")
                 if start_time and end_time:
-                    result = await process_audio_trim(url, start_time, end_time)
-                    if result:
-                        file_path, file_size = result
-                        file_paths = [file_path] if file_path else []
+                    handler_result = await process_audio_trim(url, start_time, end_time)
                 else:
                      raise ValueError("Start and end times required for trimming.")
 
             elif is_audio:
                 logger.info("Calling extract_audio_ffmpeg...")
-                result = await extract_audio_ffmpeg(url) # Expects (path, size) or just path
-                if isinstance(result, tuple) and len(result) >= 1:
-                    file_path = result[0]
-                    file_size = result[1] if len(result) > 1 else None
-                    file_paths = [file_path] if file_path else []
-                elif isinstance(result, str):
-                    file_paths = [result]
-                    file_size = None # Need to get size later
-                else:
-                     logger.warning(f"Unexpected result from extract_audio_ffmpeg: {result}")
-
+                handler_result = await extract_audio_ffmpeg(url)
 
             else: # Regular Video/Media download
                 logger.info(f"Handling general download for platform: {platform}")
                 handler = PLATFORM_HANDLERS.get(platform)
-                specific_instagram_post = False
                 if platform == "Instagram":
-                    # Differentiate based on URL structure for post/story vs reel/igtv
                     if "/p/" in url or "/stories/" in url:
                         logger.info("Using Instagram Post/Story handler...")
                         handler = INSTAGRAM_POST_HANDLER
-                        specific_instagram_post = True # Flag to potentially handle list returns differently
                     elif "/reel/" in url or "/tv/" in url:
                          logger.info("Using Instagram Reel/IGTV handler (process_instagram)...")
-                         handler = process_instagram # Explicitly use video handler
-                    else: # Fallback for other instagram url types?
+                         handler = process_instagram
+                    else:
                          logger.info("Using default Instagram handler (process_instagram)...")
                          handler = process_instagram
 
                 if not handler:
-                    await send_message(chat_id, f"❌ **No specific handler configured for {platform}.**")
+                    await bot.edit_message_text(f"❌ **No specific handler configured for {platform}.**", chat_id, processing_msg.message_id)
                     return
 
-                result = await handler(url)
-
-                # --- Process handler results carefully ---
-                # Handlers might return:
-                # 1. (filepath: str, size: int, source_url: Optional[str])
-                # 2. (filepath: str, size: int)
-                # 3. filepath: str
-                # 4. List[str] (especially INSTAGRAM_POST_HANDLER)
-                # 5. Tuple[List[str], Optional[int], Optional[str]] (INSTAGRAM_POST_HANDLER variant?)
-                # 6. None or False on failure
-
-                if isinstance(result, tuple):
-                    if len(result) >= 3 and isinstance(result[0], (str, list)): # path(s), size, url
-                        temp_paths, file_size, download_url = result[:3]
-                        file_paths = temp_paths if isinstance(temp_paths, list) else [temp_paths] if temp_paths else []
-                    elif len(result) == 2 and isinstance(result[0], (str, list)): # path(s), size
-                        temp_paths, file_size = result
-                        file_paths = temp_paths if isinstance(temp_paths, list) else [temp_paths] if temp_paths else []
-                    elif len(result) == 1 and isinstance(result[0], str): # single path in a tuple
-                        file_paths = [result[0]]
-                    else:
-                        logger.warning(f"Unexpected tuple structure from handler: {result}")
-                elif isinstance(result, list): # list of paths
-                     file_paths = [p for p in result if isinstance(p, str)] # Filter out non-strings
-                     file_size = None # Need to calculate later per file
-                elif isinstance(result, str): # single path
-                    file_paths = [result] if result else []
-                    file_size = None # Need to calculate later
-                else:
-                    logger.warning(f"Handler for {platform} returned unexpected type or None: {result}")
+                handler_result = await handler(url)
 
         except ValueError as ve: # Catch specific errors like missing trim times
              logger.error(f"Value error during handler call: {ve}", exc_info=True)
-             await send_message(chat_id, f"❌ **Error:** {ve}")
+             await bot.edit_message_text(f"❌ **Error:** {ve}", chat_id, processing_msg.message_id)
              return
         except Exception as handler_error:
              logger.error(f"Error executing handler for {platform}: {handler_error}", exc_info=True)
-             await send_message(chat_id, f"❌ **Failed to process media from the URL.** Error: `{handler_error}`")
+             await bot.edit_message_text(f"❌ **Failed to process media from the URL.**\nError: `{handler_error}`", chat_id, processing_msg.message_id)
              return
 
+        # --- Process handler results carefully (Consider standardizing handler returns) ---
+        file_paths = []
+        file_size: Optional[int] = None # Overall size if single file from handler
+        download_url: Optional[str] = None # Original source URL if provided
 
-        logger.info(f"Handler returned: file_paths={file_paths}, file_size={file_size} (may be per file), download_url={download_url}")
+        if isinstance(handler_result, tuple):
+            if len(handler_result) >= 1:
+                paths_data = handler_result[0]
+                file_paths = paths_data if isinstance(paths_data, list) else [paths_data] if isinstance(paths_data, str) else []
+                if len(handler_result) >= 2 and isinstance(handler_result[1], int):
+                    file_size = handler_result[1]
+                if len(handler_result) >= 3 and isinstance(handler_result[2], str):
+                    download_url = handler_result[2]
+            else:
+                 logger.warning(f"Handler returned empty tuple: {handler_result}")
+        elif isinstance(handler_result, list):
+            file_paths = [p for p in handler_result if isinstance(p, str)]
+        elif isinstance(handler_result, str):
+            file_paths = [handler_result] if handler_result else []
+        else:
+            logger.warning(f"Handler for {platform} returned unexpected type or None: {handler_result}")
 
-        if not file_paths or all(not path for path in file_paths):
-            logger.warning("No valid file paths returned from platform handler or file processing failed.")
-            await send_message(chat_id, "❌ **Download failed.** No media could be retrieved or processed from the URL.")
+        # Filter out any non-existent paths just in case
+        valid_paths = []
+        for p in file_paths:
+             if p and isinstance(p, str) and await asyncio.to_thread(os.path.exists, p):
+                 valid_paths.append(p)
+             else:
+                 logger.warning(f"File path '{p}' from handler is invalid or does not exist. Skipping.")
+        file_paths = valid_paths
+
+
+        logger.info(f"Handler returned: file_paths={file_paths}, file_size={file_size} (may be total/first), download_url={download_url}")
+
+        if not file_paths:
+            logger.warning("No valid file paths returned from handler or file processing failed.")
+            await bot.edit_message_text("❌ **Download failed.** No media could be retrieved or processed from the URL.", chat_id, processing_msg.message_id)
             return
 
         # --- Process and Send/Upload each file ---
         success_count = 0
         fail_count = 0
-        for file_path in file_paths:
-            if not file_path or not isinstance(file_path, str) or not await asyncio.to_thread(os.path.exists, file_path):
-                logger.warning(f"File path '{file_path}' does not exist or is invalid. Skipping.")
+        total_files = len(file_paths)
+        # Update status message
+        await bot.edit_message_text(f"⏳ **Downloaded {total_files} file(s). Preparing to send/upload...**", chat_id, processing_msg.message_id)
+
+        for i, file_path in enumerate(file_paths):
+            filename_base = os.path.basename(file_path)
+            status_prefix = f"({i+1}/{total_files}) '{filename_base}'"
+
+            # Ensure file exists before processing (might have been deleted between check and now)
+            if not await asyncio.to_thread(os.path.exists, file_path):
+                logger.warning(f"File path '{file_path}' disappeared before processing. Skipping.")
                 fail_count += 1
                 continue
 
-            filename_base = os.path.basename(file_path)
             try:
-                # Get actual file size if not provided or if multiple files
-                current_file_size = file_size if len(file_paths) == 1 and file_size is not None else await asyncio.to_thread(os.path.getsize, file_path)
+                # CHANGED: Use asyncio.to_thread for blocking os.path.getsize
+                current_file_size = await asyncio.to_thread(os.path.getsize, file_path)
 
                 # --- Check size and decide destination ---
                 if current_file_size > MEGA_UPLOAD_THRESHOLD:
                     logger.info(f"File '{filename_base}' ({current_file_size} bytes) > threshold. Uploading to Mega.nz.")
+                    await bot.edit_message_text(f"⏳ {status_prefix}: File large, uploading to Mega.nz...", chat_id, processing_msg.message_id, disable_web_page_preview=True)
+
+                    # Ensure Mega is ready before upload attempt
+                    if not mega_logged_in:
+                         logger.warning("Mega not logged in, attempting init before upload...")
+                         await initialize_mega() # Try to init/login again
+                         if not mega_logged_in:
+                              raise Exception("Mega login required but failed.") # Force failure if still not logged in
+
 
                     mega_link = await upload_to_mega(file_path, filename_base)
 
                     if mega_link:
                         logger.info(f"Successfully uploaded '{filename_base}' to Mega.nz: {mega_link}")
+                        # Send Mega link as a separate message
                         await send_message(
                             chat_id,
-                            f"✅ **File too large for Telegram.**\n'{filename_base}'\n"
-                            f"📥 [Download from Mega.nz]({mega_link})",
+                            f"✅ {status_prefix}: **Uploaded to Mega.nz**\n"
+                            f"📥 [Download Link]({mega_link})",
                             parse_mode="Markdown",
                             disable_web_page_preview=True
                         )
@@ -400,68 +444,100 @@ async def process_download(message: Message, url: str, is_audio: bool = False,
                     else:
                         logger.warning(f"Mega.nz upload failed for '{filename_base}'")
                         fail_count += 1
-                        # Fallback to original download URL if available and upload failed
-                        if download_url:
-                             await send_message(
-                                  chat_id,
-                                  f"⚠️ **File '{filename_base}' too large & Mega upload failed.**\n"
-                                  f"📥 [Try Original Source Link]({download_url}) (If available)",
-                                  parse_mode="Markdown",
-                                  disable_web_page_preview=True
-                             )
-                        else:
-                             await send_message(chat_id, f"❌ **File '{filename_base}' is too large and failed to upload to Mega.nz.**")
+                        # Send failure message
+                        await send_message(
+                              chat_id,
+                              f"❌ {status_prefix}: **File too large & Mega upload failed.**",
+                              disable_web_page_preview=True
+                         )
+                        # Option: Provide original link if available
+                        # if download_url: await send_message(...)
 
                 else: # File size is okay for Telegram
                     logger.info(f"File '{filename_base}' ({current_file_size} bytes) OK for Telegram. Sending...")
+                    await bot.edit_message_text(f"⏳ {status_prefix}: Sending via Telegram...", chat_id, processing_msg.message_id, disable_web_page_preview=True)
                     try:
                         # Use aiofiles for async read
                         async with aiofiles.open(file_path, "rb") as file:
                             # Determine send method based on flags or extension
+                            sent_message = None
+                            file_caption = filename_base # Keep caption simple initially
+                            # Add platform/source info if available?
+                            # if platform: file_caption += f"\nSource: {platform}"
+
                             if is_audio or is_audio_trim or filename_base.lower().endswith(('.mp3', '.m4a', '.ogg', '.flac', '.wav', '.aac')):
-                                await bot.send_audio(chat_id, file, timeout=600, caption=filename_base)
-                            elif filename_base.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif')):
-                                 await bot.send_photo(chat_id, file, timeout=180, caption=filename_base)
+                                sent_message = await bot.send_audio(chat_id, file, timeout=600, caption=file_caption)
+                            elif filename_base.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.bmp')): # Removed gif - send as animation/doc?
+                                 sent_message = await bot.send_photo(chat_id, file, timeout=180, caption=file_caption)
                             elif filename_base.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')):
-                                await bot.send_video(chat_id, file, supports_streaming=True, timeout=600, caption=filename_base)
+                                sent_message = await bot.send_video(chat_id, file, supports_streaming=True, timeout=600, caption=file_caption)
+                            elif filename_base.lower().endswith(('.gif',)):
+                                sent_message = await bot.send_animation(chat_id, file, timeout=180, caption=file_caption)
                             else: # Send as document for unknown types
                                 logger.warning(f"Unknown file type '{filename_base}', sending as document.")
-                                await bot.send_document(chat_id, file, timeout=600, caption=filename_base)
-                        logger.info(f"Successfully sent '{filename_base}' to Telegram.")
-                        success_count += 1
+                                sent_message = await bot.send_document(chat_id, file, timeout=600, caption=file_caption)
+
+                        if sent_message: # Check if send call was successful
+                            logger.info(f"Successfully sent '{filename_base}' to Telegram.")
+                            success_count += 1
+                        else:
+                             # This case might not happen if exceptions are raised, but good to have
+                             logger.error(f"Telegram send function returned None for '{filename_base}'. Assuming failure.")
+                             fail_count += 1
+                             await send_message(chat_id, f"❌ {status_prefix}: Failed to send via Telegram (unknown reason).")
+
 
                     except Exception as send_error:
                         logger.error(f"Error sending file '{filename_base}' to Telegram: {send_error}", exc_info=True)
                         fail_count += 1
-                        # Handle Telegram specific "Too Large" error (413) even if initial check passed
-                        if "413" in str(send_error) or "too large" in str(send_error).lower():
-                            logger.warning(f"Telegram reported file '{filename_base}' too large on send attempt (413), attempting Mega.nz upload.")
+                        error_str = str(send_error).lower()
+                        # Handle Telegram specific "Too Large" error (413 Request Entity Too Large)
+                        # or other size-related errors more broadly
+                        if "too large" in error_str or "request entity too large" in error_str or "file_size" in error_str:
+                            logger.warning(f"Telegram reported file '{filename_base}' too large on send attempt ({send_error}), attempting Mega.nz upload.")
+                            await bot.edit_message_text(f"⏳ {status_prefix}: Telegram rejected size, trying Mega.nz...", chat_id, processing_msg.message_id, disable_web_page_preview=True)
+
+                            # Ensure Mega is ready before upload attempt
+                            if not mega_logged_in:
+                                logger.warning("Mega not logged in, attempting init before upload...")
+                                await initialize_mega()
+                                if not mega_logged_in:
+                                    await send_message(chat_id, f"❌ {status_prefix}: **File too large for Telegram & Mega login failed.**")
+                                    continue # Skip to next file
+
                             mega_link = await upload_to_mega(file_path, filename_base)
                             if mega_link:
                                 await send_message(
                                     chat_id,
-                                    f"✅ **File too large for Telegram (on send).**\n'{filename_base}'\n"
-                                    f"📥 [Download from Mega.nz]({mega_link})",
+                                    f"✅ {status_prefix}: **Uploaded to Mega.nz (was too large for Telegram)**\n"
+                                    f"📥 [Download Link]({mega_link})",
                                     parse_mode="Markdown",
                                     disable_web_page_preview=True
                                 )
                                 success_count += 1 # Count as success via Mega
                                 fail_count -= 1 # Correct the count
                             else:
-                                await send_message(chat_id, f"❌ **File '{filename_base}' too large for Telegram and Mega.nz upload failed.**")
+                                await send_message(chat_id, f"❌ {status_prefix}: **File too large for Telegram and Mega.nz upload also failed.**")
                         else:
-                            # Send specific error message to user
-                            await send_message(chat_id, f"❌ **Error sending file '{filename_base}':** `{str(send_error)}`")
+                            # Send specific error message to user for other send errors
+                            await send_message(chat_id, f"❌ {status_prefix}: **Error sending via Telegram:** `{str(send_error)}`")
+
+            except Exception as outer_process_err:
+                 # Catch errors during size check or outer logic for this file
+                 logger.error(f"Error processing file '{filename_base}': {outer_process_err}", exc_info=True)
+                 fail_count += 1
+                 await send_message(chat_id, f"❌ {status_prefix}: **An internal error occurred processing this file.**")
 
             finally:
                 # --- Cleanup the local file ---
                 try:
                     # Ensure file exists before removing
+                    # CHANGED: Use asyncio.to_thread for blocking os.path.exists and os.remove
                     if await asyncio.to_thread(os.path.exists, file_path):
                         await asyncio.to_thread(os.remove, file_path)
                         logger.info(f"Cleaned up temp file: {file_path}")
                     else:
-                         logger.info(f"Temp file already removed or not found: {file_path}")
+                         logger.info(f"Temp file already removed or not found (before cleanup): {file_path}")
                 except OSError as cleanup_error:
                     logger.error(f"Failed to clean up file '{file_path}': {cleanup_error}", exc_info=True)
                 except Exception as generic_cleanup_error:
@@ -469,82 +545,104 @@ async def process_download(message: Message, url: str, is_audio: bool = False,
 
 
         # --- Final Status Message ---
+        # Delete the "Processing..." message now that we're done or use it for the final status
+        final_message = ""
         if success_count > 0 and fail_count == 0:
-             await send_message(chat_id, f"✅ **Successfully processed {success_count} file(s)!**")
+             final_message = f"✅ **Successfully processed {success_count} file(s)!**"
         elif success_count > 0 and fail_count > 0:
-             await send_message(chat_id, f"⚠️ **Processed {success_count} file(s) successfully, but {fail_count} failed.**")
+             final_message = f"⚠️ **Processed {success_count} file(s) successfully, but {fail_count} failed.**"
         elif success_count == 0 and fail_count > 0:
-             await send_message(chat_id, f"❌ **Failed to process {fail_count} file(s) from the URL.**")
+             final_message = f"❌ **Failed to process {fail_count} file(s) from the URL.** See previous messages for details."
         # If success=0, fail=0, it means no files were found initially (handled earlier)
+
+        if final_message:
+            try:
+                await bot.edit_message_text(final_message, chat_id, processing_msg.message_id, disable_web_page_preview=True)
+            except Exception: # If editing fails (e.g., message too old), send a new one
+                await send_message(chat_id, final_message)
+        else:
+            # If no final message (e.g., initial URL error), try deleting the processing message
+            try:
+                await bot.delete_message(chat_id, processing_msg.message_id)
+            except Exception:
+                pass # Ignore deletion errors
+
 
         gc.collect() # Request garbage collection
 
     except Exception as e:
-        logger.error(f"Unhandled error in process_download for URL {url}: {e}", exc_info=True)
-        await send_message(chat_id, f"❌ **An unexpected error occurred processing your request.** Please try again later or report the issue if it persists.")
+        logger.critical(f"Unhandled error in process_download for URL {url} (ChatID: {chat_id}): {e}", exc_info=True)
+        error_report_msg = f"❌ **An unexpected critical error occurred processing your request.**\n`{e}`\nPlease try again later or report the issue if it persists."
+        if processing_msg:
+            try:
+                await bot.edit_message_text(error_report_msg, chat_id, processing_msg.message_id, disable_web_page_preview=True)
+            except Exception:
+                await send_message(chat_id, error_report_msg)
+        else:
+             await send_message(chat_id, error_report_msg)
         # Also cleanup any potential leftover file if path is known (less likely here)
         # try: ... os.remove ... except: pass
 
 
-# NOTE: process_image_download is merged into process_download logic
-# The general process_download now checks for Instagram /p/ or /stories/
-# and uses the INSTAGRAM_POST_HANDLER which should handle images/videos from posts.
-# The explicit /image command handler below will still queue the task correctly.
-
-
 async def worker():
     """Worker function for parallel processing of downloads from the queue."""
+    worker_name = asyncio.current_task().get_name() # Get worker name if set
+    logger.info(f"{worker_name} started.")
+
     # Ensure Mega is initialized within the worker's loop context if needed,
     # but the global initialization in main() should handle the first time.
     if not mega_logged_in:
-        logger.info("Worker started, ensuring Mega client is initialized...")
+        logger.info(f"{worker_name}: Ensuring Mega client is initialized...")
         await initialize_mega() # Ensure it's ready before processing tasks
 
     while True:
         task = await download_queue.get()
+        message: Optional[Message] = None # Keep track of message for error reporting
         task_info_str = "Unknown task type"
-        try:
-            if isinstance(task, tuple):
-                 message = task[0]
-                 if isinstance(message, Message) and hasattr(message, 'text'):
-                      task_info_str = f"ChatID: {message.chat.id}, Text: {message.text[:50]}..."
-                 else:
-                     task_info_str = f"Task tuple starting with: {type(message)}"
 
-            logger.info(f"Worker processing task: {task_info_str}")
+        try:
+            # Extract message object for logging/error reporting
+            if isinstance(task, tuple) and len(task) > 0 and isinstance(task[0], Message):
+                message = task[0]
+                chat_id = message.chat.id
+                user_id = message.from_user.id if message.from_user else "UnknownUser"
+                task_info_str = f"ChatID: {chat_id}, User: {user_id}, "
+                if len(task) == 2: task_info_str += f"Type: /image, URL: {task[1][:50]}..."
+                elif len(task) == 7: task_info_str += f"Type: General/Audio/Trim, URL: {task[1][:50]}..."
+                else: task_info_str += f"Type: Malformed Tuple len={len(task)}"
+            else:
+                 task_info_str = f"Task data: {str(task)[:100]}"
+
+
+            logger.info(f"{worker_name} processing task: {task_info_str}")
 
             # --- Task Dispatch Logic ---
-            # Structure 1: (message, url) -> Implicitly from /image command handler
-            # Structure 2: (message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time) -> From other commands or general URL
-            # Structure 3: Add more specific structures if needed (e.g., dedicated object)
-
             if isinstance(task, tuple) and len(task) == 2 and isinstance(task[0], Message) and isinstance(task[1], str):
-                 # This structure comes ONLY from the /image command handler now.
-                 # Treat it as a general download, letting process_download pick the right handler.
-                 message, url = task
-                 logger.info(f"Dispatching task (type /image) to process_download for URL: {url}")
-                 await process_download(message, url) # Let process_download handle platform detection
+                 # Structure from /image command handler
+                 msg_obj, url = task
+                 logger.info(f"{worker_name} dispatching task (type /image) to process_download for URL: {url}")
+                 await process_download(msg_obj, url) # Let process_download handle platform detection
 
             elif isinstance(task, tuple) and len(task) == 7 and isinstance(task[0], Message):
                  # Standard download/trim task
-                 message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = task
-                 logger.info(f"Dispatching task (type general/audio/trim) to process_download for URL: {url}")
-                 await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
+                 msg_obj, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = task
+                 logger.info(f"{worker_name} dispatching task (type general/audio/trim) to process_download for URL: {url}")
+                 await process_download(msg_obj, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
             else:
-                 logger.warning(f"Worker received unknown or malformed task format: {task}")
-                 if isinstance(task, tuple) and len(task)>0 and isinstance(task[0], Message):
-                      await send_message(task[0].chat.id, "❌ Internal error: Received malformed task.")
+                 logger.warning(f"{worker_name} received unknown or malformed task format: {task}")
+                 if message: # Try to inform user if we have the message object
+                      await send_message(message.chat.id, "❌ Internal error: Bot received a malformed task. Please try again.")
 
 
         except Exception as worker_error:
-             logger.error(f"Error occurred processing task in worker: {worker_error}", exc_info=True)
+             logger.error(f"Error occurred processing task in {worker_name}: {worker_error}", exc_info=True)
              # Try to inform the user if possible
-             if isinstance(task, tuple) and len(task)>0 and isinstance(task[0], Message):
-                  await send_message(task[0].chat.id, f"❌ An internal error occurred processing your request. Please try again.")
+             if message:
+                  await send_message(message.chat.id, f"❌ An internal error occurred in the worker processing your request. Please try again.")
 
         finally:
              download_queue.task_done()
-             logger.debug("Worker finished task, calling task_done()")
+             logger.debug(f"{worker_name} finished task, calling task_done()")
              gc.collect() # Run garbage collection after each task
 
 
@@ -553,29 +651,26 @@ async def worker():
 @bot.message_handler(commands=["start", "help"])
 async def send_welcome(message: Message):
     """Sends welcome message with bot instructions."""
+    # Updated welcome text for clarity
     welcome_text = (
         "🤖 **Media Download Bot** 🤖\n\n"
-        "I can help you download media from various platforms.\n\n"
+        "I can help you download media from various platforms. Just send me a link!\n\n"
         "➡️ **How to Use:**\n"
-        "1. Just send me the URL of the media!\n"
-        "2. For large files (>~48MB), I'll upload to Mega.nz and give you a link.\n\n"
+        "1. Send the URL of the video, image, post, or audio you want.\n"
+        "2. I'll try to download it and send it back.\n"
+        "3. For large files (> ~48MB), I'll upload to Mega.nz (requires setup) and give you the link.\n\n"
         "⚙️ **Specific Commands:**\n"
-        "`/audio <URL>` - Extract full audio from video\n"
-        "`/image <URL>` - Download images/videos from an Instagram post/story URL\n"
-        "`/trim <URL> HH:MM:SS HH:MM:SS` - Trim video\n"
-        "`/trimAudio <URL> HH:MM:SS HH:MM:SS` - Trim audio\n\n"
+        "`/audio <URL>` - Extract only the audio from a video URL.\n"
+        "`/image <URL>` - Download images/videos from an Instagram post/story URL (usually sending the URL directly works too).\n"
+        "`/trim <URL> <Start> <End>` - Trim a video. Times like `HH:MM:SS` or `M:SS`.\n"
+        "`/trimAudio <URL> <Start> <End>` - Trim audio. Times like `HH:MM:SS` or `M:SS`.\n\n"
         "✂️ **Trim Examples:**\n"
-        "`/trim https://youtu.be/xxxx 00:00:30 00:01:15`\n"
-        "`/trimAudio https://facebook.com/watch/xxxx 0:10:05 0:12:00`\n\n"
-        "**Supported Sites (Examples):**\n"
-        "- YouTube (Videos, Shorts)\n"
-        "- Instagram (Posts, Stories, Reels, IGTV)\n"
-        "- Facebook (Videos, Reels)\n"
-        "- Twitter/X (Videos, GIFs)\n"
-        # "- Pornhub, XVideos, etc. (Use responsibly)\n\n" # Optionally uncomment
-        "\n_Note: Support for sites depends on external libraries and may change._"
+        "`/trim https://... 0:30 1:15` (Trim from 30s to 1m 15s)\n"
+        "`/trimAudio https://... 00:10:05 00:12:00`\n\n"
+        "**Supported Sites Include:**\n"
+        "YouTube, Instagram, Facebook, Twitter/X, and potentially others.\n\n"
+        "_Note: Success depends on the site structure and library compatibility._"
     )
-    # Use Markdown for better formatting
     await send_message(message.chat.id, welcome_text, parse_mode="Markdown", disable_web_page_preview=True)
 
 @bot.message_handler(commands=["audio"])
@@ -583,100 +678,102 @@ async def handle_audio_request(message: Message):
     """Handles /audio command."""
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await send_message(message.chat.id, "⚠️ Please provide a URL after `/audio`.\nExample: `/audio https://youtu.be/VIDEO_ID`")
+        await send_message(message.chat.id, "⚠️ Please provide a URL after `/audio`.\nExample: `/audio https://youtube.com/watch?v=...`", parse_mode="Markdown")
         return
     url = parts[1].strip()
-    if not re.match(r"https?://", url):
-         await send_message(message.chat.id, "⚠️ Invalid URL provided.")
+    # Basic URL validation
+    if not re.match(r"https?://\S+", url):
+         await send_message(message.chat.id, "⚠️ Invalid URL provided. It should start with `http://` or `https://`.", parse_mode="Markdown")
          return
 
     # Use the 7-tuple format for the queue
     await download_queue.put((message, url, True, False, False, None, None))
-    await send_message(message.chat.id, "🎵 Added URL to audio extraction queue!")
+    await send_message(message.chat.id, "✅ Added URL to the audio extraction queue!")
 
 @bot.message_handler(commands=["image"])
 async def handle_image_request(message: Message):
-    """Handles /image command (specifically for Instagram posts/stories)."""
+    """Handles /image command (now primarily for Instagram posts/stories)."""
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await send_message(message.chat.id, "⚠️ Please provide an Instagram URL after `/image`.\nExample: `/image https://instagram.com/p/abc...`")
+        await send_message(message.chat.id, "⚠️ Please provide an Instagram URL after `/image`.\nExample: `/image https://instagram.com/p/abc...`", parse_mode="Markdown")
         return
     url = parts[1].strip()
 
     # Check if URL is Instagram (basic check)
     if not PLATFORM_PATTERNS["Instagram"].search(url):
-        await send_message(message.chat.id, "⚠️ **This command currently only supports Instagram post/story URLs.** For other videos/reels, just send the URL directly.")
+        await send_message(message.chat.id, "⚠️ This command is intended for Instagram post/story URLs (`/p/`, `/stories/`). For other media, just send the URL directly.", parse_mode="Markdown")
         return
+    # Check if it's likely a post/story URL structure
+    if "/p/" not in url and "/stories/" not in url:
+        await send_message(message.chat.id, "ℹ️ For Instagram Reels or TV, just send the URL directly without the `/image` command.", parse_mode="Markdown")
+        # Optionally still queue it, or return
+        # return
 
     # Add to download queue using the simplified 2-tuple format, recognized by the worker
     await download_queue.put((message, url))
-    await send_message(message.chat.id, "🖼️ Added Instagram post/story URL to the download queue!")
+    await send_message(message.chat.id, "✅ Added Instagram URL to the download queue!")
 
 
 @bot.message_handler(commands=["trim"])
 async def handle_video_trim_request(message: Message):
     """Handles /trim command for video."""
-    # Regex to capture URL and two timestamps (HH:MM:SS or M:SS)
-    match = re.search(r"/trim\s+(https?://[^\s]+)\s+([\d:]+)\s+([\d:]+)", message.text, re.IGNORECASE)
+    # Regex to capture URL and two timestamps (HH:MM:SS or M:SS or S)
+    match = re.search(r"/trim\s+(https?://[^\s]+)\s+([\d:.]+)\s+([\d:.]+)", message.text, re.IGNORECASE)
     if not match:
         await send_message(
             message.chat.id,
             "⚠️ Invalid format. Use:\n`/trim <URL> <StartTime> <EndTime>`\n"
-            "Timestamps like HH:MM:SS or M:SS (e.g., `0:10` `1:15:30`)\n"
-            "Example: `/trim https://... 00:00:10 00:00:55`",
+            "Times like `HH:MM:SS`, `M:SS`, `SS` (e.g., `0:10`, `1:15:30`, `95`)\n"
+            "Example: `/trim https://... 0:10.5 55`",
              parse_mode="Markdown"
         )
         return
 
     url, start_time, end_time = match.groups()
-    # Basic validation could be added here for timestamp format if needed
+    # TODO: Add more robust validation for timestamp formats if needed using helper function
     # Use the 7-tuple format for the queue
     await download_queue.put((message, url, False, True, False, start_time, end_time))
-    await send_message(message.chat.id, "✂️🎬 Added video trimming task to the queue!")
+    await send_message(message.chat.id, "✅ Added video trimming task to the queue!")
 
 @bot.message_handler(commands=["trimAudio"])
 async def handle_audio_trim_request(message: Message):
     """Handles /trimAudio command."""
-    match = re.search(r"/trimAudio\s+(https?://[^\s]+)\s+([\d:]+)\s+([\d:]+)", message.text, re.IGNORECASE)
+    match = re.search(r"/trimAudio\s+(https?://[^\s]+)\s+([\d:.]+)\s+([\d:.]+)", message.text, re.IGNORECASE)
     if not match:
         await send_message(
             message.chat.id,
              "⚠️ Invalid format. Use:\n`/trimAudio <URL> <StartTime> <EndTime>`\n"
-             "Timestamps like HH:MM:SS or M:SS (e.g., `0:10` `1:15:30`)\n"
-             "Example: `/trimAudio https://... 00:01:00 00:01:30`",
+             "Times like `HH:MM:SS`, `M:SS`, `SS` (e.g., `0:10`, `1:15:30`, `95`)\n"
+             "Example: `/trimAudio https://... 60 90.5`",
              parse_mode="Markdown"
         )
         return
 
     url, start_time, end_time = match.groups()
-    # Basic validation could be added here
+    # TODO: Add more robust validation for timestamp formats
     # Use the 7-tuple format for the queue
     await download_queue.put((message, url, False, False, True, start_time, end_time))
-    await send_message(message.chat.id, "✂️🎵 Added audio trimming task to the queue!")
+    await send_message(message.chat.id, "✅ Added audio trimming task to the queue!")
 
 # General message handler for URLs (must be last text handler)
-@bot.message_handler(func=lambda message: True, content_types=["text"])
+@bot.message_handler(func=lambda message: message.content_type == 'text' and not message.text.startswith('/'))
 async def handle_message(message: Message):
     """Handles general text messages, assuming they are URLs for download."""
-    # Ignore commands handled by specific handlers
-    if message.text.startswith('/'):
-        # Optional: Send a message indicating unknown command
-        # await send_message(message.chat.id, f"❓ Unknown command: `{message.text.split()[0]}`. Send /help for instructions.")
-        logger.info(f"Ignoring unknown command message from {message.chat.id}: {message.text}")
-        return
-
     url = message.text.strip()
-    # Basic URL validation
-    if not re.match(r"https?://\S+", url): # Check for http(s):// followed by non-space chars
+    # Improved URL validation (basic check for scheme and some domain part)
+    if not re.match(r"https?://\S+\.\S+", url): # Check for http(s):// followed by domain.something
          # Avoid sending error for casual chat messages
-         # await send_message(message.chat.id, "🤔 That doesn't look like a valid URL I can process. Please send a direct link to the media.")
-         logger.info(f"Ignoring non-URL message from {message.chat.id}: {message.text[:100]}")
+         # logger.info(f"Ignoring non-URL text message from {message.chat.id}: {message.text[:100]}")
+         # Let user know if it looks like they *tried* to send a link?
+         if "://" in url or "." in url.split("/")[-1]: # Heuristic: might be a malformed link
+              await send_message(message.chat.id, "🤔 That doesn't look like a valid URL I can process. Please check the link format (should start with http:// or https://).")
+         # else: just ignore casual chat
          return
 
     # Add general URLs to the download queue using the 7-tuple format
     await download_queue.put((message, url, False, False, False, None, None))
-    logger.info(f"Added general URL from {message.chat.id} to queue: {url}")
-    await send_message(message.chat.id, "🔗 Added URL to the download queue!")
+    logger.info(f"Added general URL from {message.chat.id} (User: {message.from_user.id if message.from_user else 'N/A'}) to queue: {url}")
+    await send_message(message.chat.id, "✅ Added URL to the download queue!")
 
 
 # --- Main Execution ---
@@ -684,73 +781,65 @@ async def main():
     """Initializes Mega, starts workers, and runs the bot polling."""
     logger.info("--- Bot Starting Up ---")
     # Initialize Mega.nz client first
-    if not await initialize_mega():
+    mega_ready = await initialize_mega()
+    if not mega_ready:
         logger.critical("Failed to initialize Mega.nz client on startup.")
-        # Decide if the bot should run without Mega uploads
-        # For now, we allow it but log a critical warning. Uploads > threshold will fail.
-        logger.warning("Bot will continue running, but uploads to Mega.nz will likely fail.")
+        logger.warning("Bot will continue running, but uploads to Mega.nz WILL FAIL.")
         # uncomment return to exit if Mega is essential
         # return
 
     # Start worker tasks
-    num_workers = min(4, (os.cpu_count() or 1) + 1) # Start a few workers
+    # Consider making num_workers configurable (e.g., from environment variable or config.py)
+    num_workers = min(4, (os.cpu_count() or 1) * 2) # Adjusted worker count slightly
     logger.info(f"Starting {num_workers} download worker tasks...")
     worker_tasks = []
     for i in range(num_workers):
         task = asyncio.create_task(worker(), name=f"Worker-{i+1}")
         worker_tasks.append(task)
-        logger.info(f"Worker {i+1} task created.")
+        logger.info(f"Worker-{i+1} task created.")
 
     # Start polling
     logger.info("Starting Telegram bot polling...")
-    stop_event = asyncio.Event()
+    stop_event = asyncio.Event() # For potential future graceful stop mechanisms
 
     try:
-        # Run polling in a way that allows graceful shutdown
-        await bot.polling(non_stop=True, timeout=30, logger_level=logging.INFO, none_stop=True)
-        # Note: infinity_polling is simpler but harder to stop gracefully sometimes.
-        # await bot.infinity_polling(timeout=30, logger_level=logging.INFO) # Alternative
-
-        # Keep main running until interrupted (infinity_polling does this internally)
-        # await stop_event.wait() # Use this if not using non_stop/infinity_polling
+        # CHANGED: Corrected none_stop to non_stop
+        await bot.polling(non_stop=True, timeout=30, request_timeout=30, logger_level=logging.INFO)
+        # Keep main running until interrupted (non_stop=True handles this)
+        await stop_event.wait()
 
     except asyncio.CancelledError:
-        logger.info("Polling task cancelled.")
+        logger.info("Main polling task cancelled.")
     except Exception as e:
         logger.critical(f"Bot polling loop encountered a critical error: {e}", exc_info=True)
+        # Potentially try to restart polling after a delay? Or just exit.
     finally:
         logger.info("--- Bot Shutting Down ---")
-        # Stop polling (if applicable, bot.stop_polling() might be needed depending on method)
-        # bot.stop_polling() # Uncomment if using a polling method that needs explicit stop
 
         # Gracefully cancel worker tasks
         logger.info("Cancelling worker tasks...")
         for i, task in enumerate(worker_tasks):
-             task.cancel()
-             logger.info(f"Cancel requested for Worker {i+1}")
+             if not task.done():
+                 task.cancel()
+                 logger.info(f"Cancel requested for {task.get_name()}")
 
         # Wait for workers to finish cancelling
         results = await asyncio.gather(*worker_tasks, return_exceptions=True)
         for i, res in enumerate(results):
+             worker_name = f"Worker-{i+1}" # Assuming order matches creation
              if isinstance(res, asyncio.CancelledError):
-                  logger.info(f"Worker {i+1} cancelled successfully.")
+                  logger.info(f"{worker_name} cancelled successfully.")
              elif isinstance(res, Exception):
-                  logger.error(f"Worker {i+1} finished with error during shutdown: {res}", exc_info=res)
+                  # Try to get worker name from task if gather preserved it
+                  # task_name = worker_tasks[i].get_name() if i < len(worker_tasks) else worker_name
+                  logger.error(f"{worker_name} finished with error during shutdown: {res}", exc_info=res)
              else:
-                  logger.info(f"Worker {i+1} finished normally during shutdown.") # Should not happen if cancelled
+                  logger.info(f"{worker_name} finished normally during shutdown (unexpected if cancelled).")
 
         logger.info("Workers cancellation process complete.")
 
-        # Perform mega logout if necessary (optional, mega.py might handle sessions)
-        # global mega, mega_logged_in
-        # if mega_logged_in and mega:
-        #     try:
-        #         logger.info("Attempting Mega.nz logout...")
-        #         # Check if mega.py has an explicit logout method
-        #         # await asyncio.to_thread(mega.logout) # If it exists and is blocking
-        #         logger.info("Mega.nz session likely closed on exit.")
-        #     except Exception as logout_err:
-        #         logger.error(f"Error during Mega logout attempt: {logout_err}", exc_info=True)
+        # No explicit mega logout seems available or typically needed in mega.py
+        # Session might timeout or be implicitly closed.
 
         logger.info("Bot shutdown complete.")
 
@@ -762,3 +851,4 @@ if __name__ == "__main__":
         logger.info("Bot stopped manually (KeyboardInterrupt).")
     except Exception as main_err:
          logger.critical(f"Critical error in main execution block: {main_err}", exc_info=True)
+
