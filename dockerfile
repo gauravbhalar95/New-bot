@@ -31,5 +31,4 @@ EXPOSE 8080
 CMD bash -c "/app/update.sh && \
     python webhook.py & \
     sleep 5 && \
-    python bot.py & \
-    python processing.py"
+    python bot.py"
