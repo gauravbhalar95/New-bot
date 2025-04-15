@@ -128,7 +128,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        # Handle request based on type
+               # Handle request based on type
         if is_video_trim:
             logger.info(f"Processing video trim request: Start={start_time}, End={end_time}")
             file_path, file_size = await process_video_trim(url, start_time, end_time)
@@ -154,9 +154,9 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         else:
             if platform == "Instagram":
                 if "/reel/" in url or "/tv/" in url:
-                    result = await process_instagram(url)
+                    result = await process_instagram(url)  # Handles Reels and IGTV videos
                 else:
-                    result = await process_instagram_image(url)
+                    result = await process_instagram_image(url)  # Handles posts and stories
             else:
                 result = await PLATFORM_HANDLERS[platform](url)
 
