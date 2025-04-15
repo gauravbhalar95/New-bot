@@ -319,6 +319,39 @@ async def handle_video_trim_request(message):
     await download_queue.put((message, url, False, True, False, start_time, end_time))
     await send_message(message.chat.id, "✂️🎬 **Added to video trimming queue!**")
 
+
+
+# Additional command handlers
+
+@bot.message_handler(commands=["status"])
+async def handle_status(message):
+    """Returns current bot status including queue size and MEGA login state."""
+    queue_size = download_queue.qsize()
+    mega_status = "✅ Logged in" if m else "❌ Not connected"
+    text = (
+        f"📊 <b>Bot Status:</b>\n"
+        f"• Queue Size: <code>{queue_size}</code>\n"
+        f"• MEGA: {mega_status}"
+    )
+    await send_message(message.chat.id, text)
+
+
+@bot.message_handler(commands=["clear"])
+async def handle_clear(message):
+    """Clears all pending tasks from the download queue."""
+    cleared = 0
+    while not download_queue.empty():
+        try:
+            download_queue.get_nowait()
+            download_queue.task_done()
+            cleared += 1
+        except asyncio.QueueEmpty:
+            break
+
+    await send_message(message.chat.id, f"🧹 Cleared {cleared} tasks from the download queue.")
+
+
+
 # Audio trim handler
 @bot.message_handler(commands=["trimAudio"])
 async def handle_audio_trim_request(message):
