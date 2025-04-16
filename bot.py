@@ -64,11 +64,19 @@ def detect_platform(url):
 async def get_dropbox_client():
     """Initializes or refreshes the Dropbox client."""
     global dbx
+    if dbx:
+        try:
+            await asyncio.to_thread(dbx.users_get_current_account)
+            return dbx  # Existing client is valid
+        except AuthError as e:
+            logger.warning(f"Existing Dropbox client is no longer valid: {e}")
+            dbx = None # Reset the client to attempt re-initialization
+
     if dbx is None:
         if DROPBOX_ACCESS_TOKEN:
             dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
             try:
-                dbx.users_get_current_account()
+                await asyncio.to_thread(dbx.users_get_current_account)
                 logger.info("Dropbox client initialized with access token.")
                 return dbx
             except AuthError as e:
@@ -79,10 +87,8 @@ async def get_dropbox_client():
         elif DROPBOX_REFRESH_TOKEN and DROPBOX_APP_KEY and DROPBOX_APP_SECRET:
             try:
                 dbx = await asyncio.to_thread(dropbox.Dropbox, oauth2_refresh_token=DROPBOX_REFRESH_TOKEN, app_key=DROPBOX_APP_KEY, app_secret=DROPBOX_APP_SECRET)
-                dbx.users_get_current_account()
+                await asyncio.to_thread(dbx.users_get_current_account)
                 logger.info("Dropbox client initialized with refresh token.")
-                # Optionally, you might want to save the new access token if it changes
-                # For simplicity, we're relying on the refresh token for subsequent uses
                 return dbx
             except AuthError as e:
                 logger.error(f"Dropbox authentication with refresh token failed: {e}")
@@ -93,14 +99,33 @@ async def get_dropbox_client():
     return dbx
 
 async def refresh_dropbox_token():
-    """Refreshes the Dropbox access token using the refresh token."""
-    global dbx
+    """Refreshes the Dropbox access token using the refresh token and updates the global client."""
+    global dbx, DROPBOX_ACCESS_TOKEN
     if DROPBOX_REFRESH_TOKEN and DROPBOX_APP_KEY and DROPBOX_APP_SECRET:
         try:
-            dbx = await asyncio.to_thread(dropbox.Dropbox, oauth2_refresh_token=DROPBOX_REFRESH_TOKEN, app_key=DROPBOX_APP_KEY, app_secret=DROPBOX_APP_SECRET)
-            dbx.users_get_current_account()
+            new_dbx = await asyncio.to_thread(dropbox.Dropbox, oauth2_refresh_token=DROPBOX_REFRESH_TOKEN, app_key=DROPBOX_APP_KEY, app_secret=DROPBOX_APP_SECRET)
+            await asyncio.to_thread(new_dbx.users_get_current_account)
             logger.info("Dropbox access token refreshed successfully.")
-            # In a more advanced setup, you might save the new access token
+            dbx = new_dbx # Update the global client
+
+            # Optional: Persist the new access token (USE WITH CAUTION)
+            new_access_token = new_dbx.auth_info.access_token
+            if new_access_token:
+                with open("config.py", "r") as f:
+                    content = f.readlines()
+                with open("config.py", "w") as f:
+                    updated = False
+                    for line in content:
+                        if line.startswith("DROPBOX_ACCESS_TOKEN ="):
+                            f.write(f"DROPBOX_ACCESS_TOKEN = \"{new_access_token}\"\n")
+                            updated = True
+                        else:
+                            f.write(line)
+                    if not updated:
+                        f.write(f"DROPBOX_ACCESS_TOKEN = \"{new_access_token}\"\n")
+                globals()['DROPBOX_ACCESS_TOKEN'] = new_access_token # Update the global variable
+                logger.info("Updated DROPBOX_ACCESS_TOKEN in config.py (CAUTION: Consider security implications).")
+
             return True
         except AuthError as e:
             logger.error(f"Failed to refresh Dropbox access token: {e}")
@@ -112,13 +137,6 @@ async def refresh_dropbox_token():
 async def upload_to_dropbox(file_path, filename):
     """
     Uploads a file to Dropbox and returns a shareable link with automatic token refresh.
-
-    Args:
-        file_path (str): Path to the file to upload
-        filename (str): Name to use for the file in Dropbox
-
-    Returns:
-        str: Shareable link to the uploaded file
     """
     global dbx
     try:
@@ -194,8 +212,6 @@ async def upload_to_dropbox(file_path, filename):
     except Exception as e:
         logger.error(f"Unexpected Dropbox upload error: {e}")
         return None
-
-# ... (rest of your code remains largely the same, but we need to ensure get_dropbox_client is called where needed)
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or Dropbox."""
