@@ -8,7 +8,8 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ffmpeg \
-    curl && \
+    curl \
+    netcat-traditional && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -21,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 COPY . .
 
 # Make scripts executable
-RUN chmod +x /app/update.sh
+RUN chmod +x /app/update.sh /app/docker-entrypoint.sh
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -31,8 +32,5 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose the port
 EXPOSE 8080
 
-# Use a proper process manager
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Use the entrypoint script
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
