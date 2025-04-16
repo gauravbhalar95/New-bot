@@ -3,9 +3,11 @@ set -e
 
 echo "[$(date)] Starting services..."
 
-# Run update script
-echo "[$(date)] Running update script..."
-/app/update.sh
+# Run update script if it exists
+if [ -f "/app/update.sh" ]; then
+    echo "[$(date)] Running update script..."
+    /app/update.sh
+fi
 
 # Start the webhook server
 echo "[$(date)] Starting webhook server..."
@@ -27,29 +29,11 @@ until curl -s http://localhost:8080/health >/dev/null 2>&1; do
 done
 echo "[$(date)] Webhook server is ready"
 
-# Start the bot with debug logging
-echo "[$(date)] Starting Telegram bot..."
-PYTHONUNBUFFERED=1 python bot.py &
-BOT_PID=$!
-echo "[$(date)] Bot started with PID $BOT_PID"
-
-# Function to cleanup processes
-cleanup() {
-    echo "[$(date)] Received shutdown signal, cleaning up..."
-    kill -TERM $WEBHOOK_PID $BOT_PID 2>/dev/null
-    wait $WEBHOOK_PID $BOT_PID
-    echo "[$(date)] Cleanup complete"
-    exit 0
-}
-
-# Setup trap for cleanup
-trap cleanup SIGTERM SIGINT
-
-# Monitor both processes
-while kill -0 $WEBHOOK_PID $BOT_PID 2>/dev/null; do
+# Monitor the webhook process
+while kill -0 $WEBHOOK_PID 2>/dev/null; do
     sleep 1
 done
 
-# If we get here, one of the processes died unexpectedly
-echo "[$(date)] One of the processes died unexpectedly"
+# If we get here, the webhook process died unexpectedly
+echo "[$(date)] Webhook process died unexpectedly"
 exit 1
