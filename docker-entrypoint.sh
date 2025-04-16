@@ -8,10 +8,12 @@ set -e
 python webhook.py &
 WEBHOOK_PID=$!
 
-# Wait for webhook server to be ready
-while ! nc -z localhost 8080; do
-  sleep 0.1
+# Wait for webhook server to be ready (using curl instead of nc)
+echo "Waiting for webhook server to start..."
+until curl -s http://localhost:8080/health >/dev/null 2>&1; do
+    sleep 1
 done
+echo "Webhook server is ready"
 
 # Start the bot
 python bot.py &
