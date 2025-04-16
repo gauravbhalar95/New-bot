@@ -7,7 +7,7 @@ load_dotenv()
 MAX_WORKERS = "3"
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
-
+WEBHOOK_URL = os getenv("WEBHOOK_URL")
 
 INSTAGRAM_PASSWORD = "GAURAV74$"
 INSTAGRAM_USERNAME = "top_deals_station"
