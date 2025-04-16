@@ -1,21 +1,24 @@
-# Use official Python image
-FROM python:3.13-slim
+# Use stable Python version
+FROM python:3.12-slim
 
 # Set the working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt /app/
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
 
-# Copy all project files
-COPY . /app
+# Copy application code
+COPY . .
 
 # Make scripts executable
 RUN chmod +x /app/update.sh
@@ -25,10 +28,11 @@ ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=8080
 
-# Expose the port for Flask
+# Expose the port
 EXPOSE 8080
 
-CMD bash -c "/app/update.sh && \
-    python webhook.py & \
-    sleep 5 && \
-    python bot.py"
+# Use a proper process manager
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
