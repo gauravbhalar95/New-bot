@@ -7,9 +7,12 @@ import re
 import dropbox
 from dropbox.exceptions import AuthError, ApiError
 from telebot.async_telebot import AsyncTeleBot
+import json
+import time
+from datetime import datetime, timedelta
 
 # Import local modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN, DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -26,8 +29,96 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# Dropbox client setup
-dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
+# Dropbox token management
+class DropboxTokenManager:
+    def __init__(self, access_token, refresh_token, app_key, app_secret):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.app_key = app_key
+        self.app_secret = app_secret
+        self.expiration_time = datetime.now() + timedelta(hours=3)  # Default expiration (tokens usually last 4 hours)
+        self.token_file = "dropbox_token_data.json"
+        self.load_token_data()
+        
+    def load_token_data(self):
+        """Load token data from file if exists"""
+        try:
+            if os.path.exists(self.token_file):
+                with open(self.token_file, 'r') as f:
+                    data = json.load(f)
+                    self.access_token = data.get('access_token', self.access_token)
+                    self.refresh_token = data.get('refresh_token', self.refresh_token)
+                    expiry_str = data.get('expiration_time')
+                    if expiry_str:
+                        self.expiration_time = datetime.fromisoformat(expiry_str)
+                    logger.info("Loaded Dropbox token data from file")
+        except Exception as e:
+            logger.error(f"Error loading token data: {e}")
+    
+    def save_token_data(self):
+        """Save token data to file"""
+        try:
+            data = {
+                'access_token': self.access_token,
+                'refresh_token': self.refresh_token,
+                'expiration_time': self.expiration_time.isoformat()
+            }
+            with open(self.token_file, 'w') as f:
+                json.dump(data, f)
+            logger.info("Saved Dropbox token data to file")
+        except Exception as e:
+            logger.error(f"Error saving token data: {e}")
+    
+    async def refresh_if_needed(self):
+        """Check if token needs refreshing and refresh if necessary"""
+        if datetime.now() >= self.expiration_time:
+            await self.refresh_token_async()
+            return True
+        return False
+    
+    async def refresh_token_async(self):
+        """Refresh the access token asynchronously"""
+        logger.info("Refreshing Dropbox access token...")
+        
+        try:
+            # Using the app key and app secret to get a new access token
+            dbx = dropbox.Dropbox(
+                app_key=self.app_key,
+                app_secret=self.app_secret,
+                oauth2_refresh_token=self.refresh_token
+            )
+            
+            # This will automatically refresh the token
+            dbx.users_get_current_account()
+            
+            # Get the new tokens
+            self.access_token = dbx._oauth2_access_token
+            self.refresh_token = dbx._oauth2_refresh_token
+            
+            # Set new expiration (usually 4 hours from now)
+            self.expiration_time = datetime.now() + timedelta(hours=3)
+            
+            # Save the new token data
+            self.save_token_data()
+            
+            logger.info("Successfully refreshed Dropbox access token")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error refreshing token: {e}")
+            return False
+    
+    def get_client(self):
+        """Get a Dropbox client with the current token"""
+        return dropbox.Dropbox(self.access_token)
+
+# Initialize token manager
+token_manager = DropboxTokenManager(
+    DROPBOX_ACCESS_TOKEN, 
+    DROPBOX_REFRESH_TOKEN,
+    DROPBOX_APP_KEY,
+    DROPBOX_APP_SECRET
+)
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -46,6 +137,7 @@ PLATFORM_HANDLERS = {
     "Twitter/X": download_twitter_media,
     "Adult": process_adult,
 }
+
 async def send_message(chat_id, text):
     """Sends a message asynchronously."""
     try:
@@ -74,9 +166,20 @@ async def upload_to_dropbox(file_path, filename):
         str: Shareable link to the uploaded file
     """
     try:
+        # Check if token needs refreshing
+        await token_manager.refresh_if_needed()
+        dbx = token_manager.get_client()
+        
         # Validate access token
         try:
             dbx.users_get_current_account()
+        except AuthError:
+            logger.info("Access token validation failed, attempting refresh")
+            if await token_manager.refresh_token_async():
+                dbx = token_manager.get_client()
+            else:
+                logger.error("Token refresh failed")
+                return None
         except Exception as auth_error:
             logger.error(f"Dropbox authentication failed: {auth_error}")
             return None
@@ -121,6 +224,9 @@ async def upload_to_dropbox(file_path, filename):
 
     except AuthError as auth_error:
         logger.error(f"Dropbox authentication error: {auth_error}")
+        # Try token refresh and retry once
+        if await token_manager.refresh_token_async():
+            return await upload_to_dropbox(file_path, filename)  # Retry after refresh
         return None
     except ApiError as api_error:
         logger.error(f"Dropbox API error: {api_error}")
@@ -128,6 +234,7 @@ async def upload_to_dropbox(file_path, filename):
     except Exception as e:
         logger.error(f"Unexpected Dropbox upload error: {e}")
         return None
+
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or Dropbox."""
     try:
@@ -473,6 +580,9 @@ async def handle_message(message):
 # Main bot runner
 async def main():
     """Runs the bot and initializes worker processes."""
+    # Check token validity at startup
+    await token_manager.refresh_if_needed()
+    
     num_workers = min(3, os.cpu_count() or 1)
     for _ in range(num_workers):
         asyncio.create_task(worker())
