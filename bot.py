@@ -4,10 +4,12 @@ import logging
 import asyncio
 import aiofiles
 import re
+import dropbox
+from dropbox.exceptions import AuthError, ApiError
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -23,6 +25,9 @@ logger = setup_logging(logging.DEBUG)
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
+
+# Dropbox client setup
+dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -41,7 +46,6 @@ PLATFORM_HANDLERS = {
     "Twitter/X": download_twitter_media,
     "Adult": process_adult,
 }
-
 async def send_message(chat_id, text):
     """Sends a message asynchronously."""
     try:
@@ -58,88 +62,74 @@ def detect_platform(url):
     return None
 
 
-async def create_html_download_page(file_path, file_name):
+async def upload_to_dropbox(file_path, filename):
     """
-    Creates an HTML download page for large files.
-    
+    Uploads a file to Dropbox and returns a shareable link.
+
     Args:
-        file_path (str): Path to the file
-        file_name (str): Name to display for the file
-        
+        file_path (str): Path to the file to upload
+        filename (str): Name to use for the file in Dropbox
+
     Returns:
-        str: Path to the HTML file
+        str: Shareable link to the uploaded file
     """
     try:
+        # Validate access token
+        try:
+            dbx.users_get_current_account()
+        except Exception as auth_error:
+            logger.error(f"Dropbox authentication failed: {auth_error}")
+            return None
+
+        dropbox_path = f"/telegram_uploads/{filename}"
         file_size = os.path.getsize(file_path)
-        file_size_mb = file_size / (1024 * 1024)
-        
-        # Create a directory for download pages if it doesn't exist
-        download_dir = os.path.join(os.path.dirname(file_path), "download_pages")
-        os.makedirs(download_dir, exist_ok=True)
-        
-        # Create the HTML file
-        html_path = os.path.join(download_dir, f"{os.path.splitext(os.path.basename(file_path))[0]}.html")
-        
-        # Generate a relative path to the media file
-        rel_path = os.path.relpath(file_path, os.path.dirname(html_path))
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Download {file_name}</title>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    text-align: center;
-                }}
-                .download-btn {{
-                    display: inline-block;
-                    background-color: #4CAF50;
-                    color: white;
-                    padding: 12px 30px;
-                    margin: 20px 0;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 18px;
-                    text-decoration: none;
-                }}
-                .file-info {{
-                    margin: 20px 0;
-                    color: #666;
-                }}
-            </style>
-        </head>
-        <body>
-            <h1>Media Download</h1>
-            <div class="file-info">
-                <p>File: {file_name}</p>
-                <p>Size: {file_size_mb:.2f} MB</p>
-            </div>
-            <a href="{rel_path}" download="{file_name}" class="download-btn">Download File</a>
-            <p>Click the button above to download your file.</p>
-        </body>
-        </html>
-        """
-        
-        async with aiofiles.open(html_path, "w") as f:
-            await f.write(html_content)
-        
-        return html_path
-        
-    except Exception as e:
-        logger.error(f"Error creating HTML download page: {e}")
+
+        with open(file_path, "rb") as f:
+            if file_size > 140 * 1024 * 1024:  # 140 MB threshold
+                logger.info("Large file detected, using upload session")
+                upload_session = dbx.files_upload_session_start(f.read(4 * 1024 * 1024))
+                cursor = dropbox.files.UploadSessionCursor(
+                    session_id=upload_session.session_id,
+                    offset=f.tell()
+                )
+
+                while f.tell() < file_size:
+                    chunk_size = 4 * 1024 * 1024
+                    if (file_size - f.tell()) <= chunk_size:
+                        dbx.files_upload_session_finish(
+                            f.read(chunk_size),
+                            cursor,
+                            dropbox.files.CommitInfo(path=dropbox_path)
+                        )
+                        break
+                    else:
+                        dbx.files_upload_session_append_v2(
+                            f.read(chunk_size),
+                            cursor
+                        )
+                        cursor.offset = f.tell()
+            else:
+                dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+
+        shared_link = dbx.sharing_create_shared_link_with_settings(
+            dropbox_path,
+            dropbox.sharing.SharedLinkSettings(
+                requested_visibility=dropbox.sharing.RequestedVisibility.public
+            )
+        )
+        return shared_link.url.replace('dl=0', 'dl=1')
+
+    except AuthError as auth_error:
+        logger.error(f"Dropbox authentication error: {auth_error}")
         return None
-
-
+    except ApiError as api_error:
+        logger.error(f"Dropbox API error: {api_error}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected Dropbox upload error: {e}")
+        return None
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram or creates HTML download page."""
+    """Handles video/audio download and sends it to Telegram or Dropbox."""
     try:
         request_type = "Video Download"
         if is_audio:
@@ -221,26 +211,18 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 file_size = os.path.getsize(file_path)
 
             if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:
-                filename = f"{os.path.basename(file_path)}"
-                logger.info(f"File too large for Telegram: {file_size} bytes. Creating HTML download page.")
-                
-                # Create HTML download page
-                html_path = await create_html_download_page(file_path, filename)
-                
-                if html_path and os.path.exists(html_path):
-                    logger.info(f"Successfully created HTML download page: {html_path}")
-                    
-                    # Send the HTML file to the user
-                    async with aiofiles.open(html_path, "rb") as html_file:
-                        html_content = await html_file.read()
-                        await bot.send_document(
-                            message.chat.id, 
-                            html_content, 
-                            caption="⚠️ **File too large for Telegram.** Open this HTML file to download your media.",
-                            visible_file_name=f"download_{filename}.html"
-                        )
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                logger.info(f"File too large for Telegram: {file_size} bytes. Using Dropbox.")
+                dropbox_link = await upload_to_dropbox(file_path, filename)
+
+                if dropbox_link:
+                    logger.info(f"Successfully uploaded to Dropbox: {dropbox_link}")
+                    await send_message(
+                        message.chat.id,
+                        f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                    )
                 else:
-                    logger.warning("Failed to create HTML download page")
+                    logger.warning("Dropbox upload failed")
                     if download_url:
                         await send_message(
                             message.chat.id,
@@ -256,22 +238,16 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
 
                         if file_size_actual > TELEGRAM_FILE_LIMIT:
                             logger.warning(f"Actual size exceeds limit: {file_size_actual}")
-                            filename = f"{os.path.basename(file_path)}"
-                            
-                            # Create HTML download page
-                            html_path = await create_html_download_page(file_path, filename)
-                            
-                            if html_path and os.path.exists(html_path):
-                                async with aiofiles.open(html_path, "rb") as html_file:
-                                    html_content = await html_file.read()
-                                    await bot.send_document(
-                                        message.chat.id, 
-                                        html_content, 
-                                        caption="⚠️ **File too large for Telegram.** Open this HTML file to download your media.",
-                                        visible_file_name=f"download_{filename}.html"
-                                    )
+                            filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                            dropbox_link = await upload_to_dropbox(file_path, filename)
+
+                            if dropbox_link:
+                                await send_message(
+                                    message.chat.id,
+                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                )
                             else:
-                                await send_message(message.chat.id, "❌ **File too large. HTML creation failed.**")
+                                await send_message(message.chat.id, "❌ **File too large. Upload failed.**")
                         else:
                             if is_audio or is_audio_trim:
                                 await bot.send_audio(message.chat.id, file_content, timeout=600)
@@ -281,31 +257,26 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 except Exception as send_error:
                     logger.error(f"Error sending file to Telegram: {send_error}")
                     if "413" in str(send_error):
-                        logger.info("Got 413 error, attempting HTML download page as fallback")
-                        filename = f"{os.path.basename(file_path)}"
-                        
-                        # Create HTML download page
-                        html_path = await create_html_download_page(file_path, filename)
-                        
-                        if html_path and os.path.exists(html_path):
-                            async with aiofiles.open(html_path, "rb") as html_file:
-                                html_content = await html_file.read()
-                                await bot.send_document(
-                                    message.chat.id, 
-                                    html_content, 
-                                    caption="⚠️ **File too large for Telegram.** Open this HTML file to download your media.",
-                                    visible_file_name=f"download_{filename}.html"
-                                )
+                        logger.info("Got 413 error, attempting Dropbox upload as fallback")
+                        filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                        dropbox_link = await upload_to_dropbox(file_path, filename)
+
+                        if dropbox_link:
+                            await send_message(
+                                message.chat.id,
+                                f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                            )
                         else:
-                            await send_message(message.chat.id, "❌ **File too large and HTML creation failed.**")
+                            await send_message(message.chat.id, "❌ **File too large and Dropbox upload failed.**")
                     else:
                         await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
 
-            # We don't delete the file immediately when using HTML download
-            # as the user needs to access it via the HTML page
-            # Set up a delayed cleanup task (e.g., 24 hours)
-            cleanup_delay = 86400  # 24 hours in seconds
-            asyncio.create_task(delayed_file_cleanup(file_path, cleanup_delay))
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Cleaned up file: {file_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up file {file_path}: {cleanup_error}")
 
         gc.collect()
 
@@ -313,30 +284,8 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         logger.error(f"Comprehensive error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-
-async def delayed_file_cleanup(file_path, delay):
-    """Deletes a file after a specified delay."""
-    try:
-        await asyncio.sleep(delay)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            logger.info(f"Cleaned up file after delay: {file_path}")
-            
-            # Also clean up HTML file if it exists
-            html_path = os.path.join(
-                os.path.dirname(file_path),
-                "download_pages",
-                f"{os.path.splitext(os.path.basename(file_path))[0]}.html"
-            )
-            if os.path.exists(html_path):
-                os.remove(html_path)
-                logger.info(f"Cleaned up HTML file: {html_path}")
-    except Exception as cleanup_error:
-        logger.error(f"Failed to clean up file {file_path} after delay: {cleanup_error}")
-
-
 async def process_image_download(message, url):
-    """Handles image download and sends it to Telegram or creates HTML download page."""
+    """Handles image download and sends it to Telegram or Dropbox."""
     try:
         await send_message(message.chat.id, "🖼️ Processing Instagram image...")
         logger.info(f"Processing Instagram image URL: {url}")
@@ -368,23 +317,21 @@ async def process_image_download(message, url):
 
                 # Handle case where file is too large for Telegram
                 if file_size > TELEGRAM_FILE_LIMIT:
-                    filename = f"{os.path.basename(file_path)}"
-                    logger.info(f"Image too large for Telegram: {file_size} bytes. Creating HTML download page.")
-                    
-                    # Create HTML download page
-                    html_path = await create_html_download_page(file_path, filename)
-                    
-                    if html_path and os.path.exists(html_path):
-                        async with aiofiles.open(html_path, "rb") as html_file:
-                            html_content = await html_file.read()
-                            await bot.send_document(
-                                message.chat.id, 
-                                html_content, 
-                                caption="⚠️ **Image too large for Telegram.** Open this HTML file to download your image.",
-                                visible_file_name=f"download_{filename}.html"
-                            )
+                    filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using Dropbox.")
+
+                    # Upload to Dropbox
+                    dropbox_link = await upload_to_dropbox(file_path, filename)
+
+                    if dropbox_link:
+                        logger.info(f"Successfully uploaded image to Dropbox: {dropbox_link}")
+                        await send_message(
+                            message.chat.id,
+                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})",
+                            parse_mode="Markdown"
+                        )
                     else:
-                        logger.warning("Failed to create HTML download page")
+                        logger.warning("Dropbox upload failed")
                         await send_message(message.chat.id, "❌ **Image download failed.**")
                 else:
                     # Send image to Telegram
@@ -397,9 +344,13 @@ async def process_image_download(message, url):
                         logger.error(f"Error sending image to Telegram: {send_error}")
                         await send_message(message.chat.id, f"❌ **Error sending image: {str(send_error)}**")
 
-                # Set up delayed cleanup for the file
-                cleanup_delay = 86400  # 24 hours in seconds
-                asyncio.create_task(delayed_file_cleanup(file_path, cleanup_delay))
+                # Cleanup the file
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.info(f"Cleaned up image file: {file_path}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up image file {file_path}: {cleanup_error}")
 
             # Send success message
             await send_message(message.chat.id, "✅ **Instagram image(s) downloaded successfully!**")
@@ -411,7 +362,6 @@ async def process_image_download(message, url):
     except Exception as e:
         logger.error(f"Comprehensive error in process_image_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
-
 
 # Worker for parallel download tasks
 async def worker():
@@ -429,7 +379,6 @@ async def worker():
             await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
 
         download_queue.task_done()
-
 
 # Start/help command
 @bot.message_handler(commands=["start", "help"])
@@ -452,7 +401,6 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
-
 # Audio extraction handler
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
@@ -463,7 +411,6 @@ async def handle_audio_request(message):
         return
     await download_queue.put((message, url, True, False, False, None, None))
     await send_message(message.chat.id, "🎵 Added to audio extraction queue!")
-
 
 # Instagram image download handler
 @bot.message_handler(commands=["image"])
@@ -483,7 +430,6 @@ async def handle_image_request(message):
     await download_queue.put((message, url))
     await send_message(message.chat.id, "🖼️ **Added to image download queue!**")
 
-
 # Video trim handler
 @bot.message_handler(commands=["trim"])
 async def handle_video_trim_request(message):
@@ -499,7 +445,6 @@ async def handle_video_trim_request(message):
     url, start_time, end_time = match.groups()
     await download_queue.put((message, url, False, True, False, start_time, end_time))
     await send_message(message.chat.id, "✂️🎬 **Added to video trimming queue!**")
-
 
 # Audio trim handler
 @bot.message_handler(commands=["trimAudio"])
@@ -517,7 +462,6 @@ async def handle_audio_trim_request(message):
     await download_queue.put((message, url, False, False, True, start_time, end_time))
     await send_message(message.chat.id, "✂️🎵 **Added to audio segment extraction queue!**")
 
-
 # General message handler
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
@@ -525,7 +469,6 @@ async def handle_message(message):
     url = message.text.strip()
     await download_queue.put((message, url, False, False, False, None, None))
     await send_message(message.chat.id, "🎬 Added to video download queue!")
-
 
 # Main bot runner
 async def main():
@@ -538,7 +481,6 @@ async def main():
         await bot.infinity_polling(timeout=30)
     except Exception as e:
         logger.error(f"Bot polling error: {e}")
-
 
 if __name__ == "__main__":
     asyncio.run(main())
