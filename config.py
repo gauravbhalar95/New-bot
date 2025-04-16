@@ -8,6 +8,8 @@ MAX_WORKERS = "3"
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
 
+DROPBOX_APP_SECRET = "i34g2leylb8txhv"
+DROPBOX_APP_KEY = "1k435aevlnbnngz"
 DROPBOX_REFRESH_TOKEN = "bHxlbNdZW6YAAAAAAAAAVrNK7IOuC9klu7koUrJqKl0"
 
 RAPIDAPI_KEY = "425e3f1022mshd7d4a2d9b3b0136p1fe9b1jsn0bd8321421c7"
