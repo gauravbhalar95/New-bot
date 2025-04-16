@@ -10,6 +10,8 @@ from telebot.async_telebot import AsyncTeleBot
 import json
 import time
 from datetime import datetime, timedelta
+import signal
+from aiohttp import web
 
 # Import local modules
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN, DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET
@@ -28,6 +30,10 @@ logger = setup_logging(logging.DEBUG)
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
+
+# Flag to track bot running state
+bot_running = False
+shutdown_event = asyncio.Event()
 
 # Dropbox token management
 class DropboxTokenManager:
@@ -474,18 +480,31 @@ async def process_image_download(message, url):
 async def worker():
     """Worker function for parallel processing of downloads."""
     while True:
-        task = await download_queue.get()
+        try:
+            # Check if shutdown is requested
+            if shutdown_event.is_set():
+                logger.info("Worker shutting down")
+                break
+                
+            # Wait for a task with timeout to check shutdown periodically
+            try:
+                task = await asyncio.wait_for(download_queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+                
+            if len(task) == 2:
+                # Image processing task
+                message, url = task
+                await process_image_download(message, url)
+            else:
+                # Regular download task
+                message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = task
+                await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
 
-        if len(task) == 2:
-            # Image processing task
-            message, url = task
-            await process_image_download(message, url)
-        else:
-            # Regular download task
-            message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time = task
-            await process_download(message, url, is_audio, is_video_trim, is_audio_trim, start_time, end_time)
-
-        download_queue.task_done()
+            download_queue.task_done()
+        except Exception as e:
+            logger.error(f"Error in worker: {e}")
+            # Continue the loop to process other tasks even if one fails
 
 # Start/help command
 @bot.message_handler(commands=["start", "help"])
@@ -577,20 +596,116 @@ async def handle_message(message):
     await download_queue.put((message, url, False, False, False, None, None))
     await send_message(message.chat.id, "🎬 Added to video download queue!")
 
+# Health check endpoint
+async def health_check(request):
+    """Simple health check handler that returns 200 OK if the bot is running."""
+    if bot_running:
+        return web.Response(text="OK", status=200)
+    else:
+        return web.Response(text="Bot not running", status=503)
+
+# Graceful shutdown handler
+async def shutdown(app):
+    """Handle graceful shutdown."""
+    global bot_running
+    logger.info("Shutting down bot...")
+    bot_running = False
+    
+    # Signal worker tasks to exit
+    shutdown_event.set()
+    
+    # Wait for queue to be processed
+    if not download_queue.empty():
+        logger.info(f"Waiting for {download_queue.qsize()} tasks to complete...")
+        try:
+            await asyncio.wait_for(download_queue.join(), timeout=30.0)
+            logger.info("All tasks completed successfully")
+        except asyncio.TimeoutError:
+            logger.warning("Timeout waiting for tasks to complete")
+    
+    logger.info("Bot shutdown complete")
+
+# Signal handlers
+def handle_signals():
+    """Set up signal handlers for graceful shutdown."""
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda s, f: asyncio.create_task(shutdown_app()))
+
+async def shutdown_app():
+    """Shut down the application."""
+    logger.info("Received shutdown signal")
+    await shutdown(None)  # Pass None as we're not using the app parameter
+    asyncio.get_event_loop().stop()
+
+async def setup_web_server():
+    """Set up aiohttp web server for health checks."""
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    app.router.add_get('/', health_check)  # Root path for simple checks
+    
+    # Handle graceful shutdown
+    app.on_shutdown.append(shutdown)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Use port 8080 which appears to be the required port for your health checks
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    logger.info("Health check server started on port 8080")
+    return runner
+
+async def run_polling():
+    """Run the bot polling with proper error handling."""
+    global bot_running
+    bot_running = True
+    
+    # Maximum number of retries before giving up
+    max_retries = 5
+    retry_count = 0
+    
+    while bot_running and retry_count < max_retries:
+        try:
+            logger.info("Starting bot polling")
+            await bot.polling(timeout=30, non_stop=True, skip_pending=True)
+        except Exception as e:
+            retry_count += 1
+            if "terminated by other getUpdates request" in str(e):
+                logger.warning(f"409 Conflict error detected, sleeping before retry {retry_count}/{max_retries}")
+                await asyncio.sleep(10)  # Wait before retrying to allow other instances to terminate
+            else:
+                logger.error(f"Bot polling error: {e}", exc_info=True)
+                if retry_count >= max_retries:
+                    logger.critical(f"Maximum retry attempts reached ({max_retries}), stopping bot")
+                    break
+                await asyncio.sleep(5)  # Wait before retrying for other errors
+    
+    bot_running = False
+    logger.info("Bot polling stopped")
+
 # Main bot runner
 async def main():
     """Runs the bot and initializes worker processes."""
     # Check token validity at startup
     await token_manager.refresh_if_needed()
     
+    # Setup signal handlers
+    handle_signals()
+    
+    # Start health check server
+    web_runner = await setup_web_server()
+    
+    # Start worker tasks
     num_workers = min(3, os.cpu_count() or 1)
+    worker_tasks = []
     for _ in range(num_workers):
-        asyncio.create_task(worker())
-
+        worker_tasks.append(asyncio.create_task(worker()))
+    
+    # Start the bot polling
     try:
-        await bot.infinity_polling(timeout=30)
-    except Exception as e:
-        logger.error(f"Bot polling error: {e}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        await run_polling()
+    finally:
+        # Ensure shutdown is triggered
+        global bot_running
+        bot_running = False
+        shutdown_event.set()
