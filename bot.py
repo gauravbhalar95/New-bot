@@ -569,6 +569,150 @@ async def handle_stop(message):
         logger.error(f"Error during stop: {e}")
         await send_message(message.chat.id, "❌ Stop failed")
 
+# Admin management commands
+@bot.message_handler(commands=["addadmin"])
+async def handle_add_admin(message):
+    """Adds a new admin (super admin only)."""
+    try:
+        # Check if command sender is the default admin
+        if message.from_user.id != DEFAULT_ADMIN:
+            await send_message(message.chat.id, "⛔ This command is restricted to the super administrator.")
+            return
+            
+        # Extract the user ID from the command
+        parts = message.text.split()
+        if len(parts) != 2:
+            await send_message(
+                message.chat.id,
+                "⚠️ Please use the format: /addadmin <user_id>\n"
+                "To get a user's ID, have them send /myid to the bot."
+            )
+            return
+            
+        try:
+            new_admin_id = int(parts[1])
+        except ValueError:
+            await send_message(message.chat.id, "❌ Invalid user ID. Please provide a valid numeric ID.")
+            return
+            
+        # Add the new admin ID to the config
+        if new_admin_id not in ADMIN_IDS:
+            ADMIN_IDS.append(new_admin_id)
+            # Update the config file
+            with open("config.py", "r") as f:
+                lines = f.readlines()
+            
+            with open("config.py", "w") as f:
+                admin_list_updated = False
+                for line in lines:
+                    if line.startswith("ADMIN_IDS = "):
+                        f.write(f"ADMIN_IDS = {ADMIN_IDS}\n")
+                        admin_list_updated = True
+                    else:
+                        f.write(line)
+                
+                if not admin_list_updated:
+                    f.write(f"\nADMIN_IDS = {ADMIN_IDS}\n")
+            
+            await send_message(
+                message.chat.id, 
+                f"✅ Successfully added user ID {new_admin_id} as an admin."
+            )
+        else:
+            await send_message(message.chat.id, "⚠️ This user is already an admin.")
+            
+    except Exception as e:
+        logger.error(f"Error adding admin: {e}")
+        await send_message(message.chat.id, "❌ Error adding admin")
+
+@bot.message_handler(commands=["removeadmin"])
+async def handle_remove_admin(message):
+    """Removes an admin (super admin only)."""
+    try:
+        # Check if command sender is the default admin
+        if message.from_user.id != DEFAULT_ADMIN:
+            await send_message(message.chat.id, "⛔ This command is restricted to the super administrator.")
+            return
+            
+        # Extract the user ID from the command
+        parts = message.text.split()
+        if len(parts) != 2:
+            await send_message(
+                message.chat.id,
+                "⚠️ Please use the format: /removeadmin <user_id>"
+            )
+            return
+            
+        try:
+            admin_id = int(parts[1])
+        except ValueError:
+            await send_message(message.chat.id, "❌ Invalid user ID. Please provide a valid numeric ID.")
+            return
+            
+        # Prevent removing the default admin
+        if admin_id == DEFAULT_ADMIN:
+            await send_message(message.chat.id, "⛔ Cannot remove the super administrator.")
+            return
+            
+        # Remove the admin ID from the config
+        if admin_id in ADMIN_IDS:
+            ADMIN_IDS.remove(admin_id)
+            # Update the config file
+            with open("config.py", "r") as f:
+                lines = f.readlines()
+            
+            with open("config.py", "w") as f:
+                for line in lines:
+                    if line.startswith("ADMIN_IDS = "):
+                        f.write(f"ADMIN_IDS = {ADMIN_IDS}\n")
+                    else:
+                        f.write(line)
+            
+            await send_message(
+                message.chat.id,
+                f"✅ Successfully removed user ID {admin_id} from admins."
+            )
+        else:
+            await send_message(message.chat.id, "⚠️ This user is not an admin.")
+            
+    except Exception as e:
+        logger.error(f"Error removing admin: {e}")
+        await send_message(message.chat.id, "❌ Error removing admin")
+
+@bot.message_handler(commands=["listadmins"])
+async def handle_list_admins(message):
+    """Lists all current admins."""
+    try:
+        # Check if command sender is an admin
+        if message.from_user.id not in ADMIN_IDS:
+            await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
+            return
+            
+        admin_list = "👥 **Current Administrators:**\n\n"
+        for admin_id in ADMIN_IDS:
+            admin_list += f"• `{admin_id}`"
+            if admin_id == DEFAULT_ADMIN:
+                admin_list += " (Super Admin)"
+            admin_list += "\n"
+            
+        await bot.send_message(message.chat.id, admin_list, parse_mode="Markdown")
+            
+    except Exception as e:
+        logger.error(f"Error listing admins: {e}")
+        await send_message(message.chat.id, "❌ Error listing admins")
+
+@bot.message_handler(commands=["myid"])
+async def handle_myid(message):
+    """Shows the user their Telegram ID."""
+    try:
+        await send_message(
+            message.chat.id,
+            f"🆔 Your Telegram ID is: `{message.from_user.id}`"
+        )
+    except Exception as e:
+        logger.error(f"Error getting user ID: {e}")
+        await send_message(message.chat.id, "❌ Error getting your ID")
+
 
 
 # Audio extraction handler
