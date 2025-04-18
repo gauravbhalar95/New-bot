@@ -256,7 +256,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         logger.error(f"Comprehensive error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-[Rest of the code remains exactly the same as in your original implementation, just replace all instances of Dropbox with MEGA in the messages and logs]
+#[Rest of the code remains exactly the same as in your original implementation, just replace all instances of Dropbox with MEGA in the messages and logs]
 
 async def process_image_download(message, url):
     """Handles image download and sends it to Telegram or Dropbox."""
