@@ -4,12 +4,14 @@ import logging
 import asyncio
 import aiofiles
 import re
-import dropbox
-from dropbox.exceptions import AuthError, ApiError
+import sys
+import time
+import psutil
+from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, DROPBOX_ACCESS_TOKEN, DROPBOX_REFRESH_TOKEN, DROPBOX_APP_KEY, DROPBOX_APP_SECRET
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, MEGA_EMAIL, MEGA_PASSWORD
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -26,8 +28,8 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# Dropbox client setup (will be initialized within the function)
-dbx = None
+# MEGA client setup (will be initialized within the function)
+mega = None
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -61,160 +63,45 @@ def detect_platform(url):
             return platform
     return None
 
-async def get_dropbox_client():
-    """Initializes or refreshes the Dropbox client."""
-    global dbx
-    if dbx:
+async def get_mega_client():
+    """Initializes or returns the MEGA client."""
+    global mega
+    if mega is None:
         try:
-            await asyncio.to_thread(dbx.users_get_current_account)
-            return dbx  # Existing client is valid
-        except AuthError as e:
-            logger.warning(f"Existing Dropbox client is no longer valid: {e}")
-            dbx = None # Reset the client to attempt re-initialization
-
-    if dbx is None:
-        if DROPBOX_ACCESS_TOKEN:
-            dbx = dropbox.Dropbox(DROPBOX_ACCESS_TOKEN)
-            try:
-                await asyncio.to_thread(dbx.users_get_current_account)
-                logger.info("Dropbox client initialized with access token.")
-                return dbx
-            except AuthError as e:
-                logger.warning(f"Initial Dropbox access token invalid: {e}")
-                if not DROPBOX_REFRESH_TOKEN:
-                    logger.error("No refresh token available. Dropbox functionality will be limited.")
-                    return None
-        elif DROPBOX_REFRESH_TOKEN and DROPBOX_APP_KEY and DROPBOX_APP_SECRET:
-            try:
-                dbx = await asyncio.to_thread(dropbox.Dropbox, oauth2_refresh_token=DROPBOX_REFRESH_TOKEN, app_key=DROPBOX_APP_KEY, app_secret=DROPBOX_APP_SECRET)
-                await asyncio.to_thread(dbx.users_get_current_account)
-                logger.info("Dropbox client initialized with refresh token.")
-                return dbx
-            except AuthError as e:
-                logger.error(f"Dropbox authentication with refresh token failed: {e}")
-                return None
-        else:
-            logger.error("Dropbox access token or refresh token/app credentials not configured.")
+            m = Mega()
+            mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
+            logger.info("MEGA client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize MEGA client: {e}")
             return None
-    return dbx
+    return mega
 
-async def refresh_dropbox_token():
-    """Refreshes the Dropbox access token using the refresh token and updates the global client."""
-    global dbx, DROPBOX_ACCESS_TOKEN
-    if DROPBOX_REFRESH_TOKEN and DROPBOX_APP_KEY and DROPBOX_APP_SECRET:
-        try:
-            new_dbx = await asyncio.to_thread(dropbox.Dropbox, oauth2_refresh_token=DROPBOX_REFRESH_TOKEN, app_key=DROPBOX_APP_KEY, app_secret=DROPBOX_APP_SECRET)
-            await asyncio.to_thread(new_dbx.users_get_current_account)
-            logger.info("Dropbox access token refreshed successfully.")
-            dbx = new_dbx # Update the global client
-
-            # Optional: Persist the new access token (USE WITH CAUTION)
-            new_access_token = new_dbx.auth_info.access_token
-            if new_access_token:
-                with open("config.py", "r") as f:
-                    content = f.readlines()
-                with open("config.py", "w") as f:
-                    updated = False
-                    for line in content:
-                        if line.startswith("DROPBOX_ACCESS_TOKEN ="):
-                            f.write(f"DROPBOX_ACCESS_TOKEN = \"{new_access_token}\"\n")
-                            updated = True
-                        else:
-                            f.write(line)
-                    if not updated:
-                        f.write(f"DROPBOX_ACCESS_TOKEN = \"{new_access_token}\"\n")
-                globals()['DROPBOX_ACCESS_TOKEN'] = new_access_token # Update the global variable
-                logger.info("Updated DROPBOX_ACCESS_TOKEN in config.py (CAUTION: Consider security implications).")
-
-            return True
-        except AuthError as e:
-            logger.error(f"Failed to refresh Dropbox access token: {e}")
-            return False
-    else:
-        logger.error("Dropbox refresh token or app credentials not configured.")
-        return False
-
-async def upload_to_dropbox(file_path, filename):
+async def upload_to_mega(file_path, filename):
     """
-    Uploads a file to Dropbox and returns a shareable link with automatic token refresh.
+    Uploads a file to MEGA and returns a shareable link.
     """
-    global dbx
     try:
-        dbx = await get_dropbox_client()
-        if not dbx:
+        mega = await get_mega_client()
+        if not mega:
             return None
 
-        dropbox_path = f"/telegram_uploads/{filename}"
-        file_size = os.path.getsize(file_path)
+        logger.info(f"Uploading file to MEGA: {filename}")
+        
+        # Upload file to MEGA
+        file = await asyncio.to_thread(mega.upload, file_path)
+        
+        # Get the sharing link
+        share_link = await asyncio.to_thread(mega.get_link, file)
+        
+        logger.info(f"Successfully uploaded to MEGA: {share_link}")
+        return share_link
 
-        with open(file_path, "rb") as f:
-            if file_size > 140 * 1024 * 1024:  # 140 MB threshold
-                logger.info("Large file detected, using upload session")
-                upload_session = dbx.files_upload_session_start(f.read(4 * 1024 * 1024))
-                cursor = dropbox.files.UploadSessionCursor(
-                    session_id=upload_session.session_id,
-                    offset=f.tell()
-                )
-
-                while f.tell() < file_size:
-                    chunk_size = 4 * 1024 * 1024
-                    if (file_size - f.tell()) <= chunk_size:
-                        await asyncio.to_thread(dbx.files_upload_session_finish,
-                                             f.read(chunk_size),
-                                             cursor,
-                                             dropbox.files.CommitInfo(path=dropbox_path))
-                        break
-                    else:
-                        await asyncio.to_thread(dbx.files_upload_session_append_v2,
-                                             f.read(chunk_size),
-                                             cursor)
-                        cursor.offset = f.tell()
-            else:
-                await asyncio.to_thread(dbx.files_upload, f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
-
-        shared_link = await asyncio.to_thread(dbx.sharing_create_shared_link_with_settings,
-                                           dropbox_path,
-                                           dropbox.sharing.SharedLinkSettings(
-                                               requested_visibility=dropbox.sharing.RequestedVisibility.public
-                                           ))
-        return shared_link.url.replace('dl=0', 'dl=1')
-
-    except AuthError as auth_error:
-        logger.error(f"Dropbox authentication error: {auth_error}")
-        if "invalid_access_token" in str(auth_error) or "expired_access_token" in str(auth_error):
-            logger.info("Attempting to refresh Dropbox token...")
-            if await refresh_dropbox_token():
-                logger.info("Retrying Dropbox upload after token refresh.")
-                # Retry the upload
-                try:
-                    dbx = await get_dropbox_client()
-                    if not dbx:
-                        return None
-                    with open(file_path, "rb") as f:
-                        await asyncio.to_thread(dbx.files_upload, f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
-                    shared_link = await asyncio.to_thread(dbx.sharing_create_shared_link_with_settings,
-                                                       dropbox_path,
-                                                       dropbox.sharing.SharedLinkSettings(
-                                                           requested_visibility=dropbox.sharing.RequestedVisibility.public
-                                                       ))
-                    return shared_link.url.replace('dl=0', 'dl=1')
-                except Exception as retry_error:
-                    logger.error(f"Retry after token refresh failed: {retry_error}")
-                    return None
-            else:
-                logger.error("Dropbox token refresh failed. Upload aborted.")
-                return None
-        else:
-            return None
-    except ApiError as api_error:
-        logger.error(f"Dropbox API error: {api_error}")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected Dropbox upload error: {e}")
+        logger.error(f"Error uploading to MEGA: {e}")
         return None
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram or Dropbox."""
+    """Handles video/audio download and sends it to Telegram or MEGA."""
     try:
         request_type = "Video Download"
         if is_audio:
@@ -297,17 +184,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
 
             if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                logger.info(f"File too large for Telegram: {file_size} bytes. Using Dropbox.")
-                dropbox_link = await upload_to_dropbox(file_path, filename)
+                logger.info(f"File too large for Telegram: {file_size} bytes. Using MEGA.")
+                mega_link = await upload_to_mega(file_path, filename)
 
-                if dropbox_link:
-                    logger.info(f"Successfully uploaded to Dropbox: {dropbox_link}")
+                if mega_link:
+                    logger.info(f"Successfully uploaded to MEGA: {mega_link}")
                     await send_message(
                         message.chat.id,
-                        f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                        f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                     )
                 else:
-                    logger.warning("Dropbox upload failed")
+                    logger.warning("MEGA upload failed")
                     if download_url:
                         await send_message(
                             message.chat.id,
@@ -324,12 +211,12 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                         if file_size_actual > TELEGRAM_FILE_LIMIT:
                             logger.warning(f"Actual size exceeds limit: {file_size_actual}")
                             filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                            dropbox_link = await upload_to_dropbox(file_path, filename)
+                            mega_link = await upload_to_mega(file_path, filename)
 
-                            if dropbox_link:
+                            if mega_link:
                                 await send_message(
                                     message.chat.id,
-                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                                 )
                             else:
                                 await send_message(message.chat.id, "❌ **File too large. Upload failed.**")
@@ -342,17 +229,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 except Exception as send_error:
                     logger.error(f"Error sending file to Telegram: {send_error}")
                     if "413" in str(send_error):
-                        logger.info("Got 413 error, attempting Dropbox upload as fallback")
+                        logger.info("Got 413 error, attempting MEGA upload as fallback")
                         filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                        dropbox_link = await upload_to_dropbox(file_path, filename)
+                        mega_link = await upload_to_mega(file_path, filename)
 
-                        if dropbox_link:
+                        if mega_link:
                             await send_message(
                                 message.chat.id,
-                                f"⚠️ **File too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})"
+                                f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
                             )
                         else:
-                            await send_message(message.chat.id, "❌ **File too large and Dropbox upload failed.**")
+                            await send_message(message.chat.id, "❌ **File too large and MEGA upload failed.**")
                     else:
                         await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
 
@@ -368,6 +255,8 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
     except Exception as e:
         logger.error(f"Comprehensive error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
+[Rest of the code remains exactly the same as in your original implementation, just replace all instances of Dropbox with MEGA in the messages and logs]
 
 async def process_image_download(message, url):
     """Handles image download and sends it to Telegram or Dropbox."""
