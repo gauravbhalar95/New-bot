@@ -486,6 +486,91 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
+# Status command handler
+@bot.message_handler(commands=["status"])
+async def handle_status(message):
+    """Shows the current status of the bot and download queue."""
+    try:
+        queue_size = download_queue.qsize()
+        memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # in MB
+        cpu_percent = psutil.Process().cpu_percent()
+        uptime = time.time() - psutil.Process().create_time()
+        
+        status_text = (
+            "🤖 **Bot Status**\n\n"
+            f"📊 Queue Size: {queue_size} tasks\n"
+            f"💾 Memory Usage: {memory_usage:.1f} MB\n"
+            f"⚡ CPU Usage: {cpu_percent:.1f}%\n"
+            f"⏱️ Uptime: {int(uptime/3600)}h {int((uptime%3600)/60)}m\n"
+            f"👥 Active Workers: {min(3, os.cpu_count() or 1)}\n"
+        )
+        await bot.send_message(message.chat.id, status_text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        await send_message(message.chat.id, "❌ Error getting bot status")
+
+# Restart command handler (admin only)
+@bot.message_handler(commands=["restart"])
+async def handle_restart(message):
+    """Restarts the bot (admin only)."""
+    ADMIN_IDS = [message.chat.id]  # Add your admin chat IDs here
+    
+    if message.chat.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
+        return
+        
+    try:
+        await send_message(message.chat.id, "🔄 Restarting bot...")
+        logger.info("Bot restart initiated by admin")
+        
+        # Clear the download queue
+        while not download_queue.empty():
+            download_queue.get_nowait()
+            download_queue.task_done()
+            
+        # Cleanup temporary files
+        temp_dir = "downloads"  # Adjust to your temp directory
+        if os.path.exists(temp_dir):
+            for file in os.listdir(temp_dir):
+                try:
+                    os.remove(os.path.join(temp_dir, file))
+                except Exception as e:
+                    logger.error(f"Error cleaning up file {file}: {e}")
+        
+        # Restart the bot process
+        os.execv(sys.executable, ['python'] + sys.argv)
+    except Exception as e:
+        logger.error(f"Error during restart: {e}")
+        await send_message(message.chat.id, "❌ Restart failed")
+
+# Stop command handler (admin only)
+@bot.message_handler(commands=["stop"])
+async def handle_stop(message):
+    """Stops the bot (admin only)."""
+    ADMIN_IDS = [message.chat.id]  # Add your admin chat IDs here
+    
+    if message.chat.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
+        return
+        
+    try:
+        await send_message(message.chat.id, "🛑 Stopping bot...")
+        logger.info("Bot stop initiated by admin")
+        
+        # Clear the download queue
+        while not download_queue.empty():
+            download_queue.get_nowait()
+            download_queue.task_done()
+            
+        # Stop the bot
+        await bot.stop_polling()
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Error during stop: {e}")
+        await send_message(message.chat.id, "❌ Stop failed")
+
+
+
 # Audio extraction handler
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
