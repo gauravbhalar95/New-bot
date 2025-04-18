@@ -6,9 +6,9 @@ load_dotenv()
 
 # Add this to config.py
 ADMIN_IDS = [
-    123456789,  # Your Telegram ID
+    1302277958,  # Your Telegram ID
 ]
-DEFAULT_ADMIN = 123456789  # Your Telegram ID as the default admin
+DEFAULT_ADMIN = 1302277958  # Your Telegram ID as the default admin
 
 
 
