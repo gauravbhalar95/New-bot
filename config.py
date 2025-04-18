@@ -4,6 +4,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Add this to config.py
+ADMIN_IDS = [
+    123456789,  # Your Telegram ID
+]
+DEFAULT_ADMIN = 123456789  # Your Telegram ID as the default admin
+
+
+
 MAX_WORKERS = "3"
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
