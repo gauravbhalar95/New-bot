@@ -39,3 +39,4 @@ ffmpeg-python==0.2.0
 instagram-private-api==1.6.0.0
 # Removed instagram-private-api-extensions due to conflicts
 instagram_private_api_extensions
+tqdm==4.11.2
