@@ -11,10 +11,11 @@ from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 
-# Instagram username from environment or default
+# Instagram login credentials
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
+COOKIES_FILE = "instagram_cookies.txt"
 
-# Instaloader instance with media-only setup
+# Initialize Instaloader instance
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -27,31 +28,40 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 def initialize_instagram_session():
     logger.info("Initializing Instagram session...")
     try:
-        cookies_file = "instagram_cookies.txt"
-        if os.path.exists(cookies_file):
-            INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, cookies_file)
-            logger.info("Instagram session loaded successfully")
-        else:
-            logger.warning("Instagram cookies file not found. Logging in manually...")
-            INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-            INSTALOADER_INSTANCE.save_session_to_file(cookies_file)
-            logger.info("Instagram session created and saved.")
+        INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, COOKIES_FILE)
+        # Validate session
+        profile = instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, INSTAGRAM_USERNAME)
+        logger.info("Instagram session loaded and validated successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize Instagram session: {e}")
+        logger.warning(f"Session load failed: {e} — Attempting login...")
+        try:
+            INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+            INSTALOADER_INSTANCE.save_session_to_file(COOKIES_FILE)
+            logger.info("Instagram login successful, session saved.")
+        except Exception as login_error:
+            logger.error(f"Instagram login failed: {login_error}")
 
-# Call session initializer
 initialize_instagram_session()
 
-# Helper: Fetch post object by shortcode
 async def get_post(shortcode):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
+    try:
+        loop = asyncio.get_event_loop()
+        post = await loop.run_in_executor(None, functools.partial(
+            instaloader.Post.from_shortcode,
+            INSTALOADER_INSTANCE.context,
+            shortcode
+        ))
+        return post
+    except Exception as e:
+        logger.error(f"Failed to fetch post metadata for {shortcode}: {e}")
+        raise
 
-# Helper: Get image URLs from Instagram stories
 async def get_story_images(username):
     try:
         loop = asyncio.get_event_loop()
-        profile = await loop.run_in_executor(None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username))
+        profile = await loop.run_in_executor(None, lambda: instaloader.Profile.from_username(
+            INSTALOADER_INSTANCE.context, username
+        ))
         stories = await loop.run_in_executor(None, lambda: INSTALOADER_INSTANCE.get_stories(userids=[profile.userid]))
 
         image_urls = []
@@ -59,12 +69,12 @@ async def get_story_images(username):
             for item in story.get_items():
                 if not item.is_video:
                     image_urls.append(item.url)
+
         return image_urls
     except Exception as e:
         logger.error(f"Error fetching stories for {username}: {e}")
         return []
 
-# Helper: Download image and save to disk
 async def download_image(session, url, temp_path, permanent_path):
     try:
         async with session.get(url) as response:
@@ -79,7 +89,6 @@ async def download_image(session, url, temp_path, permanent_path):
         logger.error(f"Error downloading image {url}: {e}")
         return None
 
-# Helper: Clean up temp directory
 async def cleanup_temp_dir(temp_dir):
     try:
         loop = asyncio.get_event_loop()
@@ -87,7 +96,6 @@ async def cleanup_temp_dir(temp_dir):
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
-# Main: Process Instagram image post or story
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Invalid Instagram URL: {url}")
@@ -95,12 +103,14 @@ async def process_instagram_image(url):
 
     image_paths = []
     temp_dir = tempfile.mkdtemp()
-
     async with aiohttp.ClientSession() as session:
         try:
             if "/p/" in url:
                 shortcode = url.split("/p/")[1].split("/")[0]
-                post = await get_post(shortcode)
+                try:
+                    post = await get_post(shortcode)
+                except Exception:
+                    return []
 
                 if hasattr(post, 'get_sidecar_nodes'):
                     nodes = post.get_sidecar_nodes()
