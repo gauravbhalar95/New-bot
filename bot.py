@@ -4,22 +4,11 @@ import logging
 import asyncio
 import aiofiles
 import re
-import sys
-import time
-import psutil
-from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import (
-    API_TOKEN, 
-    TELEGRAM_FILE_LIMIT, 
-    MEGA_EMAIL, 
-    MEGA_PASSWORD,
-    DEFAULT_ADMIN,
-    ADMIN_IDS
-)
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, MEGA_EMAIL, MEGA_PASSWORD
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -37,7 +26,13 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
 # MEGA client setup
-mega = None
+mega = Mega()
+try:
+    m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
+    logger.info("Successfully logged in to MEGA")
+except Exception as e:
+    logger.error(f"Failed to login to MEGA: {e}")
+    m = None
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -57,95 +52,40 @@ PLATFORM_HANDLERS = {
     "Adult": process_adult,
 }
 
-def get_current_utc():
-    """Returns current UTC time in YYYY-MM-DD HH:MM:SS format."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
 async def send_message(chat_id, text):
-    """Sends a message asynchronously."""
     try:
         await bot.send_message(chat_id, text)
     except Exception as e:
-        logger.error(f"[{get_current_utc()}] Error sending message: {e}")
+        logger.error(f"Error sending message: {e}")
 
 def detect_platform(url):
-    """Detects the platform based on URL patterns."""
     for platform, pattern in PLATFORM_PATTERNS.items():
         if pattern.search(url):
             return platform
     return None
 
-async def get_mega_client():
-    """Initializes or returns the MEGA client."""
-    global mega
-    if mega is None:
-        try:
-            m = Mega()
-            mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-            logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
-        except Exception as e:
-            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}")
-            return None
-    return mega
-
 async def upload_to_mega(file_path, filename):
-    """
-    Uploads a file to MEGA and returns a shareable link in format:
-    https://mega.nz/file/[ID]#[KEY]
-    """
     try:
-        mega = await get_mega_client()
-        if not mega:
-            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client")
+        if not m:
+            logger.error("MEGA client not initialized")
             return None
 
-        logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
-        
-        try:
-            # Upload file using the provided method
-            file = await asyncio.to_thread(mega.upload, file_path)
-            logger.info(f"[{get_current_utc()}] Upload successful, getting file info")
-            
-            if not file:
-                logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
-                return None
+        folder_name = "telegram_uploads"
+        folders = m.get_files()
+        folder = next((f for f in folders.values() if f['type'] == 1 and f['name'] == folder_name), None)
 
-            # Get the file link with decryption key
-            try:
-                # Get the file handle
-                file_handle = file['h'] if isinstance(file, dict) else file
-                
-                # Get the file link with key
-                share_link = await asyncio.to_thread(mega.get_link, file_handle)
-                
-                if share_link and isinstance(share_link, str):
-                    logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-                    
-                    # Ensure link is in correct format
-                    if not share_link.startswith('https://mega.nz/file/'):
-                        # If link doesn't contain 'file/', add it
-                        if '/file/' not in share_link:
-                            share_link = share_link.replace('https://mega.nz/', 'https://mega.nz/file/')
-                    
-                    return share_link
-                else:
-                    logger.error(f"[{get_current_utc()}] Invalid share link format")
-                    return None
-                    
-            except Exception as link_error:
-                logger.error(f"[{get_current_utc()}] Error generating share link: {link_error}")
-                return None
-                
-        except Exception as upload_error:
-            logger.error(f"[{get_current_utc()}] Error during upload: {upload_error}")
-            return None
+        if not folder:
+            folder = m.create_folder(folder_name)
+
+        file = m.upload(file_path, folder[0])
+        file_url = m.get_link(file)
+        return file_url
 
     except Exception as e:
-        logger.error(f"[{get_current_utc()}] Unexpected error in upload_to_mega: {e}")
+        logger.error(f"MEGA upload error: {e}")
         return None
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram or MEGA."""
     try:
         request_type = "Video Download"
         if is_audio:
@@ -156,34 +96,34 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             request_type = "Audio Trimming"
 
         await send_message(message.chat.id, f"📥 **Processing your {request_type.lower()}...**")
-        logger.info(f"[{get_current_utc()}] Processing URL: {url}, Type: {request_type}")
+        logger.info(f"Processing URL: {url}, Type: {request_type}")
 
-        # Detect platform
         platform = detect_platform(url)
         if not platform:
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        # Handle request based on type
+        # Process based on type
         if is_video_trim:
-            logger.info(f"[{get_current_utc()}] Processing video trim request: Start={start_time}, End={end_time}")
             file_path, file_size = await process_video_trim(url, start_time, end_time)
-            download_url = None
             file_paths = [file_path] if file_path else []
+            download_url = None
+
         elif is_audio_trim:
-            logger.info(f"[{get_current_utc()}] Processing audio trim request: Start={start_time}, End={end_time}")
             file_path, file_size = await process_audio_trim(url, start_time, end_time)
-            download_url = None
             file_paths = [file_path] if file_path else []
+            download_url = None
+
         elif is_audio:
             result = await extract_audio_ffmpeg(url)
             if isinstance(result, tuple):
-                file_path, file_size = result if len(result) == 2 else (result[0], None)
-                download_url = None
+                file_path, file_size = result
                 file_paths = [file_path] if file_path else []
+                download_url = None
             else:
                 file_path, file_size, download_url = result, None, None
                 file_paths = [file_path] if file_path else []
+
         else:
             if platform == "Instagram":
                 if "/reel/" in url or "/tv/" in url:
@@ -196,196 +136,107 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             if isinstance(result, tuple) and len(result) >= 3:
                 file_paths, file_size, download_url = result
                 if not isinstance(file_paths, list):
-                    file_paths = [file_paths] if file_paths else []
-            elif isinstance(result, tuple) and len(result) == 2:
+                    file_paths = [file_paths]
+            elif isinstance(result, tuple):
                 file_paths, file_size = result
-                download_url = None
                 if not isinstance(file_paths, list):
-                    file_paths = [file_paths] if file_paths else []
+                    file_paths = [file_paths]
+                download_url = None
             else:
-                file_paths = result if isinstance(result, list) else [result] if result else []
+                file_paths = [result] if isinstance(result, str) else result
                 file_size = None
                 download_url = None
 
         if not file_paths or all(not path for path in file_paths):
-            logger.warning(f"[{get_current_utc()}] No valid file paths returned from platform handler")
             await send_message(message.chat.id, "❌ **Download failed. No media found.**")
             return
 
         for file_path in file_paths:
-            if not file_path or not os.path.exists(file_path):
-                logger.warning(f"[{get_current_utc()}] File path does not exist: {file_path}")
+            if not os.path.exists(file_path):
                 continue
 
-            if file_size is None:
-                file_size = os.path.getsize(file_path)
-
-            if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:
+            file_size = file_size or os.path.getsize(file_path)
+            if file_size > TELEGRAM_FILE_LIMIT:
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                logger.info(f"[{get_current_utc()}] File too large for Telegram: {file_size} bytes. Using MEGA.")
-                
-                # Send upload status message
-                status_msg = await bot.send_message(
-                    message.chat.id,
-                    "📤 Uploading file to MEGA... Please wait..."
-                )
-                
                 mega_link = await upload_to_mega(file_path, filename)
 
                 if mega_link:
-                    logger.info(f"[{get_current_utc()}] Successfully uploaded to MEGA: {mega_link}")
-                    try:
-                        # Delete the status message
-                        await bot.delete_message(message.chat.id, status_msg.message_id)
-                        
-                        # Send the download link
-                        await bot.send_message(
-                            message.chat.id,
-                            f"✅ File uploaded successfully!\n\n"
-                            f"📥 *Download from MEGA:*\n{mega_link}",
-                            parse_mode="Markdown",
-                            disable_web_page_preview=True
-                        )
-                        
-                    except Exception as msg_error:
-                        logger.error(f"[{get_current_utc()}] Error sending MEGA link message: {msg_error}")
-                        # Fallback message in case of formatting issues
-                        await send_message(
-                            message.chat.id,
-                            f"✅ File uploaded! Download link: {mega_link}"
-                        )
+                    await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download from MEGA]({mega_link})")
+                elif download_url:
+                    await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download link]({download_url})")
                 else:
-                    logger.warning(f"[{get_current_utc()}] MEGA upload failed")
-                    await bot.edit_message_text(
-                        "❌ Upload to MEGA failed. Please try again.",
-                        message.chat.id,
-                        status_msg.message_id
-                    )
-                    if download_url:
-                        await send_message(
-                            message.chat.id,
-                            f"⚠️ Alternative download link:\n{download_url}"
-                        )
+                    await send_message(message.chat.id, "❌ **File too large. MEGA upload failed.**")
+
             else:
                 try:
                     async with aiofiles.open(file_path, "rb") as file:
-                        file_content = await file.read()
+                        content = await file.read()
+                        if len(content) > TELEGRAM_FILE_LIMIT:
+                            raise ValueError("File exceeds Telegram limit")
+
                         if is_audio or is_audio_trim:
-                            await bot.send_audio(message.chat.id, file_content, timeout=600)
+                            await bot.send_audio(message.chat.id, content, timeout=600)
                         else:
-                            await bot.send_video(message.chat.id, file_content, supports_streaming=True, timeout=600)
+                            await bot.send_video(message.chat.id, content, supports_streaming=True, timeout=600)
 
                 except Exception as send_error:
-                    logger.error(f"[{get_current_utc()}] Error sending file to Telegram: {send_error}")
-                    if "413" in str(send_error):
-                        logger.info(f"[{get_current_utc()}] Got 413 error, attempting MEGA upload as fallback")
-                        filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                        mega_link = await upload_to_mega(file_path, filename)
-
-                        if mega_link:
-                            await send_message(
-                                message.chat.id,
-                                f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
-                            )
-                        else:
-                            await send_message(message.chat.id, "❌ **File too large and MEGA upload failed.**")
+                    logger.error(f"Send error: {send_error}")
+                    filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                    mega_link = await upload_to_mega(file_path, filename)
+                    if mega_link:
+                        await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download from MEGA]({mega_link})")
                     else:
-                        await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
+                        await send_message(message.chat.id, "❌ **Error sending file and MEGA upload failed.**")
 
             try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"[{get_current_utc()}] Cleaned up file: {file_path}")
+                os.remove(file_path)
+                logger.info(f"Deleted: {file_path}")
             except Exception as cleanup_error:
-                logger.error(f"[{get_current_utc()}] Failed to clean up file {file_path}: {cleanup_error}")
+                logger.error(f"Cleanup error: {cleanup_error}")
 
         gc.collect()
 
     except Exception as e:
-        logger.error(f"[{get_current_utc()}] Comprehensive error in process_download: {e}", exc_info=True)
+        logger.error(f"Error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
-# Command handlers and main function will follow in the next part...
-
-
 async def process_image_download(message, url):
-    """Handles image download and sends it to Telegram or Dropbox."""
     try:
         await send_message(message.chat.id, "🖼️ Processing Instagram image...")
         logger.info(f"Processing Instagram image URL: {url}")
-        # Process the Instagram image
-        try:
-            result = await process_instagram_image(url)
 
-            # Handle different return formats
-            if isinstance(result, list):
-                file_paths = result
-            elif isinstance(result, tuple) and len(result) >= 2:
-                file_paths = result[0] if isinstance(result[0], list) else [result[0]]
-            else:
-                file_paths = [result] if result else []
+        result = await process_instagram_image(url)
+        if isinstance(result, list):
+            file_paths = result
+        elif isinstance(result, tuple):
+            file_paths = result[0] if isinstance(result[0], list) else [result[0]]
+        else:
+            file_paths = [result]
 
-            if not file_paths or all(not path for path in file_paths):
-                logger.warning("No valid image paths returned from Instagram handler")
-                await send_message(message.chat.id, "❌ **Download failed. No images found.**")
-                return
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                continue
 
-            # Process each image
-            for file_path in file_paths:
-                if not file_path or not os.path.exists(file_path):
-                    logger.warning(f"Image path does not exist: {file_path}")
-                    continue
-
-                # Get file size
-                file_size = os.path.getsize(file_path)
-
-                # Handle case where file is too large for Telegram
-                if file_size > TELEGRAM_FILE_LIMIT:
-                    filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using Dropbox.")
-
-                    # Upload to Dropbox
-                    dropbox_link = await upload_to_dropbox(file_path, filename)
-
-                    if dropbox_link:
-                        logger.info(f"Successfully uploaded image to Dropbox: {dropbox_link}")
-                        await send_message(
-                            message.chat.id,
-                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from Dropbox]({dropbox_link})",
-                            parse_mode="Markdown"
-                        )
-                    else:
-                        logger.warning("Dropbox upload failed")
-                        await send_message(message.chat.id, "❌ **Image download failed.**")
+            size = os.path.getsize(file_path)
+            if size > TELEGRAM_FILE_LIMIT:
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                link = await upload_to_mega(file_path, filename)
+                if link:
+                    await send_message(message.chat.id, f"📸 **Image too large.**\n📥 [Download from MEGA]({link})")
                 else:
-                    # Send image to Telegram
-                    try:
-                        async with aiofiles.open(file_path, "rb") as file:
-                            file_content = await file.read()
-                            await bot.send_photo(message.chat.id, file_content, timeout=60)
-                            logger.info(f"Successfully sent image to Telegram")
-                    except Exception as send_error:
-                        logger.error(f"Error sending image to Telegram: {send_error}")
-                        await send_message(message.chat.id, f"❌ **Error sending image: {str(send_error)}**")
+                    await send_message(message.chat.id, "❌ **Image too large. Upload failed.**")
+            else:
+                async with aiofiles.open(file_path, "rb") as f:
+                    content = await f.read()
+                    await bot.send_photo(message.chat.id, content)
 
-                # Cleanup the file
-                try:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                        logger.info(f"Cleaned up image file: {file_path}")
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to clean up image file {file_path}: {cleanup_error}")
+            os.remove(file_path)
 
-            # Send success message
-            await send_message(message.chat.id, "✅ **Instagram image(s) downloaded successfully!**")
-
-        except Exception as e:
-            logger.error(f"Error processing Instagram image: {e}", exc_info=True)
-            await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`", parse_mode="Markdown")
+        gc.collect()
 
     except Exception as e:
-        logger.error(f"Comprehensive error in process_image_download: {e}", exc_info=True)
-        await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+        logger.error(f"Image download error: {e}", exc_info=True)
+        await send_message(message.chat.id, f"❌ **Failed to download image:** `{e}`")
 
 # Worker for parallel download tasks
 async def worker():
@@ -425,235 +276,6 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
-# Status command handler
-@bot.message_handler(commands=["status"])
-async def handle_status(message):
-    """Shows the current status of the bot and download queue."""
-    try:
-        queue_size = download_queue.qsize()
-        memory_usage = psutil.Process().memory_info().rss / 1024 / 1024  # in MB
-        cpu_percent = psutil.Process().cpu_percent()
-        uptime = time.time() - psutil.Process().create_time()
-        
-        status_text = (
-            "🤖 **Bot Status**\n\n"
-            f"📊 Queue Size: {queue_size} tasks\n"
-            f"💾 Memory Usage: {memory_usage:.1f} MB\n"
-            f"⚡ CPU Usage: {cpu_percent:.1f}%\n"
-            f"⏱️ Uptime: {int(uptime/3600)}h {int((uptime%3600)/60)}m\n"
-            f"👥 Active Workers: {min(3, os.cpu_count() or 1)}\n"
-        )
-        await bot.send_message(message.chat.id, status_text, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        await send_message(message.chat.id, "❌ Error getting bot status")
-
-# Restart command handler (admin only)
-@bot.message_handler(commands=["restart"])
-async def handle_restart(message):
-    """Restarts the bot (admin only)."""
-    ADMIN_IDS = [message.chat.id]  # Add your admin chat IDs here
-    
-    if message.chat.id not in ADMIN_IDS:
-        await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
-        return
-        
-    try:
-        await send_message(message.chat.id, "🔄 Restarting bot...")
-        logger.info("Bot restart initiated by admin")
-        
-        # Clear the download queue
-        while not download_queue.empty():
-            download_queue.get_nowait()
-            download_queue.task_done()
-            
-        # Cleanup temporary files
-        temp_dir = "downloads"  # Adjust to your temp directory
-        if os.path.exists(temp_dir):
-            for file in os.listdir(temp_dir):
-                try:
-                    os.remove(os.path.join(temp_dir, file))
-                except Exception as e:
-                    logger.error(f"Error cleaning up file {file}: {e}")
-        
-        # Restart the bot process
-        os.execv(sys.executable, ['python'] + sys.argv)
-    except Exception as e:
-        logger.error(f"Error during restart: {e}")
-        await send_message(message.chat.id, "❌ Restart failed")
-
-# Stop command handler (admin only)
-@bot.message_handler(commands=["stop"])
-async def handle_stop(message):
-    """Stops the bot (admin only)."""
-    ADMIN_IDS = [message.chat.id]  # Add your admin chat IDs here
-    
-    if message.chat.id not in ADMIN_IDS:
-        await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
-        return
-        
-    try:
-        await send_message(message.chat.id, "🛑 Stopping bot...")
-        logger.info("Bot stop initiated by admin")
-        
-        # Clear the download queue
-        while not download_queue.empty():
-            download_queue.get_nowait()
-            download_queue.task_done()
-            
-        # Stop the bot
-        await bot.stop_polling()
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"Error during stop: {e}")
-        await send_message(message.chat.id, "❌ Stop failed")
-
-# Admin management commands
-@bot.message_handler(commands=["addadmin"])
-async def handle_add_admin(message):
-    """Adds a new admin (super admin only)."""
-    try:
-        # Check if command sender is the default admin
-        if message.from_user.id != DEFAULT_ADMIN:
-            await send_message(message.chat.id, "⛔ This command is restricted to the super administrator.")
-            return
-            
-        # Extract the user ID from the command
-        parts = message.text.split()
-        if len(parts) != 2:
-            await send_message(
-                message.chat.id,
-                "⚠️ Please use the format: /addadmin <user_id>\n"
-                "To get a user's ID, have them send /myid to the bot."
-            )
-            return
-            
-        try:
-            new_admin_id = int(parts[1])
-        except ValueError:
-            await send_message(message.chat.id, "❌ Invalid user ID. Please provide a valid numeric ID.")
-            return
-            
-        # Add the new admin ID to the config
-        if new_admin_id not in ADMIN_IDS:
-            ADMIN_IDS.append(new_admin_id)
-            # Update the config file
-            with open("config.py", "r") as f:
-                lines = f.readlines()
-            
-            with open("config.py", "w") as f:
-                admin_list_updated = False
-                for line in lines:
-                    if line.startswith("ADMIN_IDS = "):
-                        f.write(f"ADMIN_IDS = {ADMIN_IDS}\n")
-                        admin_list_updated = True
-                    else:
-                        f.write(line)
-                
-                if not admin_list_updated:
-                    f.write(f"\nADMIN_IDS = {ADMIN_IDS}\n")
-            
-            await send_message(
-                message.chat.id, 
-                f"✅ Successfully added user ID {new_admin_id} as an admin."
-            )
-        else:
-            await send_message(message.chat.id, "⚠️ This user is already an admin.")
-            
-    except Exception as e:
-        logger.error(f"Error adding admin: {e}")
-        await send_message(message.chat.id, "❌ Error adding admin")
-
-@bot.message_handler(commands=["removeadmin"])
-async def handle_remove_admin(message):
-    """Removes an admin (super admin only)."""
-    try:
-        # Check if command sender is the default admin
-        if message.from_user.id != DEFAULT_ADMIN:
-            await send_message(message.chat.id, "⛔ This command is restricted to the super administrator.")
-            return
-            
-        # Extract the user ID from the command
-        parts = message.text.split()
-        if len(parts) != 2:
-            await send_message(
-                message.chat.id,
-                "⚠️ Please use the format: /removeadmin <user_id>"
-            )
-            return
-            
-        try:
-            admin_id = int(parts[1])
-        except ValueError:
-            await send_message(message.chat.id, "❌ Invalid user ID. Please provide a valid numeric ID.")
-            return
-            
-        # Prevent removing the default admin
-        if admin_id == DEFAULT_ADMIN:
-            await send_message(message.chat.id, "⛔ Cannot remove the super administrator.")
-            return
-            
-        # Remove the admin ID from the config
-        if admin_id in ADMIN_IDS:
-            ADMIN_IDS.remove(admin_id)
-            # Update the config file
-            with open("config.py", "r") as f:
-                lines = f.readlines()
-            
-            with open("config.py", "w") as f:
-                for line in lines:
-                    if line.startswith("ADMIN_IDS = "):
-                        f.write(f"ADMIN_IDS = {ADMIN_IDS}\n")
-                    else:
-                        f.write(line)
-            
-            await send_message(
-                message.chat.id,
-                f"✅ Successfully removed user ID {admin_id} from admins."
-            )
-        else:
-            await send_message(message.chat.id, "⚠️ This user is not an admin.")
-            
-    except Exception as e:
-        logger.error(f"Error removing admin: {e}")
-        await send_message(message.chat.id, "❌ Error removing admin")
-
-@bot.message_handler(commands=["listadmins"])
-async def handle_list_admins(message):
-    """Lists all current admins."""
-    try:
-        # Check if command sender is an admin
-        if message.from_user.id not in ADMIN_IDS:
-            await send_message(message.chat.id, "⛔ This command is restricted to administrators.")
-            return
-            
-        admin_list = "👥 **Current Administrators:**\n\n"
-        for admin_id in ADMIN_IDS:
-            admin_list += f"• `{admin_id}`"
-            if admin_id == DEFAULT_ADMIN:
-                admin_list += " (Super Admin)"
-            admin_list += "\n"
-            
-        await bot.send_message(message.chat.id, admin_list, parse_mode="Markdown")
-            
-    except Exception as e:
-        logger.error(f"Error listing admins: {e}")
-        await send_message(message.chat.id, "❌ Error listing admins")
-
-@bot.message_handler(commands=["myid"])
-async def handle_myid(message):
-    """Shows the user their Telegram ID."""
-    try:
-        await send_message(
-            message.chat.id,
-            f"🆔 Your Telegram ID is: `{message.from_user.id}`"
-        )
-    except Exception as e:
-        logger.error(f"Error getting user ID: {e}")
-        await send_message(message.chat.id, "❌ Error getting your ID")
-
-
-
 # Audio extraction handler
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
@@ -674,12 +296,10 @@ async def handle_image_request(message):
         await send_message(message.chat.id, "⚠️ Please provide an Instagram image URL.")
         return
 
-    # Check if URL is Instagram
     if not PLATFORM_PATTERNS["Instagram"].search(url):
         await send_message(message.chat.id, "⚠️ **This command only works with Instagram image URLs.**")
         return
 
-    # Add to download queue
     await download_queue.put((message, url))
     await send_message(message.chat.id, "🖼️ **Added to image download queue!**")
 
@@ -737,4 +357,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
