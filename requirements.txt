@@ -17,7 +17,6 @@ pylint
 telethon
 asyncio
 nest_asyncio
-psutil
 api.video
 instaloader
 loguru
@@ -33,37 +32,17 @@ fastapi
 flask==3.1.0
 pytelegrambotapi==4.14.0
 tenacity==5.1.5
-psutil
-aiofiles
 rclone
 telegram
-# Core Dependencies
 python-telegram-bot==20.6
 python-dotenv==1.0.0
-
-# Async Libraries
 aiohttp==3.8.5
 aiofiles==23.2.1
 asyncio==3.4.3
-
-# Media Processing
 Pillow==10.0.0
 ffmpeg-python==0.2.0
-
-# Instagram Related
 instaloader==4.10.1
 instagram-private-api==1.6.0.0
 # Removed instagram-private-api-extensions due to conflicts
-
-# Storage
-mega.py==1.0.8
-
-# System Monitoring
-psutil==5.9.5
-
-# Video Processing
-# These will be installed separately in Dockerfile to avoid conflicts
-# imageio==2.31.1
-# moviepy==1.0.3
 instagram_private_api_extensions
 telebot
