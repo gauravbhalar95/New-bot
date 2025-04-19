@@ -90,7 +90,7 @@ async def get_mega_client():
 
 async def upload_to_mega(file_path, filename):
     """
-    Uploads a file to MEGA and returns a shareable link.
+    Uploads a file to MEGA and returns a shareable link using upload() and get_upload_link().
     """
     try:
         mega = await get_mega_client()
@@ -100,37 +100,27 @@ async def upload_to_mega(file_path, filename):
 
         logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
         
-        # Upload file to MEGA
+        # Use the exact method as provided: m.upload('myfile.doc')
         try:
-            uploaded_file = await asyncio.to_thread(mega.upload, file_path)
-            logger.info(f"[{get_current_utc()}] Upload successful, file details: {uploaded_file}")
+            file = await asyncio.to_thread(mega.upload, file_path)
+            logger.info(f"[{get_current_utc()}] Upload successful, file object: {file}")
             
-            if not uploaded_file:
+            if not file:
                 logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
                 return None
                 
-        except Exception as upload_error:
-            logger.error(f"[{get_current_utc()}] Error during file upload to MEGA: {upload_error}")
-            return None
-
-        # Generate sharing link
-        try:
-            share_link = await asyncio.to_thread(mega.get_link, uploaded_file)
+            # Use the exact method as provided: m.get_upload_link(file)
+            share_link = await asyncio.to_thread(mega.get_upload_link, file)
             
             if share_link and isinstance(share_link, str):
                 logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-                
-                # Ensure the link is properly formatted
-                if not share_link.startswith('https://mega.nz/'):
-                    share_link = f"https://mega.nz/{share_link}" if not share_link.startswith('http') else share_link
-                
                 return share_link
             else:
-                logger.error(f"[{get_current_utc()}] Invalid share link generated: {share_link}")
+                logger.error(f"[{get_current_utc()}] Invalid share link generated")
                 return None
                 
-        except Exception as link_error:
-            logger.error(f"[{get_current_utc()}] Error generating share link: {link_error}")
+        except Exception as upload_error:
+            logger.error(f"[{get_current_utc()}] Error during upload or link generation: {upload_error}")
             return None
 
     except Exception as e:
