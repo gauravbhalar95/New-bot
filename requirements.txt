@@ -38,3 +38,4 @@ aiofiles
 rclone
 telegram
 instagram_private_api
+instagram_private_api_extensions
