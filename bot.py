@@ -90,7 +90,8 @@ async def get_mega_client():
 
 async def upload_to_mega(file_path, filename):
     """
-    Uploads a file to MEGA and returns a shareable link using upload() and get_upload_link().
+    Uploads a file to MEGA and returns a shareable link in format:
+    https://mega.nz/file/[ID]#[KEY]
     """
     try:
         mega = await get_mega_client()
@@ -100,27 +101,43 @@ async def upload_to_mega(file_path, filename):
 
         logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
         
-        # Use the exact method as provided: m.upload('myfile.doc')
         try:
+            # Upload file using the provided method
             file = await asyncio.to_thread(mega.upload, file_path)
-            logger.info(f"[{get_current_utc()}] Upload successful, file object: {file}")
+            logger.info(f"[{get_current_utc()}] Upload successful, getting file info")
             
             if not file:
                 logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
                 return None
+
+            # Get the file link with decryption key
+            try:
+                # Get the file handle
+                file_handle = file['h'] if isinstance(file, dict) else file
                 
-            # Use the exact method as provided: m.get_upload_link(file)
-            share_link = await asyncio.to_thread(mega.get_upload_link, file)
-            
-            if share_link and isinstance(share_link, str):
-                logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-                return share_link
-            else:
-                logger.error(f"[{get_current_utc()}] Invalid share link generated")
+                # Get the file link with key
+                share_link = await asyncio.to_thread(mega.get_link, file_handle)
+                
+                if share_link and isinstance(share_link, str):
+                    logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
+                    
+                    # Ensure link is in correct format
+                    if not share_link.startswith('https://mega.nz/file/'):
+                        # If link doesn't contain 'file/', add it
+                        if '/file/' not in share_link:
+                            share_link = share_link.replace('https://mega.nz/', 'https://mega.nz/file/')
+                    
+                    return share_link
+                else:
+                    logger.error(f"[{get_current_utc()}] Invalid share link format")
+                    return None
+                    
+            except Exception as link_error:
+                logger.error(f"[{get_current_utc()}] Error generating share link: {link_error}")
                 return None
                 
         except Exception as upload_error:
-            logger.error(f"[{get_current_utc()}] Error during upload or link generation: {upload_error}")
+            logger.error(f"[{get_current_utc()}] Error during upload: {upload_error}")
             return None
 
     except Exception as e:
