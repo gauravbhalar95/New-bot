@@ -1,4 +1,3 @@
-# Use Python 3.9 slim image as base
 FROM python:3.9-slim
 
 # Set environment variables
@@ -27,8 +26,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies with specific versions
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir imageio==2.31.1 && \
+    python -m pip install --no-cache-dir moviepy==1.0.3 && \
+    python -m pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
@@ -45,9 +46,6 @@ RUN chmod -R 755 /app && \
     chmod -R 755 /var/run && \
     mkdir -p /app/downloads && \
     chmod 777 /app/downloads
-
-# Expose necessary ports (if any)
-# EXPOSE 8000
 
 # Command to run supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
