@@ -1,46 +1,34 @@
-# Use Python 3.10 slim image as base
+# Use official Python image
 FROM python:3.10-slim
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_DEFAULT_TIMEOUT=100
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    git \
-    curl \
-    gcc \
-    python3-dev \
-    libffi-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
+# Set the working directory
 WORKDIR /app
 
-# Create necessary directories
-RUN mkdir -p /app/downloads /app/logs && \
-    chmod 777 /app/downloads /app/logs
-
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade yt-dlp
 
-# Copy the rest of the application
-COPY . .
+# Copy all project files
+COPY . /app
 
-# Set proper permissions
-RUN chmod -R 755 /app
+# Make scripts executable
+RUN chmod +x /app/update.sh
 
-# Create a non-root user
-RUN useradd -m botuser && \
-    chown -R botuser:botuser /app
-USER botuser
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production \
+    PORT=8080
 
-# Command to run the bot
-CMD ["python3", "bot.py"]
+# Expose the port for Flask
+EXPOSE 8080
+
+CMD bash -c "/app/update.sh && \
+    python webhook.py & \
+    sleep 5 && \
+    python bot.py"
