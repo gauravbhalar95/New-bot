@@ -37,3 +37,4 @@ psutil
 aiofiles
 rclone
 telegram
+instagram_private_api
