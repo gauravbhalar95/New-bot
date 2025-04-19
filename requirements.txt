@@ -3,7 +3,7 @@ requests
 beautifulsoup4
 lxml
 urllib3
-moviepy
+moviepy==0.2.3.2
 imageio[ffmpeg]
 ffmpeg
 pytube
