@@ -2,6 +2,7 @@ import logging
 import gc
 import asyncio
 from pathlib import Path
+from typing import Tuple, Optional
 from urllib.parse import urlparse
 import yt_dlp
 from config import DOWNLOAD_DIR, INSTAGRAM_FILE
@@ -41,7 +42,7 @@ def download_progress_hook(d: dict) -> None:
         logger.info(f"✅ Download finished: {d['filename']}")
 
 # Instagram Video Downloader
-async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
+async def process_instagram(url: str) -> Tuple[Optional[str], int, Optional[str]]:
     """Download Instagram video asynchronously and return its path, size, and any errors."""
 
     # Clean URL to avoid unwanted parameters (Keep query parameters)
@@ -102,7 +103,6 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
         logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
         return None, 0, str(e)
 
-# Send Video to User
 async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     """Send the downloaded Instagram video to the specified user."""
     try:
@@ -112,7 +112,6 @@ async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     except Exception as e:
         logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
 
-# Cleanup Downloaded Files
 def cleanup_video(video_path: str) -> None:
     """Remove the downloaded video file to free up space."""
     video_file = Path(video_path)
