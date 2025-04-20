@@ -14,6 +14,8 @@ DEFAULT_ADMIN = 1302277958  # Your Telegram ID as the default admin
 # In config.py
 MAX_CONCURRENT_DOWNLOADS = 2
 
+# Size of chunks for streaming operations (8MB)
+CHUNK_SIZE = 8 * 1024 * 1024  # 8MB in bytes
 
 MAX_WORKERS = "3"
 
