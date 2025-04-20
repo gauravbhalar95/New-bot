@@ -1,11 +1,13 @@
 import os
 import gc
+import json
 import logging
 import asyncio
 import aiofiles
 import re
-import signal
 from datetime import datetime
+from urllib.error import URLError
+from socket import timeout
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
@@ -27,21 +29,45 @@ logger = setup_logging(logging.DEBUG)
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 
-# MEGA client setup with retry mechanism
+# MEGA client setup with improved error handling
 mega = Mega()
 m = None
 
-async def initialize_mega():
+async def initialize_mega(max_retries=3, retry_delay=10):
+    """Initialize MEGA client with retry mechanism."""
     global m
-    try:
-        m = mega.login(MEGA_EMAIL, MEGA_PASSWORD)
-        logger.info("Successfully logged in to MEGA")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to login to MEGA: {e}")
-        return False
+    for attempt in range(max_retries):
+        try:
+            mega_instance = Mega()
+            m = mega_instance.login(
+                email=MEGA_EMAIL.strip(),  # Ensure no whitespace
+                password=MEGA_PASSWORD.strip()  # Ensure no whitespace
+            )
+            
+            # Verify the connection
+            try:
+                details = m.get_user()
+                if details:
+                    logger.info(f"Successfully logged in to MEGA (Attempt {attempt + 1}/{max_retries})")
+                    return True
+            except Exception as e:
+                logger.error(f"Failed to verify MEGA connection: {e}")
+                continue
 
-# Platform patterns and handlers remain the same
+        except json.JSONDecodeError as e:
+            logger.error(f"MEGA API returned invalid JSON (Attempt {attempt + 1}/{max_retries}): {e}")
+        except (URLError, timeout) as e:
+            logger.error(f"Network error connecting to MEGA (Attempt {attempt + 1}/{max_retries}): {e}")
+        except Exception as e:
+            logger.error(f"Failed to login to MEGA (Attempt {attempt + 1}/{max_retries}): {e}")
+        
+        if attempt < max_retries - 1:
+            logger.info(f"Retrying MEGA initialization in {retry_delay} seconds...")
+            await asyncio.sleep(retry_delay)
+    
+    return False
+
+# Platform patterns for URL detection
 PLATFORM_PATTERNS = {
     "YouTube": re.compile(r"(youtube\.com|youtu\.be)"),
     "Instagram": re.compile(r"instagram\.com"),
@@ -50,6 +76,7 @@ PLATFORM_PATTERNS = {
     "Adult": re.compile(r"(pornhub\.com|xvideos\.com|redtube\.com|xhamster\.com|xnxx\.com)"),
 }
 
+# Platform handlers mapping
 PLATFORM_HANDLERS = {
     "YouTube": process_youtube,
     "Instagram": process_instagram,
@@ -63,7 +90,11 @@ async def check_mega_connection():
     global m
     if m is None:
         return await initialize_mega()
-    return True
+    try:
+        m.get_user()  # Test connection
+        return True
+    except:
+        return await initialize_mega()
 
 async def send_message(chat_id, text):
     """Send a message with error handling."""
@@ -79,30 +110,43 @@ def detect_platform(url):
             return platform
     return None
 
-async def upload_to_mega(file_path, filename):
-    """Upload file to MEGA with improved error handling."""
-    try:
-        if not await check_mega_connection():
-            logger.error("MEGA client not initialized")
-            return None
+async def upload_to_mega(file_path, filename, max_retries=3):
+    """Upload file to MEGA with retry mechanism."""
+    for attempt in range(max_retries):
+        try:
+            if not await check_mega_connection():
+                logger.error("MEGA client not initialized")
+                if attempt < max_retries - 1:
+                    continue
+                return None
 
-        # Direct upload without folder
-        file = m.upload(file_path)
-        
-        # Get upload link directly
-        file_url = m.get_upload_link(file)
-        return file_url
+            # Direct upload
+            try:
+                file = m.upload(file_path)
+                file_url = m.get_upload_link(file)
+                if file_url:
+                    logger.info(f"Successfully uploaded file to MEGA: {filename}")
+                    return file_url
+            except Exception as e:
+                logger.error(f"Upload error: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return None
 
-    except Exception as e:
-        logger.error(f"MEGA upload error: {e}")
-        await check_mega_connection()  # Try to reconnect on error
-        return None
+        except Exception as e:
+            logger.error(f"MEGA upload error (Attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(5)
+                continue
+
+    return None
 
 async def cleanup_temp_files(file_paths):
     """Clean up temporary downloaded files."""
     for file_path in file_paths:
         try:
-            if os.path.exists(file_path):
+            if file_path and os.path.exists(file_path):
                 os.remove(file_path)
                 logger.info(f"Cleaned up temporary file: {file_path}")
         except Exception as e:
@@ -128,14 +172,95 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             await send_message(message.chat.id, "⚠️ **Unsupported URL.**")
             return
 
-        # Process based on type (rest of the function remains the same)
-        # ... (previous process_download implementation)
+        # Process based on type
+        if is_video_trim:
+            file_path, file_size = await process_video_trim(url, start_time, end_time)
+            file_paths = [file_path] if file_path else []
+            download_url = None
+
+        elif is_audio_trim:
+            file_path, file_size = await process_audio_trim(url, start_time, end_time)
+            file_paths = [file_path] if file_path else []
+            download_url = None
+
+        elif is_audio:
+            result = await extract_audio_ffmpeg(url)
+            if isinstance(result, tuple):
+                file_path, file_size = result
+                file_paths = [file_path] if file_path else []
+                download_url = None
+            else:
+                file_path, file_size, download_url = result, None, None
+                file_paths = [file_path] if file_path else []
+
+        else:
+            if platform == "Instagram":
+                if "/reel/" in url or "/tv/" in url:
+                    result = await process_instagram(url)
+                else:
+                    result = await process_instagram_image(url)
+            else:
+                result = await PLATFORM_HANDLERS[platform](url)
+
+            if isinstance(result, tuple) and len(result) >= 3:
+                file_paths, file_size, download_url = result
+                if not isinstance(file_paths, list):
+                    file_paths = [file_paths]
+            elif isinstance(result, tuple):
+                file_paths, file_size = result
+                if not isinstance(file_paths, list):
+                    file_paths = [file_paths]
+                download_url = None
+            else:
+                file_paths = [result] if isinstance(result, str) else result
+                file_size = None
+                download_url = None
+
+        if not file_paths or all(not path for path in file_paths):
+            await send_message(message.chat.id, "❌ **Download failed. No media found.**")
+            return
+
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                continue
+
+            file_size = file_size or os.path.getsize(file_path)
+            if file_size > TELEGRAM_FILE_LIMIT:
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                mega_link = await upload_to_mega(file_path, filename)
+
+                if mega_link:
+                    await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download from MEGA]({mega_link})")
+                elif download_url:
+                    await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download link]({download_url})")
+                else:
+                    await send_message(message.chat.id, "❌ **File too large. MEGA upload failed.**")
+
+            else:
+                try:
+                    async with aiofiles.open(file_path, "rb") as file:
+                        content = await file.read()
+                        if len(content) > TELEGRAM_FILE_LIMIT:
+                            raise ValueError("File exceeds Telegram limit")
+
+                        if is_audio or is_audio_trim:
+                            await bot.send_audio(message.chat.id, content, timeout=600)
+                        else:
+                            await bot.send_video(message.chat.id, content, supports_streaming=True, timeout=600)
+
+                except Exception as send_error:
+                    logger.error(f"Send error: {send_error}")
+                    filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                    mega_link = await upload_to_mega(file_path, filename)
+                    if mega_link:
+                        await send_message(message.chat.id, f"⚠️ **File too large.**\n📥 [Download from MEGA]({mega_link})")
+                    else:
+                        await send_message(message.chat.id, "❌ **Error sending file and MEGA upload failed.**")
 
     except Exception as e:
         logger.error(f"Error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
     finally:
-        # Clean up any remaining files
         await cleanup_temp_files(file_paths)
         gc.collect()
 
@@ -147,8 +272,30 @@ async def process_image_download(message, url):
         logger.info(f"Processing Instagram image URL: {url}")
 
         result = await process_instagram_image(url)
-        # ... (rest of the function remains the same)
-        
+        if isinstance(result, list):
+            file_paths = result
+        elif isinstance(result, tuple):
+            file_paths = result[0] if isinstance(result[0], list) else [result[0]]
+        else:
+            file_paths = [result]
+
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                continue
+
+            size = os.path.getsize(file_path)
+            if size > TELEGRAM_FILE_LIMIT:
+                filename = f"{message.chat.id}_{os.path.basename(file_path)}"
+                link = await upload_to_mega(file_path, filename)
+                if link:
+                    await send_message(message.chat.id, f"📸 **Image too large.**\n📥 [Download from MEGA]({link})")
+                else:
+                    await send_message(message.chat.id, "❌ **Image too large. Upload failed.**")
+            else:
+                async with aiofiles.open(file_path, "rb") as f:
+                    content = await f.read()
+                    await bot.send_photo(message.chat.id, content)
+
     except Exception as e:
         logger.error(f"Image download error: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **Failed to download image:** `{e}`")
@@ -174,7 +321,7 @@ async def worker():
         finally:
             download_queue.task_done()
 
-# Message handlers remain the same
+# Message handlers
 @bot.message_handler(commands=["start", "help"])
 async def send_welcome(message):
     """Sends welcome message with bot instructions."""
@@ -195,7 +342,6 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
-# Command handlers remain the same
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
     """Handles audio extraction requests."""
@@ -260,15 +406,20 @@ async def handle_message(message):
 
 async def main():
     """Runs the bot and initializes worker processes with automatic restart."""
-    while True:  # Continuous restart loop
+    while True:
         try:
             logger.info("Starting bot...")
             
-            # Initialize MEGA
-            if not await initialize_mega():
-                logger.error("Failed to initialize MEGA, retrying in 10 seconds...")
-                await asyncio.sleep(10)
-                continue
+            # Initialize MEGA with extended timeout and retries
+            mega_init_success = False
+            for _ in range(3):
+                if await initialize_mega(max_retries=3, retry_delay=10):
+                    mega_init_success = True
+                    break
+                await asyncio.sleep(30)
+            
+            if not mega_init_success:
+                logger.error("Could not initialize MEGA after multiple attempts")
             
             # Initialize workers
             num_workers = min(3, os.cpu_count() or 1)
@@ -286,12 +437,12 @@ async def main():
             for task in worker_tasks:
                 if not task.done():
                     task.cancel()
-                    
+            
             try:
                 await asyncio.gather(*worker_tasks, return_exceptions=True)
             except Exception:
                 pass
-                
+            
             # Wait before restart
             await asyncio.sleep(10)
             logger.info("Attempting to restart bot...")
@@ -304,21 +455,6 @@ async def main():
                 except asyncio.QueueEmpty:
                     break
 
-def signal_handler(sig, frame):
-    """Handle shutdown signals."""
-    logger.info(f"Received signal {sig}")
-    # Cancel all tasks
-    for task in asyncio.all_tasks():
-        task.cancel()
-    
-    # Exit gracefully
-    logger.info("Shutting down gracefully...")
-    exit(0)
-
 if __name__ == "__main__":
-    # Register signal handlers
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, signal_handler)
-    
     # Run the bot
     asyncio.run(main())
