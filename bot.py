@@ -113,28 +113,15 @@ async def upload_to_mega(file_path, filename):
                 logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
                 return None
 
-            # Get the file link with decryption key
+            # Get the shareable link
             try:
-                # Get the file handle
-                file_handle = file['h'] if isinstance(file, dict) else file
-
-                # Get the file link with key
-                share_link = await asyncio.to_thread(mega.get_link, file_handle)
-
+                share_link = await asyncio.to_thread(mega.get_link, file)
                 if share_link and isinstance(share_link, str):
                     logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-
-                    # Ensure link is in correct format
-                    if not share_link.startswith('https://mega.nz/file/'):
-                        # If link doesn't contain 'file/', add it
-                        if '/file/' not in share_link:
-                            share_link = share_link.replace('https://mega.nz/', 'https://mega.nz/file/')
-
                     return share_link
                 else:
                     logger.error(f"[{get_current_utc()}] Invalid share link format")
                     return None
-
             except Exception as link_error:
                 logger.error(f"[{get_current_utc()}] Error generating share link: {link_error}")
                 return None
@@ -146,6 +133,7 @@ async def upload_to_mega(file_path, filename):
     except Exception as e:
         logger.error(f"[{get_current_utc()}] Unexpected error in upload_to_mega: {e}")
         return None
+
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or MEGA."""
