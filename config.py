@@ -17,6 +17,8 @@ MAX_CONCURRENT_DOWNLOADS = 2
 # Size of chunks for streaming operations (8MB)
 CHUNK_SIZE = 8 * 1024 * 1024  # 8MB in bytes
 
+MAX_RETRIES = "4"
+
 MAX_WORKERS = "3"
 
 API_TOKEN = os.getenv("BOT_TOKEN")  # Get from @BotFather
