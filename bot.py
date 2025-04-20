@@ -81,10 +81,13 @@ async def get_mega_client():
     if mega is None:
         try:
             m = Mega()
+            logger.info(f"[{get_current_utc()}] Attempting MEGA login with email: {MEGA_EMAIL}")
             mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
             logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
         except Exception as e:
-            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}")
+            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)  # Include traceback
+            if "Expecting value" in str(e):
+                logger.error(f"[{get_current_utc()}] Possible issue with MEGA API or credentials.  Check MEGA account status and credentials.")
             return None
     return mega
 
