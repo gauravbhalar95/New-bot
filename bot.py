@@ -70,15 +70,11 @@ async def upload_to_mega(file_path, filename):
             logger.error("MEGA client not initialized")
             return None
 
-        folder_name = "telegram_uploads"
-        folders = m.get_files()
-        folder = next((f for f in folders.values() if f['type'] == 1 and f['name'] == folder_name), None)
-
-        if not folder:
-            folder = m.create_folder(folder_name)
-
-        file = m.upload(file_path, folder[0])
-        file_url = m.get_link(file)
+        # Direct upload without folder
+        file = m.upload(file_path)
+        
+        # Get upload link directly
+        file_url = m.get_upload_link(file)
         return file_url
 
     except Exception as e:
