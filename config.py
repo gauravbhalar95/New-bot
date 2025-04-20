@@ -11,6 +11,9 @@ ADMIN_IDS = [
 DEFAULT_ADMIN = 1302277958  # Your Telegram ID as the default admin
 
 
+# In config.py
+MAX_CONCURRENT_DOWNLOADS = 2
+
 
 MAX_WORKERS = "3"
 
