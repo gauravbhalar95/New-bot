@@ -13,9 +13,9 @@ from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
 from config import (
-    API_TOKEN, 
-    TELEGRAM_FILE_LIMIT, 
-    MEGA_EMAIL, 
+    API_TOKEN,
+    TELEGRAM_FILE_LIMIT,
+    MEGA_EMAIL,
     MEGA_PASSWORD,
     DEFAULT_ADMIN,
     ADMIN_IDS
@@ -304,6 +304,8 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
     except Exception as e:
         logger.error(f"[{get_current_utc()}] Comprehensive error in process_download: {e}", exc_info=True)
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
+
+
 
 async def process_image_download(message, url):
     """Handles image download and sends it to Telegram or Gofile."""
