@@ -5,7 +5,7 @@ import logging
 import asyncio
 import aiofiles
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.error import URLError
 from socket import timeout
 from mega import Mega
@@ -22,8 +22,17 @@ from handlers.trim_handlers import process_video_trim, process_audio_trim
 from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
 
-# Logging setup
+# Logging setup with UTC timestamp
+class UTCFormatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, timezone.utc)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+
 logger = setup_logging(logging.DEBUG)
+for handler in logger.handlers:
+    handler.setFormatter(UTCFormatter('%(asctime)s - %(levelname)s - %(message)s'))
 
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
@@ -40,8 +49,8 @@ async def initialize_mega(max_retries=3, retry_delay=10):
         try:
             mega_instance = Mega()
             m = mega_instance.login(
-                email=MEGA_EMAIL.strip(),  # Ensure no whitespace
-                password=MEGA_PASSWORD.strip()  # Ensure no whitespace
+                email=MEGA_EMAIL.strip(),
+                password=MEGA_PASSWORD.strip()
             )
             
             # Verify the connection
@@ -427,8 +436,8 @@ async def main():
             for _ in range(num_workers):
                 worker_tasks.append(asyncio.create_task(worker()))
             
-            # Start polling with timeout and retry
-            await bot.infinity_polling(timeout=60, retry_after=5)
+            # Start polling with only timeout parameter
+            await bot.infinity_polling(timeout=60)
             
         except Exception as e:
             logger.error(f"Bot crashed with error: {e}", exc_info=True)
@@ -456,5 +465,10 @@ async def main():
                     break
 
 if __name__ == "__main__":
-    # Run the bot
-    asyncio.run(main())
+    try:
+        # Run the bot
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}", exc_info=True)
