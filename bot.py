@@ -427,6 +427,32 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
+# Command: /meganz <username> <password>
+@bot.message_handler(commands=['meganz'])
+def login_mega(message):
+    global mega_client
+    try:
+        # Parse credentials
+        args = message.text.split()
+        if len(args) != 3:
+            bot.reply_to(message, "Usage: /meganz <username> <password>")
+            return
+
+        username, password = args[1], args[2]
+
+        # Initialize Mega client and login
+        mega = Mega()
+        mega_client = mega.login(username, password)
+
+        # Save credentials for future sessions
+        user_credentials['username'] = username
+        user_credentials['password'] = password
+
+        bot.reply_to(message, "✅ Logged into Mega.nz successfully!")
+    except Exception as e:
+        logger.error(f"Error logging into Mega.nz: {e}")
+        bot.reply_to(message, f"❌ Failed to log in: {e}")
+
 # Audio extraction handler
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
