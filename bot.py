@@ -76,7 +76,6 @@ def detect_platform(url):
     return None
 
 async def get_mega_client():
-    """Initializes or returns the MEGA client."""
     global mega
     if mega is None:
         try:
@@ -85,9 +84,9 @@ async def get_mega_client():
             mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
             logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
         except Exception as e:
-            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)  # Include traceback
+            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)
             if "Expecting value" in str(e):
-                logger.error(f"[{get_current_utc()}] Possible issue with MEGA API or credentials.  Check MEGA account status and credentials.")
+                logger.error(f"[{get_current_utc()}] Possible issue with MEGA API or credentials.")
             return None
     return mega
 
