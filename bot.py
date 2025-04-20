@@ -62,132 +62,70 @@ def detect_platform(url):
     return None
 
 
-async def upload_to_mega(file_path, filename, max_retries=3):
+async def upload_to_gofile(file_path, filename):
     """
-    Uploads a file to MEGA.nz with retry logic and returns a shareable link.
+    Uploads a file to Gofile.io and returns a shareable link.
     
     Args:
         file_path (str): Path to the file to upload
-        filename (str): Name to use for the file in MEGA
-        max_retries (int): Maximum number of retry attempts
+        filename (str): Name for the file
         
     Returns:
-        str: Shareable link to the uploaded file or None if upload fails
+        str: Shareable link to the uploaded file
     """
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Use run_in_executor to run the blocking MEGA operations in a thread pool
-            loop = asyncio.get_event_loop()
-            
-            # Login to MEGA with improved error handling
-            try:
-                # Create a fresh mega instance each attempt to avoid stale sessions
-                mega_instance = Mega()
-                
-                # Log with credentials masked for security in logs
-                masked_email = MEGA_EMAIL[0:3] + "***" + MEGA_EMAIL[-3:] if len(MEGA_EMAIL) > 6 else "***@***"
-                logger.info(f"Attempting MEGA login with {masked_email} (attempt {retry_count+1}/{max_retries})")
-                
-                # Actual login
-                mega_instance = await loop.run_in_executor(
-                    None, 
-                    lambda: mega_instance.login(MEGA_EMAIL, MEGA_PASSWORD)
-                )
-                logger.info("Successfully logged into MEGA")
-                
-            except Exception as auth_error:
-                error_details = str(auth_error)
-                logger.error(f"MEGA authentication failed: {error_details}")
-                
-                # Check for specific error conditions
-                if "Invalid email" in error_details:
-                    logger.error("Email appears to be invalid. Check your MEGA_EMAIL in config.")
-                    return None  # No point retrying with invalid email
-                    
-                elif "Invalid password" in error_details:
-                    logger.error("Password appears to be invalid. Check your MEGA_PASSWORD in config.")
-                    return None  # No point retrying with invalid password
-                    
-                elif any(term in error_details.lower() for term in ["blocked", "rate", "limit", "too many"]):
-                    wait_time = 60 * (retry_count + 1)  # Exponential backoff
-                    logger.warning(f"Possible rate limiting detected, waiting {wait_time}s before retry")
-                    await asyncio.sleep(wait_time)
-                else:
-                    # Generic backoff for other errors
-                    await asyncio.sleep(5 * (retry_count + 1))
-                
-                retry_count += 1
-                if retry_count < max_retries:
-                    logger.info(f"Retrying MEGA authentication (attempt {retry_count+1}/{max_retries})")
-                    continue
-                else:
-                    logger.error("Maximum retry attempts reached for MEGA authentication")
-                    return None
-            
-            # Upload the file
-            try:
-                logger.info(f"Uploading file to MEGA: {os.path.basename(file_path)}")
-                upload_response = await loop.run_in_executor(
-                    None,
-                    lambda: mega_instance.upload(file_path, dest_filename=filename)
-                )
-                logger.info(f"File uploaded to MEGA successfully")
-            except Exception as upload_error:
-                error_details = str(upload_error)
-                logger.error(f"MEGA upload error: {error_details}")
-                
-                if any(term in error_details.lower() for term in ["quota", "storage", "space"]):
-                    logger.error("MEGA storage quota may be exceeded")
-                    return None  # No point retrying if quota exceeded
-                    
-                retry_count += 1
-                if retry_count < max_retries:
-                    wait_time = 10 * (retry_count + 1)
-                    logger.info(f"Retrying upload in {wait_time}s (attempt {retry_count+1}/{max_retries})")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    logger.error("Maximum retry attempts reached for MEGA upload")
-                    return None
-            
-            # Get the public link
-            try:
-                logger.info("Generating MEGA public link")
-                file_link = await loop.run_in_executor(
-                    None,
-                    lambda: mega_instance.get_upload_link(upload_response)
-                )
-                logger.info(f"MEGA link generated successfully")
-                return file_link
-            except Exception as link_error:
-                error_details = str(link_error)
-                logger.error(f"Error generating MEGA link: {error_details}")
-                
-                retry_count += 1
-                if retry_count < max_retries:
-                    wait_time = 5 * (retry_count + 1)
-                    logger.info(f"Retrying link generation in {wait_time}s (attempt {retry_count+1}/{max_retries})")
-                    await asyncio.sleep(wait_time)
-                    continue
-                else:
-                    logger.error("Maximum retry attempts reached for MEGA link generation")
-                    return None
+    try:
+        logger.info(f"Uploading file to Gofile: {os.path.basename(file_path)}")
         
-        except Exception as e:
-            logger.error(f"Unexpected MEGA upload error: {e}", exc_info=True)
-            retry_count += 1
-            if retry_count < max_retries:
-                wait_time = 15 * retry_count
-                logger.info(f"Retrying entire MEGA process in {wait_time}s (attempt {retry_count+1}/{max_retries})")
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error("Maximum retry attempts reached for MEGA process")
-                return None
-    
-    return None  # If we've exhausted all retries
-
+        # Get the Gofile server
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.gofile.io/getServer") as response:
+                if response.status != 200:
+                    logger.error(f"Failed to get Gofile server: {response.status}")
+                    return None
+                    
+                server_data = await response.json()
+                if server_data.get("status") != "ok":
+                    logger.error(f"Gofile server response error: {server_data}")
+                    return None
+                    
+                server = server_data.get("data", {}).get("server")
+                if not server:
+                    logger.error("No Gofile server available")
+                    return None
+                
+                logger.info(f"Using Gofile server: {server}")
+                
+                # Upload the file
+                upload_url = f"https://{server}.gofile.io/uploadFile"
+                
+                data = aiohttp.FormData()
+                data.add_field('file', 
+                              open(file_path, 'rb'),
+                              filename=filename,
+                              content_type='application/octet-stream')
+                
+                async with session.post(upload_url, data=data) as upload_response:
+                    if upload_response.status != 200:
+                        logger.error(f"Failed to upload to Gofile: {upload_response.status}")
+                        return None
+                        
+                    upload_data = await upload_response.json()
+                    if upload_data.get("status") != "ok":
+                        logger.error(f"Gofile upload response error: {upload_data}")
+                        return None
+                        
+                    file_code = upload_data.get("data", {}).get("code")
+                    if not file_code:
+                        logger.error("No file code in Gofile response")
+                        return None
+                    
+                    download_page = f"https://gofile.io/d/{file_code}"
+                    logger.info(f"File uploaded to Gofile: {download_page}")
+                    return download_page
+                    
+    except Exception as e:
+        logger.error(f"Error uploading to Gofile: {e}", exc_info=True)
+        return None
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
     """Handles video/audio download and sends it to Telegram or MEGA."""
