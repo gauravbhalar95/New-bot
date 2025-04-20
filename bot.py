@@ -2,13 +2,13 @@ import os
 import gc
 import logging
 import asyncio
+import aiohttp
 import aiofiles
 import re
-from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 
 # Import local modules
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, MEGA_EMAIL, MEGA_PASSWORD
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
 from handlers.facebook_handlers import process_facebook
@@ -24,9 +24,6 @@ logger = setup_logging(logging.DEBUG)
 # Async Telegram bot setup
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
-
-# MEGA client setup
-mega = Mega()
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
@@ -62,73 +59,114 @@ def detect_platform(url):
     return None
 
 
-async def upload_to_gofile(file_path, filename):
+async def upload_to_gofile(file_path, filename, max_retries=3):
     """
     Uploads a file to Gofile.io and returns a shareable link.
     
     Args:
         file_path (str): Path to the file to upload
         filename (str): Name for the file
+        max_retries (int): Maximum number of retry attempts
         
     Returns:
         str: Shareable link to the uploaded file
     """
-    try:
-        logger.info(f"Uploading file to Gofile: {os.path.basename(file_path)}")
-        
-        # Get the Gofile server
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.gofile.io/getServer") as response:
-                if response.status != 200:
-                    logger.error(f"Failed to get Gofile server: {response.status}")
-                    return None
-                    
-                server_data = await response.json()
-                if server_data.get("status") != "ok":
-                    logger.error(f"Gofile server response error: {server_data}")
-                    return None
-                    
-                server = server_data.get("data", {}).get("server")
-                if not server:
-                    logger.error("No Gofile server available")
-                    return None
-                
-                logger.info(f"Using Gofile server: {server}")
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            logger.info(f"Uploading file to Gofile: {os.path.basename(file_path)} (attempt {retry_count+1}/{max_retries})")
+            
+            # Get the Gofile server
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get("https://api.gofile.io/getServer") as response:
+                        if response.status != 200:
+                            logger.error(f"Failed to get Gofile server: {response.status}")
+                            retry_count += 1
+                            await asyncio.sleep(5 * (retry_count))
+                            continue
+                            
+                        server_data = await response.json()
+                        if server_data.get("status") != "ok":
+                            logger.error(f"Gofile server response error: {server_data}")
+                            retry_count += 1
+                            await asyncio.sleep(5 * (retry_count))
+                            continue
+                            
+                        server = server_data.get("data", {}).get("server")
+                        if not server:
+                            logger.error("No Gofile server available")
+                            retry_count += 1
+                            await asyncio.sleep(5 * (retry_count))
+                            continue
+                        
+                        logger.info(f"Using Gofile server: {server}")
+                except Exception as server_error:
+                    logger.error(f"Error getting Gofile server: {server_error}")
+                    retry_count += 1
+                    await asyncio.sleep(5 * (retry_count))
+                    continue
                 
                 # Upload the file
-                upload_url = f"https://{server}.gofile.io/uploadFile"
-                
-                data = aiohttp.FormData()
-                data.add_field('file', 
-                              open(file_path, 'rb'),
-                              filename=filename,
-                              content_type='application/octet-stream')
-                
-                async with session.post(upload_url, data=data) as upload_response:
-                    if upload_response.status != 200:
-                        logger.error(f"Failed to upload to Gofile: {upload_response.status}")
-                        return None
-                        
-                    upload_data = await upload_response.json()
-                    if upload_data.get("status") != "ok":
-                        logger.error(f"Gofile upload response error: {upload_data}")
-                        return None
-                        
-                    file_code = upload_data.get("data", {}).get("code")
-                    if not file_code:
-                        logger.error("No file code in Gofile response")
-                        return None
+                try:
+                    upload_url = f"https://{server}.gofile.io/uploadFile"
                     
-                    download_page = f"https://gofile.io/d/{file_code}"
-                    logger.info(f"File uploaded to Gofile: {download_page}")
-                    return download_page
+                    # Read file content
+                    async with aiofiles.open(file_path, 'rb') as f:
+                        file_data = await f.read()
                     
-    except Exception as e:
-        logger.error(f"Error uploading to Gofile: {e}", exc_info=True)
-        return None
+                    # Prepare form data
+                    data = aiohttp.FormData()
+                    data.add_field('file', 
+                                  file_data,
+                                  filename=filename,
+                                  content_type='application/octet-stream')
+                    
+                    async with session.post(upload_url, data=data, timeout=600) as upload_response:
+                        if upload_response.status != 200:
+                            logger.error(f"Failed to upload to Gofile: {upload_response.status}")
+                            retry_count += 1
+                            await asyncio.sleep(10 * (retry_count))
+                            continue
+                            
+                        upload_data = await upload_response.json()
+                        if upload_data.get("status") != "ok":
+                            logger.error(f"Gofile upload response error: {upload_data}")
+                            retry_count += 1
+                            await asyncio.sleep(10 * (retry_count))
+                            continue
+                            
+                        file_code = upload_data.get("data", {}).get("code")
+                        if not file_code:
+                            logger.error("No file code in Gofile response")
+                            retry_count += 1
+                            await asyncio.sleep(5 * (retry_count))
+                            continue
+                        
+                        download_page = f"https://gofile.io/d/{file_code}"
+                        logger.info(f"File uploaded to Gofile: {download_page}")
+                        return download_page
+                except Exception as upload_error:
+                    logger.error(f"Error uploading to Gofile: {upload_error}")
+                    retry_count += 1
+                    await asyncio.sleep(15 * (retry_count))
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Comprehensive error in upload_to_gofile: {e}", exc_info=True)
+            retry_count += 1
+            if retry_count < max_retries:
+                await asyncio.sleep(20 * retry_count)
+            else:
+                logger.error("Maximum retry attempts reached for Gofile upload")
+                return None
+    
+    return None  # If we've exhausted all retries
+
 
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start_time=None, end_time=None):
-    """Handles video/audio download and sends it to Telegram or MEGA."""
+    """Handles video/audio download and sends it to Telegram or Gofile."""
     try:
         request_type = "Video Download"
         if is_audio:
@@ -211,17 +249,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
 
             if file_size > TELEGRAM_FILE_LIMIT or file_size > 49 * 1024 * 1024:
                 filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                logger.info(f"File too large for Telegram: {file_size} bytes. Using MEGA.")
-                mega_link = await upload_to_mega(file_path, filename)
+                logger.info(f"File too large for Telegram: {file_size} bytes. Using Gofile.")
+                gofile_link = await upload_to_gofile(file_path, filename)
 
-                if mega_link:
-                    logger.info(f"Successfully uploaded to MEGA: {mega_link}")
+                if gofile_link:
+                    logger.info(f"Successfully uploaded to Gofile: {gofile_link}")
                     await send_message(
                         message.chat.id,
-                        f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
+                        f"⚠️ **File too large for Telegram.**\n📥 [Download from Gofile]({gofile_link})"
                     )
                 else:
-                    logger.warning("MEGA upload failed")
+                    logger.warning("Gofile upload failed")
                     if download_url:
                         await send_message(
                             message.chat.id,
@@ -238,12 +276,12 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                         if file_size_actual > TELEGRAM_FILE_LIMIT:
                             logger.warning(f"Actual size exceeds limit: {file_size_actual}")
                             filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                            mega_link = await upload_to_mega(file_path, filename)
+                            gofile_link = await upload_to_gofile(file_path, filename)
 
-                            if mega_link:
+                            if gofile_link:
                                 await send_message(
                                     message.chat.id,
-                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
+                                    f"⚠️ **File too large for Telegram.**\n📥 [Download from Gofile]({gofile_link})"
                                 )
                             else:
                                 await send_message(message.chat.id, "❌ **File too large. Upload failed.**")
@@ -256,17 +294,17 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 except Exception as send_error:
                     logger.error(f"Error sending file to Telegram: {send_error}")
                     if "413" in str(send_error):
-                        logger.info("Got 413 error, attempting MEGA upload as fallback")
+                        logger.info("Got 413 error, attempting Gofile upload as fallback")
                         filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                        mega_link = await upload_to_mega(file_path, filename)
+                        gofile_link = await upload_to_gofile(file_path, filename)
 
-                        if mega_link:
+                        if gofile_link:
                             await send_message(
                                 message.chat.id,
-                                f"⚠️ **File too large for Telegram.**\n📥 [Download from MEGA]({mega_link})"
+                                f"⚠️ **File too large for Telegram.**\n📥 [Download from Gofile]({gofile_link})"
                             )
                         else:
-                            await send_message(message.chat.id, "❌ **File too large and MEGA upload failed.**")
+                            await send_message(message.chat.id, "❌ **File too large and Gofile upload failed.**")
                     else:
                         await send_message(message.chat.id, f"❌ **Error sending file: {str(send_error)}**")
 
@@ -284,7 +322,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         await send_message(message.chat.id, f"❌ **An error occurred:** `{e}`")
 
 async def process_image_download(message, url):
-    """Handles image download and sends it to Telegram or MEGA."""
+    """Handles image download and sends it to Telegram or Gofile."""
     try:
         await send_message(message.chat.id, "🖼️ Processing Instagram image...")
         logger.info(f"Processing Instagram image URL: {url}")
@@ -317,20 +355,20 @@ async def process_image_download(message, url):
                 # Handle case where file is too large for Telegram
                 if file_size > TELEGRAM_FILE_LIMIT:
                     filename = f"{message.chat.id}_{os.path.basename(file_path)}"
-                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using MEGA.")
+                    logger.info(f"Image too large for Telegram: {file_size} bytes. Using Gofile.")
 
-                    # Upload to MEGA
-                    mega_link = await upload_to_mega(file_path, filename)
+                    # Upload to Gofile
+                    gofile_link = await upload_to_gofile(file_path, filename)
 
-                    if mega_link:
-                        logger.info(f"Successfully uploaded image to MEGA: {mega_link}")
+                    if gofile_link:
+                        logger.info(f"Successfully uploaded image to Gofile: {gofile_link}")
                         await send_message(
                             message.chat.id,
-                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from MEGA]({mega_link})",
+                            f"⚠️ **Image too large for Telegram.**\n📥 [Download from Gofile]({gofile_link})",
                             parse_mode="Markdown"
                         )
                     else:
-                        logger.warning("MEGA upload failed")
+                        logger.warning("Gofile upload failed")
                         await send_message(message.chat.id, "❌ **Image download failed.**")
                 else:
                     # Send image to Telegram
