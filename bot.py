@@ -410,8 +410,22 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
-# Command: /meganz <username> <password>
+@bot.message_handler(commands=["story"])
+async def handle_story_request(message):
+    """Handles Instagram story image download requests."""
+    url = message.text.replace("/story", "").strip()
+    if not url:
+        await send_message(message.chat.id, "⚠️ Please provide an Instagram story URL.")
+        return
 
+    if "/stories/" not in url or not PLATFORM_PATTERNS["Instagram"].search(url):
+        await send_message(message.chat.id, "⚠️ Please provide a valid Instagram story URL.")
+        return
+
+    await send_message(message.chat.id, "📲 Instagram story detected! Fetching image(s)...")
+
+    # Add to download queue
+    await download_queue.put((message, url))
 # Audio extraction handler
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
