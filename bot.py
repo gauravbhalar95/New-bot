@@ -104,39 +104,21 @@ async def upload_to_mega(file_path, filename):
         logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
 
         try:
-            # Upload file using the provided method
+            # Upload file in thread
             file = await asyncio.to_thread(mega.upload, file_path)
-            logger.info(f"[{get_current_utc()}] Upload successful, getting file info")
+            logger.info(f"[{get_current_utc()}] Upload successful, generating link")
 
             if not file:
                 logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
                 return None
 
-            # First get the file info
-            try:
-                # Get the node of the uploaded file
-                file_node = None
-                files = await asyncio.to_thread(mega.get_files)
-                for node_id, node_info in files.items():
-                    if node_info['h'] == file:
-                        file_node = node_id
-                        break
-
-                if file_node:
-                    # Generate sharing key and get public link
-                    share_link = await asyncio.to_thread(mega.get_link, file_node)
-                    if share_link and isinstance(share_link, str):
-                        logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-                        return share_link
-                    else:
-                        logger.error(f"[{get_current_utc()}] Invalid share link format")
-                        return None
-                else:
-                    logger.error(f"[{get_current_utc()}] Could not find uploaded file node")
-                    return None
-                    
-            except Exception as link_error:
-                logger.error(f"[{get_current_utc()}] Error generating share link: {link_error}")
+            # Get the upload link directly from the file object
+            share_link = await asyncio.to_thread(mega.get_upload_link, file)
+            if share_link and isinstance(share_link, str):
+                logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
+                return share_link
+            else:
+                logger.error(f"[{get_current_utc()}] Invalid share link format")
                 return None
 
         except Exception as upload_error:
