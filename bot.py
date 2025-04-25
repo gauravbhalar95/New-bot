@@ -4,6 +4,7 @@ import logging
 import asyncio
 import aiofiles
 import re
+import httpx
 import sys
 import time
 import psutil
@@ -257,6 +258,31 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
         # Remove from active downloads
         active_downloads.discard(download_id)
         gc.collect()
+
+
+
+async def upload_to_gofile(file_path):
+    try:
+        # Step 1: Get server
+        async with httpx.AsyncClient() as client:
+            res = await client.get("https://api.gofile.io/getServer")
+            server = res.json()["data"]["server"]
+
+            # Step 2: Upload file
+            upload_url = f"https://{server}.gofile.io/uploadFile"
+            with open(file_path, 'rb') as f:
+                files = {'file': (os.path.basename(file_path), f)}
+                response = await client.post(upload_url, files=files)
+
+        data = response.json()
+        if data['status'] == 'ok':
+            return data['data']['downloadPage']
+        else:
+            logger.error(f"GoFile error: {data}")
+            return "GoFile upload failed"
+    except Exception as e:
+        logger.error(f"GoFile upload error: {e}")
+        return "Failed to upload to GoFile"
 
 
 
