@@ -10,6 +10,17 @@ ADMIN_IDS = [
 ]
 DEFAULT_ADMIN = 1302277958  # Your Telegram ID as the default admin
 
+# Add to config.py
+import os
+
+# Base directory of the project
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# SSL Certificate paths
+SSL_CERT = os.path.join(BASE_DIR, 'certs', 'cert.pem')
+SSL_PRIV = os.path.join(BASE_DIR, 'certs', 'private.key')
+
+
 
 # In config.py
 MAX_CONCURRENT_DOWNLOADS = 2
