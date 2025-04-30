@@ -56,7 +56,7 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
     ydl_opts = {
         'format': 'bv+ba/b',
         'merge_output_format': 'mp4',
-        'outtmpl': str(Path(DOWNLOAD_DIR) / '%(title)s.%(ext)s'),
+        'outtmpl': str(Path(DOWNLOAD_DIR) / '%(uploader)s - %(title)s.%(ext)s'),
         'socket_timeout': 10,
         'retries': 5,
         'compat_opts': ['instagram:login_all'],  # Compatibility fix
