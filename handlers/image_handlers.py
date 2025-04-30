@@ -82,15 +82,18 @@ async def cleanup_temp_dir(temp_dir):
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Invalid Instagram URL: {url}")
-        return []
+        return [], None  # Return empty list and None username
 
     image_paths = []
+    uploader_username = None
     temp_dir = tempfile.mkdtemp()
+
     async with aiohttp.ClientSession() as session:
         try:
             if "/p/" in url:
                 shortcode = url.split("/p/")[1].split("/")[0]
                 post = await get_post(shortcode)
+                uploader_username = post.owner_username  # Extract uploader username
 
                 if hasattr(post, 'get_sidecar_nodes'):
                     nodes = post.get_sidecar_nodes()
@@ -100,8 +103,8 @@ async def process_instagram_image(url):
                 tasks = []
                 for idx, node in enumerate(nodes):
                     if not node.is_video:
-                        image_url = node.display_url  # FIXED HERE
-                        filename = sanitize_filename(f"{post.owner_username}_{shortcode}_{idx}.png")
+                        image_url = node.display_url
+                        filename = sanitize_filename(f"{uploader_username}_{shortcode}_{idx}.png")
                         temp_path = os.path.join(temp_dir, filename)
                         final_path = os.path.join(DOWNLOAD_DIR, filename)
 
@@ -118,12 +121,12 @@ async def process_instagram_image(url):
                 image_paths.extend([res for res in results if res])
 
             elif "/stories/" in url:
-                username = url.split("/stories/")[1].split("/")[0]
-                story_image_urls = await get_story_images(username)
+                uploader_username = url.split("/stories/")[1].split("/")[0]
+                story_image_urls = await get_story_images(uploader_username)
 
                 tasks = []
                 for idx, image_url in enumerate(story_image_urls):
-                    filename = sanitize_filename(f"{username}_story_{idx}.png")
+                    filename = sanitize_filename(f"{uploader_username}_story_{idx}.png")
                     temp_path = os.path.join(temp_dir, filename)
                     final_path = os.path.join(DOWNLOAD_DIR, filename)
 
@@ -139,13 +142,13 @@ async def process_instagram_image(url):
 
             else:
                 logger.warning("Unrecognized Instagram URL format.")
-                return []
+                return [], None
 
-            return image_paths
+            return image_paths, uploader_username
 
         except Exception as e:
             logger.error(f"Error processing Instagram image: {e}")
-            return []
+            return [], None
 
         finally:
             await cleanup_temp_dir(temp_dir)
