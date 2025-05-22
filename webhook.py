@@ -24,10 +24,9 @@ app = Flask(__name__)
 def webhook():
     """Handles incoming Telegram updates."""
     try:
-        update = request.get_json()
+        update = request.get_json()  # No need for 'await'
         if update:
-            loop = asyncio.get_event_loop()
-            loop.create_task(bot.process_new_updates([telebot.types.Update.de_json(update)]))
+            asyncio.create_task(bot.process_new_updates([telebot.types.Update.de_json(update)]))  # Run async task
         return jsonify({"status": "success"}), 200
     except Exception as e:
         logger.error(f"Error processing update: {e}")
@@ -40,16 +39,14 @@ def home():
 
 def set_webhook():
     """Sets the Telegram webhook manually."""
-    async def setup():
-        await bot.delete_webhook(drop_pending_updates=True)
-        success = await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60)
-        if success:
-            logger.info("Webhook set successfully")
-        else:
-            logger.error("Failed to set webhook")
-    asyncio.run(setup())
+    asyncio.run(bot.remove_webhook())
+    success = asyncio.run(bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60))
+    if success:
+        logger.info("Webhook set successfully")
+    else:
+        logger.error("Failed to set webhook")
 
 if __name__ == "__main__":
-    set_webhook()
+    set_webhook()  # Set webhook manually
     logger.info(f"Starting Flask webhook server on port {PORT}...")
     app.run(host="0.0.0.0", port=PORT, debug=True)
