@@ -1,7 +1,7 @@
-yt-dlp
+yt-dlp==2025.4.30
 requests==2.32.3
-beautifulsoup4
-lxml
+beautifulsoup4==4.13.4
+lxml==5.4.0
 httpx
 urllib3
 moviepy
