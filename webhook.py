@@ -1,52 +1,54 @@
 import os
-import logging
-import asyncio
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
 import telebot
 from telebot.async_telebot import AsyncTeleBot
-from config import API_TOKEN, WEBHOOK_URL, PORT
+from flask import Flask, request
+import asyncio
 
 # Load environment variables
-load_dotenv()
+API_TOKEN = os.getenv("API_TOKEN")  # Telegram bot token
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g. https://your-app.koyeb.app
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize bot
-bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
-
-# Flask app for webhook
+# Create async TeleBot instance
+bot = AsyncTeleBot(API_TOKEN)
 app = Flask(__name__)
 
-@app.route(f"/{API_TOKEN}", methods=["POST"])
-def webhook():
-    """Handles incoming Telegram updates."""
-    try:
-        update = request.get_json()  # No need for 'await'
-        if update:
-            asyncio.create_task(bot.process_new_updates([telebot.types.Update.de_json(update)]))  # Run async task
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        logger.error(f"Error processing update: {e}")
-        return jsonify({"error": str(e)}), 500
+# Route to receive Telegram updates via webhook
+@app.route(f'/{API_TOKEN}', methods=['POST'])
+async def webhook():
+    json_str = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_str)
+    await bot.process_new_updates([update])
+    return '', 200
 
-@app.route("/")
+# Route to confirm app is running
+@app.route('/')
 def home():
-    """Root endpoint"""
-    return "Telegram bot is running!", 200
+    return 'Telegram bot webhook is running!'
 
-def set_webhook():
-    """Sets the Telegram webhook manually."""
-    asyncio.run(bot.remove_webhook())
-    success = asyncio.run(bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60))
-    if success:
-        logger.info("Webhook set successfully")
-    else:
-        logger.error("Failed to set webhook")
+# Define command handler
+@bot.message_handler(commands=['start'])
+async def start_handler(message):
+    await bot.send_message(message.chat.id, "Welcome! Your bot is working via webhook.")
 
+# Function to set webhook URL
+async def set_webhook():
+    await bot.remove_webhook()
+    await bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}")
+    print(f"Webhook set to: {WEBHOOK_URL}/{API_TOKEN}")
+
+# Start the app using Hypercorn to support asyncio
 if __name__ == "__main__":
-    set_webhook()  # Set webhook manually
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+    import logging
+    from hypercorn.asyncio import serve
+    from hypercorn.config import Config
+
+    logging.basicConfig(level=logging.INFO)
+
+    # Configure Hypercorn for Flask app
+    config = Config()
+    config.bind = ["0.0.0.0:8080"]
+
+    # Start event loop
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(set_webhook())
+    loop.run_until_complete(serve(app, config))
