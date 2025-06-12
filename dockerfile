@@ -19,6 +19,9 @@ COPY . /app
 
 # Make scripts executable
 RUN chmod +x /app/update.sh
+COPY start.sh .
+RUN chmod +x start.sh
+CMD ["./start.sh"]
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
