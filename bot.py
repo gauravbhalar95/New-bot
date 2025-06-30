@@ -400,11 +400,11 @@ async def send_welcome(message):
         "Commands:\n"
         "• Send a direct URL to download video\n"
         "• /audio <URL> - Extract full audio from video\n"
-        "• /image <URL> - Download Instagram images\n"
+        "• /im <URL> - Download Instagram images\n"
         "• /trim <URL> <Start Time> <End Time> - Trim video segment\n"
         "• /trimAudio <URL> <Start Time> <End Time> - Extract audio segment\n\n"
         "Examples:\n"
-        "• /image https://instagram.com/p/example\n"
+        "• /im https://instagram.com/p/example\n"
         "• /trim https://youtube.com/watch?v=example 00:01:00 00:02:30\n"
         "• /trimAudio https://youtube.com/watch?v=example 00:01:00 00:02:30"
     )
@@ -438,10 +438,10 @@ async def handle_audio_request(message):
     await send_message(message.chat.id, "🎵 Added to audio extraction queue!")
 
 # Instagram image download handler
-@bot.message_handler(commands=["image"])
+@bot.message_handler(commands=["im"])
 async def handle_image_request(message):
     """Handles Instagram image download requests."""
-    url = message.text.replace("/image", "").strip()
+    url = message.text.replace("/im", "").strip()
     if not url:
         await send_message(message.chat.id, "⚠️ Please provide an Instagram image URL.")
         return
