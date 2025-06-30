@@ -1,7 +1,7 @@
 yt-dlp
-requests==2.32.3
-beautifulsoup4==4.13.4
-lxml==5.4.0
+requests
+beautifulsoup4
+lxml
 httpx
 urllib3
 moviepy
@@ -31,9 +31,9 @@ quart
 dropbox
 flask[async]
 fastapi
-flask==3.1.0
-pytelegrambotapi==4.14.0
-tenacity==5.1.5
+flask
+pytelegrambotapi
+tenacity
 psutil
 aiofiles
 rclone
