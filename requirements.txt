@@ -31,9 +31,9 @@ quart
 dropbox
 flask[async]
 fastapi
-flask
-pytelegrambotapi
-tenacity
+flask==3.1.0
+pytelegrambotapi==4.14.0
+tenacity==5.1.5
 psutil
 aiofiles
 rclone
