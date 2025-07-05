@@ -1,5 +1,6 @@
 import os
 import asyncio
+import subprocess
 import yt_dlp
 import logging
 from pathlib import Path
@@ -12,6 +13,22 @@ from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
+
+def auto_update_yt_dlp():
+    """Update yt-dlp to the latest version."""
+    try:
+        result = subprocess.run(['yt-dlp', '-U'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            logger.info("✅ yt-dlp updated successfully.")
+            logger.debug(result.stdout.strip())
+        else:
+            logger.warning("⚠️ yt-dlp update failed.")
+            logger.debug(result.stderr.strip())
+    except Exception as e:
+        logger.error(f"❌ Failed to update yt-dlp: {e}")
+
+# Call auto-update at module import/startup
+auto_update_yt_dlp()
 
 async def compress_video(input_file, output_file):
     """Compress video to reduce file size using FFmpeg."""
@@ -61,10 +78,12 @@ async def process_adult(url):
         'continuedl': True,
         'http_chunk_size': 1048576,  # 1 MB chunk size
         'nocheckcertificate': True,
+        'logger': logger,
+        'quiet': True,
+        'no_warnings': True,
         'headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         },
-        'logger': logger
     }
 
     try:
@@ -114,6 +133,11 @@ async def process_adult(url):
 
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"⚠️ Download failed: {e}")
+    except KeyError as e:
+        if 'videoModel' in str(e):
+            logger.error("❌ XHamster extractor broken: KeyError('videoModel'). Update yt-dlp or wait for a fix.")
+        else:
+            logger.error(f"❌ Unexpected KeyError: {e}")
     except OSError as e:
         logger.error(f"❌ File system error: {e}")
     except Exception as e:
