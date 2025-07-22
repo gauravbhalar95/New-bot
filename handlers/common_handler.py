@@ -11,143 +11,135 @@ from utils.renamer import rename_file
 from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 
-# Initialize logger
 logger = setup_logging(logging.DEBUG)
 
 def auto_update_yt_dlp():
-    """Update yt-dlp to the latest version."""
     try:
         result = subprocess.run(['yt-dlp', '-U'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
             logger.info("✅ yt-dlp updated successfully.")
-            logger.debug(result.stdout.strip())
         else:
-            logger.warning("⚠️ yt-dlp update failed.")
-            logger.debug(result.stderr.strip())
+            logger.warning("⚠️ yt-dlp update failed:\n" + result.stderr)
     except Exception as e:
         logger.error(f"❌ Failed to update yt-dlp: {e}")
 
-# Call auto-update at module import/startup
 auto_update_yt_dlp()
 
+@asynccontextmanager
+async def yt_dlp_context(ydl_opts):
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        yield ydl
+
 async def compress_video(input_file, output_file):
-    """Compress video to reduce file size using FFmpeg."""
     cmd = [
         "ffmpeg", "-i", input_file,
         "-c:v", "libx264", "-crf", "23", "-preset", "medium",
         "-c:a", "aac", "-b:a", "128k",
         output_file
     ]
-
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
+    process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
-        _, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5-minute timeout
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
         if process.returncode == 0:
-            logger.info(f"✅ Video compressed successfully: {output_file}")
+            logger.info(f"✅ Video compressed: {output_file}")
             return output_file
         else:
-            logger.error(f"❌ Compression failed: {stderr.decode().strip()}")
-            return None
+            logger.error(f"❌ Compression failed:\n{stderr.decode().strip()}")
     except asyncio.TimeoutError:
-        logger.error("❌ FFmpeg compression timed out.")
+        logger.error("❌ Compression timeout. Killing process...")
         process.kill()
-        return None
+    return None
 
-@asynccontextmanager
-async def yt_dlp_context(ydl_opts):
-    """Context manager for yt-dlp instance."""
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        yield ydl
-
-async def process_adult(url):
-    """Download adult video asynchronously using yt-dlp."""
+async def process_adult(url: str):
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
     file_path = None
 
     ydl_opts = {
-        'format': 'best',
-        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title)s")}.%(ext)s',
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': f'{DOWNLOAD_DIR}/{sanitize_filename("%(title).100s")}.%(ext)s',
+        'merge_output_format': 'mp4',
+        'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
-        'fragment_retries': 10,
+        'fragment_retries': 15,
         'continuedl': True,
-        'http_chunk_size': 1048576,  # 1 MB chunk size
-        'nocheckcertificate': True,
-        'logger': logger,
+        'ignoreerrors': True,
+        'nooverwrites': False,
         'quiet': True,
         'no_warnings': True,
+        'concurrent_fragment_downloads': 4,
+        'logger': logger,
+        'http_chunk_size': 1048576,  # 1 MB
+        'nocheckcertificate': True,
+        'source_address': '0.0.0.0',
         'headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        },
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': url
+        }
     }
 
     try:
         async with yt_dlp_context(ydl_opts) as ydl:
-            info_dict = await asyncio.to_thread(ydl.extract_info, url, download=True)
-            if not info_dict:
-                logger.error("❌ No info_dict returned. Download failed.")
+            info = await asyncio.to_thread(ydl.extract_info, url, download=True)
+
+            if not info:
+                logger.error("❌ No info_dict returned from yt-dlp.")
                 return None, 0, None
 
-            file_path = Path(ydl.prepare_filename(info_dict))
-
+            file_path = Path(ydl.prepare_filename(info))
             if not file_path.exists():
-                logger.error("❌ Downloaded file not found.")
-                return None, 0, None
+                # Try to append .mp4 manually if missing
+                alt_path = file_path.with_suffix('.mp4')
+                if alt_path.exists():
+                    file_path = alt_path
+                else:
+                    logger.error("❌ Downloaded file not found.")
+                    return None, 0, None
 
+            # Clean name
             sanitized_filename = sanitize_filename(file_path.name)
             new_path = file_path.parent / sanitized_filename
-            await rename_file(str(file_path), str(new_path))
-            file_path = new_path  
+            if file_path != new_path:
+                await rename_file(str(file_path), str(new_path))
+                file_path = new_path
 
             file_size = file_path.stat().st_size
-            logger.info(f"✅ File Size: {file_size / (1024 * 1024):.2f} MB")
+            logger.info(f"✅ File size: {file_size / (1024 ** 2):.2f} MB")
 
             thumbnail_path = await generate_thumbnail(str(file_path))
             if thumbnail_path:
-                logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
+                logger.info(f"✅ Thumbnail created: {thumbnail_path}")
             else:
-                logger.warning("⚠️ Thumbnail generation failed.")
+                logger.warning("⚠️ Thumbnail creation failed.")
 
-            # Handle large files
             if file_size > TELEGRAM_FILE_LIMIT:
-                logger.info("⚠️ File too large for Telegram. Compressing video...")
-
+                logger.info("⚠️ File too large, attempting compression...")
                 compressed_file_path = file_path.with_stem(f"{file_path.stem}_compressed")
-                compressed_file = await compress_video(str(file_path), str(compressed_file_path))
+                compressed = await compress_video(str(file_path), str(compressed_file_path))
 
-                if compressed_file:
-                    compressed_size = Path(compressed_file).stat().st_size
-                    if compressed_size < TELEGRAM_FILE_LIMIT:
-                        logger.info(f"✅ Compressed file within limit: {compressed_file}")
-                        return compressed_file, compressed_size, thumbnail_path
+                if compressed and Path(compressed).stat().st_size < TELEGRAM_FILE_LIMIT:
+                    logger.info("✅ Compression successful.")
+                    return str(compressed), Path(compressed).stat().st_size, thumbnail_path
 
-                logger.warning("⚠️ Compression failed or file still too large.")
+                logger.warning("⚠️ Compression failed or still too large.")
                 return str(file_path), file_size, thumbnail_path
 
             return str(file_path), file_size, thumbnail_path
 
     except yt_dlp.utils.DownloadError as e:
-        logger.error(f"⚠️ Download failed: {e}")
+        logger.error(f"❌ yt-dlp download error: {e}")
     except KeyError as e:
         if 'videoModel' in str(e):
-            logger.error("❌ XHamster extractor broken: KeyError('videoModel'). Update yt-dlp or wait for a fix.")
+            logger.error("❌ XHamster extractor broken. Wait for yt-dlp update.")
         else:
-            logger.error(f"❌ Unexpected KeyError: {e}")
+            logger.error(f"❌ KeyError: {e}")
     except OSError as e:
-        logger.error(f"❌ File system error: {e}")
+        logger.error(f"❌ Filesystem error: {e}")
     except Exception as e:
-        logger.error(f"⚠️ Unexpected error: {e}")
+        logger.error(f"❌ Unexpected error: {e}")
 
-    # Cleanup incomplete files
-    if file_path and file_path.exists():
-        file_size = file_path.stat().st_size
-        if file_size == 0:
-            file_path.unlink()
-            logger.info(f"🧹 Removed incomplete file: {file_path}")
+    if file_path and file_path.exists() and file_path.stat().st_size == 0:
+        file_path.unlink()
+        logger.info(f"🧹 Removed zero-size file: {file_path}")
 
     return None, 0, None
