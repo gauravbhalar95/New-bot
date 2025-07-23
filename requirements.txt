@@ -20,7 +20,7 @@ asyncio
 nest_asyncio
 psutil
 api.video
-instaloader
+instaloader==4.14
 loguru
 aiohttp
 python-dotenv
