@@ -12,7 +12,11 @@ from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 
-# Initialize Instaloader instance
+INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
+INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", INSTAGRAM_PASSWORD)
+COOKIE_FILE = "instagram_cookies.txt"
+
+# Initialize Instaloader
 INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -22,24 +26,33 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
     post_metadata_txt_pattern=''
 )
 
-INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
-
 def initialize_instagram_session():
     logger.info("Initializing Instagram session...")
     try:
-        if os.path.exists("instagram_cookies.txt"):
-            INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, "instagram_cookies.txt")
-            logger.info("Instagram session loaded successfully")
+        if os.path.exists(COOKIE_FILE):
+            INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, COOKIE_FILE)
+            logger.info("Instagram session loaded successfully.")
         else:
-            logger.warning("Instagram cookies file not found, continuing without login")
+            raise FileNotFoundError("Session file not found.")
     except Exception as e:
-        logger.error(f"Failed to load Instagram session: {e}")
+        logger.warning(f"Loading session failed: {e}, trying login...")
+        try:
+            INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+            INSTALOADER_INSTANCE.save_session_to_file(COOKIE_FILE)
+            logger.info("Logged in and session saved.")
+        except Exception as login_error:
+            logger.error(f"Instagram login failed: {login_error}")
 
+# Initialize session on module load
 initialize_instagram_session()
 
 async def get_post(shortcode):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
+    try:
+        return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
+    except Exception as e:
+        logger.error(f"Failed to fetch post {shortcode}: {e}")
+        raise
 
 async def get_story_images(username):
     try:
@@ -82,7 +95,7 @@ async def cleanup_temp_dir(temp_dir):
 async def process_instagram_image(url):
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Invalid Instagram URL: {url}")
-        return [], None  # Return empty list and None username
+        return [], None
 
     image_paths = []
     uploader_username = None
@@ -92,8 +105,14 @@ async def process_instagram_image(url):
         try:
             if "/p/" in url:
                 shortcode = url.split("/p/")[1].split("/")[0]
-                post = await get_post(shortcode)
-                uploader_username = post.owner_username  # Extract uploader username
+                try:
+                    post = await get_post(shortcode)
+                except Exception:
+                    logger.warning("Attempting to re-login and retry fetching post...")
+                    initialize_instagram_session()
+                    post = await get_post(shortcode)
+
+                uploader_username = post.owner_username
 
                 if hasattr(post, 'get_sidecar_nodes'):
                     nodes = post.get_sidecar_nodes()
