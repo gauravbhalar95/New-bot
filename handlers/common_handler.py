@@ -1,8 +1,7 @@
 import os
 import asyncio
-import subprocess
-import yt_dlp
 import logging
+import yt_dlp
 from pathlib import Path
 from contextlib import asynccontextmanager
 from utils.logger import setup_logging
@@ -11,19 +10,8 @@ from utils.renamer import rename_file
 from utils.thumb_generator import generate_thumbnail
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT
 
+# Setup logger
 logger = setup_logging(logging.DEBUG)
-
-def auto_update_yt_dlp():
-    try:
-        result = subprocess.run(['yt-dlp', '-U'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode == 0:
-            logger.info("✅ yt-dlp updated successfully.")
-        else:
-            logger.warning("⚠️ yt-dlp update failed:\n" + result.stderr)
-    except Exception as e:
-        logger.error(f"❌ Failed to update yt-dlp: {e}")
-
-auto_update_yt_dlp()
 
 @asynccontextmanager
 async def yt_dlp_context(ydl_opts):
@@ -81,14 +69,12 @@ async def process_adult(url: str):
     try:
         async with yt_dlp_context(ydl_opts) as ydl:
             info = await asyncio.to_thread(ydl.extract_info, url, download=True)
-
             if not info:
                 logger.error("❌ No info_dict returned from yt-dlp.")
                 return None, 0, None
 
             file_path = Path(ydl.prepare_filename(info))
             if not file_path.exists():
-                # Try to append .mp4 manually if missing
                 alt_path = file_path.with_suffix('.mp4')
                 if alt_path.exists():
                     file_path = alt_path
@@ -96,7 +82,6 @@ async def process_adult(url: str):
                     logger.error("❌ Downloaded file not found.")
                     return None, 0, None
 
-            # Clean name
             sanitized_filename = sanitize_filename(file_path.name)
             new_path = file_path.parent / sanitized_filename
             if file_path != new_path:
