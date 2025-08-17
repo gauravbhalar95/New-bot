@@ -7,7 +7,6 @@ import shutil
 import functools
 import instaloader
 from PIL import Image
-import re
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
@@ -23,42 +22,57 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
     download_geotags=False,
     save_metadata=False,
     download_comments=False,
-    post_metadata_txt_pattern=''
+    post_metadata_txt_pattern=""
 )
 
-def initialize_instagram_session():
+
+def initialize_instagram_session(force_login=False):
+    """Ensure Instagram session is available with cookie fallback."""
     logger.info("Initializing Instagram session...")
     try:
-        if os.path.exists(COOKIE_FILE):
+        if not force_login and os.path.exists(COOKIE_FILE):
             INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, COOKIE_FILE)
             logger.info("Instagram session loaded successfully.")
         else:
-            raise FileNotFoundError("Session file not found.")
-    except Exception as e:
-        logger.warning(f"Loading session failed: {e}, trying login...")
-        try:
+            logger.info("Logging in with credentials...")
             INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
             INSTALOADER_INSTANCE.save_session_to_file(COOKIE_FILE)
             logger.info("Logged in and session saved.")
-        except Exception as login_error:
-            logger.error(f"Instagram login failed: {login_error}")
+    except Exception as e:
+        logger.error(f"Instagram login failed: {e}")
 
-# Initialize session on module load
+
+# Initialize once on module load
 initialize_instagram_session()
 
+
 async def get_post(shortcode):
+    """Fetch Instagram post details from shortcode."""
     loop = asyncio.get_event_loop()
     try:
-        return await loop.run_in_executor(None, functools.partial(instaloader.Post.from_shortcode, INSTALOADER_INSTANCE.context, shortcode))
+        return await loop.run_in_executor(
+            None,
+            functools.partial(
+                instaloader.Post.from_shortcode,
+                INSTALOADER_INSTANCE.context,
+                shortcode,
+            ),
+        )
     except Exception as e:
         logger.error(f"Failed to fetch post {shortcode}: {e}")
         raise
 
+
 async def get_story_images(username):
+    """Fetch story images for a given username."""
     try:
         loop = asyncio.get_event_loop()
-        profile = await loop.run_in_executor(None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username))
-        stories = await loop.run_in_executor(None, lambda: INSTALOADER_INSTANCE.get_stories(userids=[profile.userid]))
+        profile = await loop.run_in_executor(
+            None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username)
+        )
+        stories = await loop.run_in_executor(
+            None, lambda: INSTALOADER_INSTANCE.get_stories(userids=[profile.userid])
+        )
 
         image_urls = []
         for story in stories:
@@ -71,12 +85,15 @@ async def get_story_images(username):
         logger.error(f"Error fetching stories for {username}: {e}")
         return []
 
+
 async def download_image(session, url, temp_path, permanent_path):
+    """Download and save image to final path."""
     try:
         async with session.get(url) as response:
             response.raise_for_status()
-            async with aiofiles.open(temp_path, 'wb') as f:
+            async with aiofiles.open(temp_path, "wb") as f:
                 await f.write(await response.read())
+
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, shutil.copy, temp_path, permanent_path)
             logger.info(f"Downloaded image to {permanent_path}")
@@ -85,14 +102,18 @@ async def download_image(session, url, temp_path, permanent_path):
         logger.error(f"Error downloading image {url}: {e}")
         return None
 
+
 async def cleanup_temp_dir(temp_dir):
+    """Remove temporary directory safely."""
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, functools.partial(shutil.rmtree, temp_dir, ignore_errors=True))
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
+
 async def process_instagram_image(url):
+    """Process Instagram post/story URL and return downloaded image paths + uploader username."""
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"Invalid Instagram URL: {url}")
         return [], None
@@ -103,21 +124,18 @@ async def process_instagram_image(url):
 
     async with aiohttp.ClientSession() as session:
         try:
+            # Handle Instagram Posts
             if "/p/" in url:
                 shortcode = url.split("/p/")[1].split("/")[0]
                 try:
                     post = await get_post(shortcode)
                 except Exception:
-                    logger.warning("Attempting to re-login and retry fetching post...")
-                    initialize_instagram_session()
+                    logger.warning("Post fetch failed. Retrying after re-login...")
+                    initialize_instagram_session(force_login=True)
                     post = await get_post(shortcode)
 
                 uploader_username = post.owner_username
-
-                if hasattr(post, 'get_sidecar_nodes'):
-                    nodes = post.get_sidecar_nodes()
-                else:
-                    nodes = [post]
+                nodes = post.get_sidecar_nodes() if hasattr(post, "get_sidecar_nodes") else [post]
 
                 tasks = []
                 for idx, node in enumerate(nodes):
@@ -139,6 +157,7 @@ async def process_instagram_image(url):
                 results = await asyncio.gather(*tasks)
                 image_paths.extend([res for res in results if res])
 
+            # Handle Instagram Stories
             elif "/stories/" in url:
                 uploader_username = url.split("/stories/")[1].split("/")[0]
                 story_image_urls = await get_story_images(uploader_username)
