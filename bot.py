@@ -78,7 +78,7 @@ def detect_platform(url):
             return platform
     return None
 
-def load_mega_config():
+async def load_mega_config():
     try:
         with open('mega_config.json', 'r') as f:
             config = json.load(f)
@@ -108,27 +108,27 @@ async def get_mega_client():
     global mega
     if mega is None:
         try:
-            # Try to load existing session
-            if os.path.exists(MEGA_SESSION_FILE):
-                with open(MEGA_SESSION_FILE, 'r') as f:
-                    session_data = json.load(f)
-                m = Mega()
-                mega = await asyncio.to_thread(m.login_with_session, session_data)
-                logger.info(f"[{get_current_utc()}] MEGA client restored from session")
+            config = load_mega_config()
+            m = Mega()
+            
+            if config and config.get('session'):
+                try:
+                    # Try to resume session
+                    mega = await asyncio.to_thread(m.login_sid, config['session'])
+                    logger.info(f"[{get_current_utc()}] MEGA session resumed successfully")
+                except Exception as e:
+                    logger.warning(f"[{get_current_utc()}] Session expired, logging in with credentials")
+                    mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
+                    save_mega_session(m.get_session_id())
             else:
-                # First-time login
-                m = Mega()
-                logger.info(f"[{get_current_utc()}] Attempting MEGA login with email: {MEGA_EMAIL}")
+                # First time login
+                logger.info(f"[{get_current_utc()}] Performing first-time MEGA login")
                 mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-                # Save session
-                session_data = mega.get_session()
-                with open(MEGA_SESSION_FILE, 'w') as f:
-                    json.dump(session_data, f)
-                logger.info(f"[{get_current_utc()}] MEGA client initialized and session saved")
+                save_mega_session(m.get_session_id())
+                
+            logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
         except Exception as e:
             logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)
-            if "Expecting value" in str(e):
-                logger.error(f"[{get_current_utc()}] Possible issue with MEGA API or credentials.")
             return None
     return mega
 
