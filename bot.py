@@ -38,6 +38,7 @@ download_queue = asyncio.Queue()
 
 # MEGA client setup
 mega = None
+MEGA_SESSION_FILE = "mega_session.json"
 
 # Regex patterns for different platforms
 PLATFORM_PATTERNS = {
