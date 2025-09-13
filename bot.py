@@ -4,14 +4,12 @@ import logging
 import asyncio
 import aiofiles
 import re
-import sys
-import time
 import psutil
 import json
-import os.path
 from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
+import aiohttp
 
 # Import local modules
 from config import (
@@ -61,18 +59,15 @@ PLATFORM_HANDLERS = {
 }
 
 def get_current_utc():
-    """Returns current UTC time in YYYY-MM-DD HH:MM:SS format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 async def send_message(chat_id, text):
-    """Sends a message asynchronously."""
     try:
         await bot.send_message(chat_id, text)
     except Exception as e:
         logger.error(f"[{get_current_utc()}] Error sending message: {e}")
 
 def detect_platform(url):
-    """Detects the platform based on URL patterns."""
     for platform, pattern in PLATFORM_PATTERNS.items():
         if pattern.search(url):
             return platform
@@ -108,24 +103,22 @@ async def get_mega_client():
     global mega
     if mega is None:
         try:
-            config = load_mega_config()
+            config = await load_mega_config()
             m = Mega()
-            
+
             if config and config.get('session'):
                 try:
-                    # Try to resume session
                     mega = await asyncio.to_thread(m.login_sid, config['session'])
                     logger.info(f"[{get_current_utc()}] MEGA session resumed successfully")
-                except Exception as e:
+                except Exception:
                     logger.warning(f"[{get_current_utc()}] Session expired, logging in with credentials")
                     mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-                    save_mega_session(m.get_session_id())
+                    await save_mega_session(m.get_session_id())
             else:
-                # First time login
                 logger.info(f"[{get_current_utc()}] Performing first-time MEGA login")
                 mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-                save_mega_session(m.get_session_id())
-                
+                await save_mega_session(m.get_session_id())
+
             logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
         except Exception as e:
             logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)
@@ -136,37 +129,33 @@ async def upload_to_mega(file_path, filename):
     try:
         mega = await get_mega_client()
         if not mega:
-            logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client")
             return None
 
         logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
-
-        try:
-            # Upload file in thread
-            file = await asyncio.to_thread(mega.upload, file_path)
-            logger.info(f"[{get_current_utc()}] Upload successful, generating link")
-
-            if not file:
-                logger.error(f"[{get_current_utc()}] File upload failed - no file object returned")
-                return None
-
-            # Get the upload link directly from the file object
-            share_link = await asyncio.to_thread(mega.get_upload_link, file)
-            if share_link and isinstance(share_link, str):
-                logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
-                # Send null acceptance confirmation
-                await asyncio.to_thread(mega.confirm_upload, file)
-                return share_link
-            else:
-                logger.error(f"[{get_current_utc()}] Invalid share link format")
-                return None
-
-        except Exception as upload_error:
-            logger.error(f"[{get_current_utc()}] Error during upload: {upload_error}")
+        file = await asyncio.to_thread(mega.upload, file_path)
+        if not file:
             return None
-
+        await asyncio.to_thread(mega.confirm_upload, file)
+        link = await asyncio.to_thread(mega.get_link, file)
+        return link
     except Exception as e:
         logger.error(f"[{get_current_utc()}] Unexpected error in upload_to_mega: {e}")
+        return None
+
+async def upload_to_gofile(file_path, filename):
+    url = "https://api.gofile.io/uploadFile"
+    try:
+        async with aiohttp.ClientSession() as session:
+            with open(file_path, "rb") as f:
+                form = aiohttp.FormData()
+                form.add_field("file", f, filename=filename)
+                async with session.post(url, data=form) as resp:
+                    result = await resp.json()
+                    if result.get("status") == "ok":
+                        return result["data"]["downloadPage"]
+        return None
+    except Exception as e:
+        logger.error(f"[{get_current_utc()}] Gofile upload failed: {e}")
         return None
 
 
