@@ -1,0 +1,7 @@
+# Add this line to .gitignore
+mega_config.json
+
+import stat
+
+# Add this to initialize_mega_config()
+os.chmod('mega_config.json', stat.S_IRUSR | stat.S_IWUSR)  # Read/write for owner only
