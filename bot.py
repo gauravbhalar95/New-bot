@@ -15,6 +15,12 @@ from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 import aiohttp
+from mega_credentials import (
+    store_encrypted_credentials,
+    get_mega_credentials,
+    delete_mega_credentials
+)
+
 
 # Import local modules
 from config import (
