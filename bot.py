@@ -7,6 +7,8 @@ import re
 import sys
 import time
 import psutil
+import json
+import os.path
 from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
