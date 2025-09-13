@@ -107,10 +107,6 @@ async def get_mega_client():
     return mega
 
 async def upload_to_mega(file_path, filename):
-    """
-    Uploads a file to MEGA and returns a shareable link in format:
-    https://mega.nz/file/[ID]#[KEY]
-    """
     try:
         mega = await get_mega_client()
         if not mega:
@@ -132,6 +128,8 @@ async def upload_to_mega(file_path, filename):
             share_link = await asyncio.to_thread(mega.get_upload_link, file)
             if share_link and isinstance(share_link, str):
                 logger.info(f"[{get_current_utc()}] Successfully generated MEGA link: {share_link}")
+                # Send null acceptance confirmation
+                await asyncio.to_thread(mega.confirm_upload, file)
                 return share_link
             else:
                 logger.error(f"[{get_current_utc()}] Invalid share link format")
