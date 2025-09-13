@@ -6,6 +6,11 @@ import aiofiles
 import re
 import psutil
 import json
+import sys
+import time
+from datetime import datetime, timezone
+from mega import Mega
+from telebot.async_telebot import AsyncTeleBot
 from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
@@ -418,7 +423,14 @@ async def worker():
 
         download_queue.task_done()
 
+# -------------------------
+# Globals (make sure these exist in your project)
+# -------------------------
+MEGA_SET_STATE = {}  # Track user MEGA credential setup state
+
+# -------------------------
 # Start/help command
+# -------------------------
 @bot.message_handler(commands=["start", "help"])
 async def send_welcome(message):
     """Sends welcome message with bot instructions."""
@@ -430,6 +442,7 @@ async def send_welcome(message):
         "• Send a direct URL to download video\n"
         "• /audio <URL> - Extract full audio from video\n"
         "• /im <URL> - Download Instagram images\n"
+        "• /story <URL> - Download Instagram story\n"
         "• /trim <URL> <Start Time> <End Time> - Trim video segment\n"
         "• /trimAudio <URL> <Start Time> <End Time> - Extract audio segment\n\n"
         "Examples:\n"
@@ -440,30 +453,26 @@ async def send_welcome(message):
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
 # -------------------------
-# Handlers: add to your existing handler list
+# MEGA credentials handlers
 # -------------------------
-
 @bot.message_handler(commands=["setmega"])
 async def cmd_setmega(message):
-    """Start interactive set-mega flow."""
     chat_id = message.chat.id
     MEGA_SET_STATE[chat_id] = {"step": "username"}
-    await send_message(chat_id, "🔐 Let's set your MEGA.nz credentials.\nPlease send your MEGA username (email).")
+    await bot.send_message(chat_id, "🔐 Let's set your MEGA.nz credentials.\nPlease send your MEGA username (email).")
 
-# Catch replies while in state (place this BEFORE your catch-all handler)
 @bot.message_handler(func=lambda m: m.chat.id in MEGA_SET_STATE, content_types=["text"])
 async def _collect_mega_credentials(message):
     chat_id = message.chat.id
     state = MEGA_SET_STATE.get(chat_id)
     if not state:
-        return  # not in state for some reason
+        return
 
     text = message.text.strip()
     if state["step"] == "username":
-        # store the username temporarily and ask for password
         state["username"] = text
         state["step"] = "password"
-        await send_message(chat_id, "🔒 Got it. Now please send your MEGA.nz password.\n(Do NOT share this message elsewhere.)")
+        await bot.send_message(chat_id, "🔒 Got it. Now please send your MEGA.nz password.\n(Do NOT share this message elsewhere.)")
         return
 
     if state["step"] == "password":
@@ -472,26 +481,23 @@ async def _collect_mega_credentials(message):
         try:
             store_encrypted_credentials(chat_id, username, password)
         except Exception as e:
-            await send_message(chat_id, "❌ Failed to save credentials. Check bot server configuration.")
+            await bot.send_message(chat_id, "❌ Failed to save credentials. Check bot server configuration.")
             logger.exception("Failed to store MEGA creds: %s", e)
             MEGA_SET_STATE.pop(chat_id, None)
             return
 
         MEGA_SET_STATE.pop(chat_id, None)
-        await send_message(chat_id, "✅ MEGA credentials saved securely on the server.")
-        return
+        await bot.send_message(chat_id, "✅ MEGA credentials saved securely on the server.")
 
-# Optional: show current saved username (masked)
 @bot.message_handler(commands=["getmega"])
 async def cmd_getmega(message):
     creds = get_mega_credentials(message.chat.id)
     if not creds:
-        await send_message(message.chat.id, "⚠️ No MEGA credentials found. Use /setmega to add them.")
+        await bot.send_message(message.chat.id, "⚠️ No MEGA credentials found. Use /setmega to add them.")
         return
     username, _ = creds
     if username:
         masked = username
-        # Mask part of email/username for privacy
         if "@" in username:
             local, domain = username.split("@", 1)
             if len(local) > 2:
@@ -499,94 +505,70 @@ async def cmd_getmega(message):
         else:
             if len(username) > 4:
                 masked = username[:2] + "***" + username[-1]
-        await send_message(message.chat.id, f"🔎 Saved MEGA username: `{masked}`", parse_mode="Markdown")
+        await bot.send_message(message.chat.id, f"🔎 Saved MEGA username: `{masked}`", parse_mode="Markdown")
     else:
-        await send_message(message.chat.id, "⚠️ Saved creds found but username is empty.")
+        await bot.send_message(message.chat.id, "⚠️ Saved creds found but username is empty.")
 
 @bot.message_handler(commands=["delmega"])
 async def cmd_delmega(message):
     ok = delete_mega_credentials(message.chat.id)
     if ok:
-        await send_message(message.chat.id, "🗑️ MEGA credentials removed.")
+        await bot.send_message(message.chat.id, "🗑️ MEGA credentials removed.")
     else:
-        await send_message(message.chat.id, "⚠️ No MEGA credentials found for your account.")
+        await bot.send_message(message.chat.id, "⚠️ No MEGA credentials found for your account.")
 
 # -------------------------
-# Example: how to use in your upload flow
+# Instagram story handler
 # -------------------------
-async def upload_to_mega_for_user(chat_id: int, local_filepath: str):
-    """
-    Example showing how to fetch credentials and call your existing MEGA upload code.
-    Replace `your_mega_upload_function(username, password, file)` with actual logic.
-    """
-    creds = get_mega_credentials(chat_id)
-    if not creds:
-        # fallback: you can use a global bot account (if you have one) or ask user to run /setmega
-        await send_message(chat_id, "⚠️ No MEGA credentials found — ask user to set them with /setmega or use bot's global account.")
-        return None
-
-    username, password = creds
-    # Use your current MEGA upload logic here. Example placeholder:
-    try:
-        # result_link = await your_mega_upload_function(username, password, local_filepath)
-        result_link = "<REPLACE_WITH_YOUR_UPLOAD_CALL>"
-        return result_link
-    except Exception as e:
-        logger.exception("MEGA upload failed for chat %s: %s", chat_id, e)
-        return None
-
 @bot.message_handler(commands=["story"])
 async def handle_story_request(message):
-    """Handles Instagram story image download requests."""
     url = message.text.replace("/story", "").strip()
     if not url:
-        await send_message(message.chat.id, "⚠️ Please provide an Instagram story URL.")
+        await bot.send_message(message.chat.id, "⚠️ Please provide an Instagram story URL.")
         return
 
     if "/stories/" not in url or not PLATFORM_PATTERNS["Instagram"].search(url):
-        await send_message(message.chat.id, "⚠️ Please provide a valid Instagram story URL.")
+        await bot.send_message(message.chat.id, "⚠️ Please provide a valid Instagram story URL.")
         return
 
-    await send_message(message.chat.id, "📲 Instagram story detected! Fetching image(s)...")
+    await bot.send_message(message.chat.id, "📲 Instagram story detected! Fetching image(s)...")
+    await download_queue.put((message, url, False, False, False, None, None))
 
-    # Add to download queue
-    await download_queue.put((message, url))
+# -------------------------
 # Audio extraction handler
+# -------------------------
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
-    """Handles audio extraction requests for all platforms."""
     url = message.text.replace("/audio", "").strip()
     if not url:
-        await send_message(message.chat.id, "⚠️ Please provide a URL.")
+        await bot.send_message(message.chat.id, "⚠️ Please provide a URL.")
         return
     await download_queue.put((message, url, True, False, False, None, None))
-    await send_message(message.chat.id, "🎵 Added to audio extraction queue!")
+    await bot.send_message(message.chat.id, "🎵 Added to audio extraction queue!")
 
-# Instagram image download handler
+# -------------------------
+# Instagram image handler
+# -------------------------
 @bot.message_handler(commands=["im"])
 async def handle_image_request(message):
-    """Handles Instagram image download requests."""
     url = message.text.replace("/im", "").strip()
     if not url:
-        await send_message(message.chat.id, "⚠️ Please provide an Instagram image URL.")
+        await bot.send_message(message.chat.id, "⚠️ Please provide an Instagram image URL.")
         return
-
-    # Check if URL is Instagram
     if not PLATFORM_PATTERNS["Instagram"].search(url):
-        await send_message(message.chat.id, "⚠️ **This command only works with Instagram image URLs.**")
+        await bot.send_message(message.chat.id, "⚠️ This command only works with Instagram image URLs.")
         return
+    await download_queue.put((message, url, False, False, False, None, None))
+    await bot.send_message(message.chat.id, "🖼️ Added to image download queue!")
 
-    # Add to download queue
-    await download_queue.put((message, url))
-    await send_message(message.chat.id, "🖼️ **Added to image download queue!**")
-
+# -------------------------
 # Video trim handler
+# -------------------------
 @bot.message_handler(commands=["trim"])
 async def handle_video_trim_request(message):
-    """Handles video trimming requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
-        await send_message(
+        await bot.send_message(
             message.chat.id,
             "⚠️ Invalid format. Please send: /trim <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>"
         )
@@ -594,15 +576,16 @@ async def handle_video_trim_request(message):
 
     url, start_time, end_time = match.groups()
     await download_queue.put((message, url, False, True, False, start_time, end_time))
-    await send_message(message.chat.id, "✂️🎬 **Added to video trimming queue!**")
+    await bot.send_message(message.chat.id, "✂️🎬 Added to video trimming queue!")
 
+# -------------------------
 # Audio trim handler
+# -------------------------
 @bot.message_handler(commands=["trimAudio"])
 async def handle_audio_trim_request(message):
-    """Handles audio segment extraction requests."""
     match = re.search(r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})", message.text)
     if not match:
-        await send_message(
+        await bot.send_message(
             message.chat.id,
             "⚠️ Invalid format. Please send: /trimAudio <URL> <Start Time (HH:MM:SS)> <End Time (HH:MM:SS)>"
         )
@@ -610,15 +593,16 @@ async def handle_audio_trim_request(message):
 
     url, start_time, end_time = match.groups()
     await download_queue.put((message, url, False, False, True, start_time, end_time))
-    await send_message(message.chat.id, "✂️🎵 **Added to audio segment extraction queue!**")
+    await bot.send_message(message.chat.id, "✂️🎵 Added to audio segment extraction queue!")
 
+# -------------------------
 # General message handler
+# -------------------------
 @bot.message_handler(func=lambda message: True, content_types=["text"])
 async def handle_message(message):
-    """Handles general video download requests."""
     url = message.text.strip()
     await download_queue.put((message, url, False, False, False, None, None))
-    await send_message(message.chat.id, "🎬 Added to video download queue!")
+    await bot.send_message(message.chat.id, "🎬 Added to video download queue!")
 
 # Main bot runner
 async def main():
