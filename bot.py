@@ -78,6 +78,32 @@ def detect_platform(url):
             return platform
     return None
 
+def load_mega_config():
+    try:
+        with open('mega_config.json', 'r') as f:
+            config = json.load(f)
+            return config.get('mega', {})
+    except FileNotFoundError:
+        return None
+
+async def save_mega_session(session_data):
+    try:
+        config = {
+            "mega": {
+                "email": MEGA_EMAIL,
+                "password": MEGA_PASSWORD,
+                "session": session_data,
+                "last_login": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "folder_id": None
+            }
+        }
+        with open('mega_config.json', 'w') as f:
+            json.dump(config, f, indent=4)
+        return True
+    except Exception as e:
+        logger.error(f"[{get_current_utc()}] Failed to save MEGA session: {e}")
+        return False
+
 async def get_mega_client():
     global mega
     if mega is None:
