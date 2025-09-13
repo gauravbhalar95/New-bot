@@ -82,10 +82,23 @@ async def get_mega_client():
     global mega
     if mega is None:
         try:
-            m = Mega()
-            logger.info(f"[{get_current_utc()}] Attempting MEGA login with email: {MEGA_EMAIL}")
-            mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-            logger.info(f"[{get_current_utc()}] MEGA client initialized successfully")
+            # Try to load existing session
+            if os.path.exists(MEGA_SESSION_FILE):
+                with open(MEGA_SESSION_FILE, 'r') as f:
+                    session_data = json.load(f)
+                m = Mega()
+                mega = await asyncio.to_thread(m.login_with_session, session_data)
+                logger.info(f"[{get_current_utc()}] MEGA client restored from session")
+            else:
+                # First-time login
+                m = Mega()
+                logger.info(f"[{get_current_utc()}] Attempting MEGA login with email: {MEGA_EMAIL}")
+                mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
+                # Save session
+                session_data = mega.get_session()
+                with open(MEGA_SESSION_FILE, 'w') as f:
+                    json.dump(session_data, f)
+                logger.info(f"[{get_current_utc()}] MEGA client initialized and session saved")
         except Exception as e:
             logger.error(f"[{get_current_utc()}] Failed to initialize MEGA client: {e}", exc_info=True)
             if "Expecting value" in str(e):
