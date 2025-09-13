@@ -450,6 +450,102 @@ async def send_welcome(message):
     )
     await bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown")
 
+# -------------------------
+# Handlers: add to your existing handler list
+# -------------------------
+
+@bot.message_handler(commands=["setmega"])
+async def cmd_setmega(message):
+    """Start interactive set-mega flow."""
+    chat_id = message.chat.id
+    MEGA_SET_STATE[chat_id] = {"step": "username"}
+    await send_message(chat_id, "🔐 Let's set your MEGA.nz credentials.\nPlease send your MEGA username (email).")
+
+# Catch replies while in state (place this BEFORE your catch-all handler)
+@bot.message_handler(func=lambda m: m.chat.id in MEGA_SET_STATE, content_types=["text"])
+async def _collect_mega_credentials(message):
+    chat_id = message.chat.id
+    state = MEGA_SET_STATE.get(chat_id)
+    if not state:
+        return  # not in state for some reason
+
+    text = message.text.strip()
+    if state["step"] == "username":
+        # store the username temporarily and ask for password
+        state["username"] = text
+        state["step"] = "password"
+        await send_message(chat_id, "🔒 Got it. Now please send your MEGA.nz password.\n(Do NOT share this message elsewhere.)")
+        return
+
+    if state["step"] == "password":
+        username = state.get("username")
+        password = text
+        try:
+            store_encrypted_credentials(chat_id, username, password)
+        except Exception as e:
+            await send_message(chat_id, "❌ Failed to save credentials. Check bot server configuration.")
+            logger.exception("Failed to store MEGA creds: %s", e)
+            MEGA_SET_STATE.pop(chat_id, None)
+            return
+
+        MEGA_SET_STATE.pop(chat_id, None)
+        await send_message(chat_id, "✅ MEGA credentials saved securely on the server.")
+        return
+
+# Optional: show current saved username (masked)
+@bot.message_handler(commands=["getmega"])
+async def cmd_getmega(message):
+    creds = get_mega_credentials(message.chat.id)
+    if not creds:
+        await send_message(message.chat.id, "⚠️ No MEGA credentials found. Use /setmega to add them.")
+        return
+    username, _ = creds
+    if username:
+        masked = username
+        # Mask part of email/username for privacy
+        if "@" in username:
+            local, domain = username.split("@", 1)
+            if len(local) > 2:
+                masked = f"{local[0]}***{local[-1]}@{domain}"
+        else:
+            if len(username) > 4:
+                masked = username[:2] + "***" + username[-1]
+        await send_message(message.chat.id, f"🔎 Saved MEGA username: `{masked}`", parse_mode="Markdown")
+    else:
+        await send_message(message.chat.id, "⚠️ Saved creds found but username is empty.")
+
+@bot.message_handler(commands=["delmega"])
+async def cmd_delmega(message):
+    ok = delete_mega_credentials(message.chat.id)
+    if ok:
+        await send_message(message.chat.id, "🗑️ MEGA credentials removed.")
+    else:
+        await send_message(message.chat.id, "⚠️ No MEGA credentials found for your account.")
+
+# -------------------------
+# Example: how to use in your upload flow
+# -------------------------
+async def upload_to_mega_for_user(chat_id: int, local_filepath: str):
+    """
+    Example showing how to fetch credentials and call your existing MEGA upload code.
+    Replace `your_mega_upload_function(username, password, file)` with actual logic.
+    """
+    creds = get_mega_credentials(chat_id)
+    if not creds:
+        # fallback: you can use a global bot account (if you have one) or ask user to run /setmega
+        await send_message(chat_id, "⚠️ No MEGA credentials found — ask user to set them with /setmega or use bot's global account.")
+        return None
+
+    username, password = creds
+    # Use your current MEGA upload logic here. Example placeholder:
+    try:
+        # result_link = await your_mega_upload_function(username, password, local_filepath)
+        result_link = "<REPLACE_WITH_YOUR_UPLOAD_CALL>"
+        return result_link
+    except Exception as e:
+        logger.exception("MEGA upload failed for chat %s: %s", chat_id, e)
+        return None
+
 @bot.message_handler(commands=["story"])
 async def handle_story_request(message):
     """Handles Instagram story image download requests."""
