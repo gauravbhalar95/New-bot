@@ -467,38 +467,56 @@ async def send_welcome(message):
 # -------------------------
 # MEGA credentials handlers
 # -------------------------
-# Mega client
-mega_client = None
-
-
-# Store login status
-user_credentials = {}
-
-# Command: /meganz <username> <password>
-@bot.message_handler(commands=['meganz'])
-def login_mega(message):
-    global mega_client
+@bot.message_handler(commands=["setmega"])
+async def cmd_setmega(message):
     try:
-        # Parse credentials
         args = message.text.split()
         if len(args) != 3:
-            bot.reply_to(message, "Usage: /meganz <username> <password>")
+            await bot.send_message(message.chat.id, "❌ Usage: /setmega <email> <password>")
             return
 
-        username, password = args[1], args[2]
-
-        # Initialize Mega client and login
-        mega = Mega()
-        mega_client = mega.login(username, password)
-
-        # Save credentials for future sessions
-        user_credentials['username'] = username
-        user_credentials['password'] = password
-
-        bot.reply_to(message, "✅ Logged into Mega.nz successfully!")
+        email, password = args[1], args[2]
+        store_encrypted_credentials(message.chat.id, email, password)
+        await bot.send_message(message.chat.id, "✅ MEGA credentials saved securely.")
     except Exception as e:
-        logger.error(f"Error logging into Mega.nz: {e}")
-        bot.reply_to(message, f"❌ Failed to log in: {e}")
+        await bot.send_message(message.chat.id, f"❌ Failed to save credentials: {e}")
+
+@bot.message_handler(commands=["getmega"])
+async def cmd_getmega(message):
+    try:
+        creds = get_mega_credentials(message.chat.id)
+        if not creds:
+            await bot.send_message(message.chat.id, "⚠️ No MEGA credentials found.")
+            return
+
+        email = creds["username"]
+        # Mask email for safety
+        masked = email
+        if "@" in email:
+            local, domain = email.split("@", 1)
+            if len(local) > 2:
+                masked = f"{local[0]}***{local[-1]}@{domain}"
+        else:
+            if len(email) > 4:
+                masked = email[:2] + "***" + email[-1]
+
+        await bot.send_message(
+            message.chat.id,
+            f"🔑 Saved MEGA account: `{masked}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await bot.send_message(message.chat.id, f"❌ Error: {e}")
+
+@bot.message_handler(commands=["delmega"])
+async def cmd_delmega(message):
+    try:
+        if delete_mega_credentials(message.chat.id):
+            await bot.send_message(message.chat.id, "🗑️ MEGA credentials deleted.")
+        else:
+            await bot.send_message(message.chat.id, "⚠️ No credentials to delete.")
+    except Exception as e:
+        await bot.send_message(message.chat.id, f"❌ Error: {e}")
 
 # -------------------------
 # Instagram story handler
