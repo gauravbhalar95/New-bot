@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 import aiohttp
+from mega_credentials import get_mega_credentials
 from mega_credentials import (
     store_encrypted_credentials,
     get_mega_credentials,
@@ -136,37 +137,42 @@ async def get_mega_client():
             return None
     return mega
 
-async def upload_to_mega(file_path, filename):
+
+async def upload_to_mega(file_path, filename, chat_id=None):
     try:
-        mega = await get_mega_client()
+        m = Mega()
+
+        # Step 1: Check if user has their own credentials
+        user_creds = None
+        if chat_id:
+            user_creds = get_mega_credentials(chat_id)
+
+        if user_creds:
+            logger.info(f"[{get_current_utc()}] Using user MEGA account for upload")
+            mega = await asyncio.to_thread(m.login, user_creds["username"], user_creds["password"])
+        else:
+            logger.info(f"[{get_current_utc()}] Using global MEGA account for upload")
+            mega = await get_mega_client()
+
         if not mega:
+            logger.error(f"[{get_current_utc()}] MEGA login failed")
             return None
 
+        # Step 2: Upload file
         logger.info(f"[{get_current_utc()}] Uploading file to MEGA: {filename}")
         file = await asyncio.to_thread(mega.upload, file_path)
         if not file:
+            logger.error(f"[{get_current_utc()}] Upload returned no file handle")
             return None
+
+        # Step 3: Confirm & get link
         await asyncio.to_thread(mega.confirm_upload, file)
         link = await asyncio.to_thread(mega.get_link, file)
+        logger.info(f"[{get_current_utc()}] File uploaded successfully: {link}")
         return link
-    except Exception as e:
-        logger.error(f"[{get_current_utc()}] Unexpected error in upload_to_mega: {e}")
-        return None
 
-async def upload_to_gofile(file_path, filename):
-    url = "https://api.gofile.io/uploadFile"
-    try:
-        async with aiohttp.ClientSession() as session:
-            with open(file_path, "rb") as f:
-                form = aiohttp.FormData()
-                form.add_field("file", f, filename=filename)
-                async with session.post(url, data=form) as resp:
-                    result = await resp.json()
-                    if result.get("status") == "ok":
-                        return result["data"]["downloadPage"]
-        return None
     except Exception as e:
-        logger.error(f"[{get_current_utc()}] Gofile upload failed: {e}")
+        logger.error(f"[{get_current_utc()}] Unexpected error in upload_to_mega: {e}", exc_info=True)
         return None
 
 
