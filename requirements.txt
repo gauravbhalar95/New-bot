@@ -34,7 +34,7 @@ flask[async]
 fastapi
 flask==3.1.0
 pytelegrambotapi==4.23.0
-tenacity==9.1.2
+tenacity==5.1.5
 psutil
 aiofiles
 rclone
