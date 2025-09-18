@@ -9,9 +9,12 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements and install Python dependencies
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt && \
+
+# Replace pycrypto with pycryptodome during install
+RUN sed -i 's/pycrypto/pycryptodome/g' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy all project files
@@ -21,7 +24,6 @@ COPY . /app
 RUN chmod +x /app/update.sh
 COPY start.sh .
 RUN chmod +x start.sh
-CMD ["./start.sh"]
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -31,6 +33,7 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose the port for Flask
 EXPOSE 8080
 
+# Start services
 CMD bash -c "/app/update.sh && \
     python webhook.py & \
     sleep 5 && \
