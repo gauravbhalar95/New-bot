@@ -1,5 +1,5 @@
 cryptography
-pycrypto
+pycryptodome
 yt-dlp
 requests
 beautifulsoup4
@@ -8,7 +8,6 @@ httpx
 urllib3
 moviepy
 imageio[ffmpeg]
-ffmpeg
 pytube
 pillow
 cloudscraper
@@ -20,7 +19,6 @@ pylint
 telethon
 asyncio
 nest_asyncio
-psutil
 api.video
 instaloader
 loguru
@@ -36,7 +34,5 @@ fastapi
 flask==3.1.0
 pytelegrambotapi==4.23.0
 tenacity==5.1.5
-psutil
-aiofiles
 rclone
 telegram
