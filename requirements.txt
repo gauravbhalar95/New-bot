@@ -1,4 +1,4 @@
-cryptography
+pycryptodome
 yt-dlp
 requests
 beautifulsoup4
