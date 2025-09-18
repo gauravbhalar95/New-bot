@@ -33,7 +33,7 @@ dropbox
 flask[async]
 fastapi
 flask==3.1.0
-pytelegrambotapi==4.14.0
+pytelegrambotapi==4.29.1
 tenacity==5.1.5
 psutil
 aiofiles
