@@ -1,3 +1,4 @@
+cryptography
 pycrypto
 yt-dlp
 requests
