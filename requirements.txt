@@ -2,7 +2,7 @@ cryptography
 pycryptodome
 yt-dlp
 requests
-beautifulsoup4
+beautifulsoup4==4.13.3
 lxml
 httpx
 urllib3
@@ -20,7 +20,7 @@ telethon
 asyncio
 nest_asyncio
 api.video
-instaloader
+instaloader==4.14.2
 loguru
 aiohttp
 python-dotenv
