@@ -6,11 +6,11 @@ import aiohttp
 import shutil
 import functools
 import instaloader
-from PIL import Image
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 
+# Instagram credentials
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", INSTAGRAM_PASSWORD)
 COOKIE_FILE = "instagram_cookies.txt"
@@ -26,7 +26,7 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 )
 
 
-def initialize_instagram_session(force_login=False):
+def initialize_instagram_session(force_login: bool = False):
     """Ensure Instagram session is available with cookie fallback."""
     logger.info("Initializing Instagram session...")
     try:
@@ -40,16 +40,20 @@ def initialize_instagram_session(force_login=False):
             logger.info("Logged in and session saved.")
     except Exception as e:
         logger.error(f"Instagram login failed: {e}")
+        # Remove old cookies to force fresh login next time
+        if os.path.exists(COOKIE_FILE):
+            os.remove(COOKIE_FILE)
 
 
-# Initialize once on module load
+# Initialize once at module load
 initialize_instagram_session()
 
 
 async def get_post(shortcode):
-    """Fetch Instagram post details from shortcode."""
+    """Fetch Instagram post details from shortcode with retry on failure."""
     loop = asyncio.get_event_loop()
     try:
+        await asyncio.sleep(2)  # rate-limit delay
         return await loop.run_in_executor(
             None,
             functools.partial(
@@ -59,6 +63,18 @@ async def get_post(shortcode):
             ),
         )
     except Exception as e:
+        if "Unauthorized" in str(e) or "Please wait" in str(e):
+            logger.warning("Session expired or rate-limited. Re-logging in...")
+            initialize_instagram_session(force_login=True)
+            await asyncio.sleep(5)  # backoff before retry
+            return await loop.run_in_executor(
+                None,
+                functools.partial(
+                    instaloader.Post.from_shortcode,
+                    INSTALOADER_INSTANCE.context,
+                    shortcode,
+                ),
+            )
         logger.error(f"Failed to fetch post {shortcode}: {e}")
         raise
 
@@ -67,6 +83,7 @@ async def get_story_images(username):
     """Fetch story images for a given username."""
     try:
         loop = asyncio.get_event_loop()
+        await asyncio.sleep(2)  # rate-limit delay
         profile = await loop.run_in_executor(
             None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username)
         )
@@ -82,6 +99,11 @@ async def get_story_images(username):
 
         return image_urls
     except Exception as e:
+        if "Unauthorized" in str(e) or "Please wait" in str(e):
+            logger.warning("Session expired while fetching stories. Re-logging in...")
+            initialize_instagram_session(force_login=True)
+            await asyncio.sleep(5)
+            return await get_story_images(username)
         logger.error(f"Error fetching stories for {username}: {e}")
         return []
 
@@ -94,10 +116,10 @@ async def download_image(session, url, temp_path, permanent_path):
             async with aiofiles.open(temp_path, "wb") as f:
                 await f.write(await response.read())
 
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, shutil.copy, temp_path, permanent_path)
-            logger.info(f"Downloaded image to {permanent_path}")
-            return permanent_path
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, shutil.copy, temp_path, permanent_path)
+        logger.info(f"Downloaded image to {permanent_path}")
+        return permanent_path
     except Exception as e:
         logger.error(f"Error downloading image {url}: {e}")
         return None
@@ -107,7 +129,10 @@ async def cleanup_temp_dir(temp_dir):
     """Remove temporary directory safely."""
     try:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, functools.partial(shutil.rmtree, temp_dir, ignore_errors=True))
+        await loop.run_in_executor(
+            None,
+            functools.partial(shutil.rmtree, temp_dir, ignore_errors=True)
+        )
     except Exception as cleanup_error:
         logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
 
