@@ -6,6 +6,10 @@ import aiohttp
 import shutil
 import functools
 import instaloader
+import re
+import traceback
+from asyncio import Lock
+
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
 from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
@@ -14,6 +18,9 @@ from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", INSTAGRAM_PASSWORD)
 COOKIE_FILE = "instagram_cookies.txt"
+
+# Lock for safe session handling
+SESSION_LOCK = Lock()
 
 # Initialize Instaloader
 INSTALOADER_INSTANCE = instaloader.Instaloader(
@@ -26,27 +33,28 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 )
 
 
-def initialize_instagram_session(force_login: bool = False):
-    """Ensure Instagram session is available with cookie fallback."""
-    logger.info("Initializing Instagram session...")
+def initialize_instagram_session():
+    """Always login with credentials, overwrite old session."""
+    global INSTALOADER_INSTANCE
+    logger.info("🔑 Forcing Instagram login with credentials...")
+
     try:
-        if not force_login and os.path.exists(COOKIE_FILE):
-            INSTALOADER_INSTANCE.load_session_from_file(INSTAGRAM_USERNAME, COOKIE_FILE)
-            logger.info("Instagram session loaded successfully.")
-        else:
-            logger.info("Logging in with credentials...")
-            INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-            INSTALOADER_INSTANCE.save_session_to_file(COOKIE_FILE)
-            logger.info("Logged in and session saved.")
+        INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+        INSTALOADER_INSTANCE.save_session_to_file(COOKIE_FILE)
+        logger.info("✅ Logged in and session saved (forced login).")
     except Exception as e:
-        logger.error(f"Instagram login failed: {e}")
-        # Remove old cookies to force fresh login next time
+        logger.error(f"❌ Instagram forced login failed: {e}")
+        # Remove cookies if login failed
         if os.path.exists(COOKIE_FILE):
             os.remove(COOKIE_FILE)
 
 
-# Initialize once at module load
-initialize_instagram_session()
+async def get_instaloader(force_login: bool = False):
+    """Thread-safe wrapper for accessing instaloader instance with forced login if needed."""
+    async with SESSION_LOCK:
+        if force_login or INSTALOADER_INSTANCE.context.username is None:
+            initialize_instagram_session()
+        return INSTALOADER_INSTANCE
 
 
 async def get_post(shortcode):
@@ -64,9 +72,9 @@ async def get_post(shortcode):
         )
     except Exception as e:
         if "Unauthorized" in str(e) or "Please wait" in str(e):
-            logger.warning("Session expired or rate-limited. Re-logging in...")
-            initialize_instagram_session(force_login=True)
-            await asyncio.sleep(5)  # backoff before retry
+            logger.warning("⚠️ Session expired or rate-limited. Forcing re-login...")
+            await get_instaloader(force_login=True)
+            await asyncio.sleep(5)
             return await loop.run_in_executor(
                 None,
                 functools.partial(
@@ -75,7 +83,7 @@ async def get_post(shortcode):
                     shortcode,
                 ),
             )
-        logger.error(f"Failed to fetch post {shortcode}: {e}")
+        logger.error(f"❌ Failed to fetch post {shortcode}: {e}\n{traceback.format_exc()}")
         raise
 
 
@@ -83,7 +91,7 @@ async def get_story_images(username):
     """Fetch story images for a given username."""
     try:
         loop = asyncio.get_event_loop()
-        await asyncio.sleep(2)  # rate-limit delay
+        await asyncio.sleep(2)
         profile = await loop.run_in_executor(
             None, lambda: instaloader.Profile.from_username(INSTALOADER_INSTANCE.context, username)
         )
@@ -100,11 +108,11 @@ async def get_story_images(username):
         return image_urls
     except Exception as e:
         if "Unauthorized" in str(e) or "Please wait" in str(e):
-            logger.warning("Session expired while fetching stories. Re-logging in...")
-            initialize_instagram_session(force_login=True)
+            logger.warning("⚠️ Session expired while fetching stories. Forcing re-login...")
+            await get_instaloader(force_login=True)
             await asyncio.sleep(5)
             return await get_story_images(username)
-        logger.error(f"Error fetching stories for {username}: {e}")
+        logger.error(f"❌ Error fetching stories for {username}: {e}\n{traceback.format_exc()}")
         return []
 
 
@@ -118,10 +126,10 @@ async def download_image(session, url, temp_path, permanent_path):
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, shutil.copy, temp_path, permanent_path)
-        logger.info(f"Downloaded image to {permanent_path}")
+        logger.info(f"✅ Downloaded image to {permanent_path}")
         return permanent_path
     except Exception as e:
-        logger.error(f"Error downloading image {url}: {e}")
+        logger.error(f"❌ Error downloading image {url}: {e}\n{traceback.format_exc()}")
         return None
 
 
@@ -134,13 +142,19 @@ async def cleanup_temp_dir(temp_dir):
             functools.partial(shutil.rmtree, temp_dir, ignore_errors=True)
         )
     except Exception as cleanup_error:
-        logger.error(f"Error cleaning up temp directory {temp_dir}: {cleanup_error}")
+        logger.error(f"⚠️ Error cleaning up temp directory {temp_dir}: {cleanup_error}")
+
+
+def extract_story_username(url: str) -> str | None:
+    """Extract username from story URL reliably."""
+    match = re.search(r"/stories/([^/]+)/", url)
+    return match.group(1) if match else None
 
 
 async def process_instagram_image(url):
     """Process Instagram post/story URL and return downloaded image paths + uploader username."""
     if not url.startswith("https://www.instagram.com/"):
-        logger.warning(f"Invalid Instagram URL: {url}")
+        logger.warning(f"⚠️ Invalid Instagram URL: {url}")
         return [], None
 
     image_paths = []
@@ -155,8 +169,8 @@ async def process_instagram_image(url):
                 try:
                     post = await get_post(shortcode)
                 except Exception:
-                    logger.warning("Post fetch failed. Retrying after re-login...")
-                    initialize_instagram_session(force_login=True)
+                    logger.warning("⚠️ Post fetch failed. Forcing re-login...")
+                    await get_instaloader(force_login=True)
                     post = await get_post(shortcode)
 
                 uploader_username = post.owner_username
@@ -171,20 +185,24 @@ async def process_instagram_image(url):
                         final_path = os.path.join(DOWNLOAD_DIR, filename)
 
                         if os.path.exists(final_path):
-                            logger.info(f"File already exists: {final_path}")
+                            logger.info(f"ℹ️ File already exists: {final_path}")
                             image_paths.append(final_path)
                             continue
 
                         tasks.append(download_image(session, image_url, temp_path, final_path))
                     else:
-                        logger.info(f"Skipping video node {idx}.")
+                        logger.info(f"⏩ Skipping video node {idx}.")
 
                 results = await asyncio.gather(*tasks)
                 image_paths.extend([res for res in results if res])
 
             # Handle Instagram Stories
             elif "/stories/" in url:
-                uploader_username = url.split("/stories/")[1].split("/")[0]
+                uploader_username = extract_story_username(url)
+                if not uploader_username:
+                    logger.warning("⚠️ Could not extract username from story URL.")
+                    return [], None
+
                 story_image_urls = await get_story_images(uploader_username)
 
                 tasks = []
@@ -194,7 +212,7 @@ async def process_instagram_image(url):
                     final_path = os.path.join(DOWNLOAD_DIR, filename)
 
                     if os.path.exists(final_path):
-                        logger.info(f"File already exists: {final_path}")
+                        logger.info(f"ℹ️ File already exists: {final_path}")
                         image_paths.append(final_path)
                         continue
 
@@ -204,14 +222,18 @@ async def process_instagram_image(url):
                 image_paths.extend([res for res in results if res])
 
             else:
-                logger.warning("Unrecognized Instagram URL format.")
+                logger.warning("⚠️ Unrecognized Instagram URL format.")
                 return [], None
 
             return image_paths, uploader_username
 
         except Exception as e:
-            logger.error(f"Error processing Instagram image: {e}")
+            logger.error(f"❌ Error processing Instagram image: {e}\n{traceback.format_exc()}")
             return [], None
 
         finally:
             await cleanup_temp_dir(temp_dir)
+
+
+# Force login immediately on module load
+initialize_instagram_session()
