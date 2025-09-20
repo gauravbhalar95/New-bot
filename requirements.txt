@@ -33,5 +33,5 @@ fastapi==0.102.0
 flask==3.1.0
 pytelegrambotapi==4.14.0
 tenacity==5.1.5
-rclone==0.4.5
+rclone
 telegram==0.0.1
