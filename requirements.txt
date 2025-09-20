@@ -18,8 +18,8 @@ telebot==0.0.5
 pylint==2.17.4
 telethon==1.31.1
 asyncio==3.4.3
-nest_asyncio==1.5.6
-api.video==1.1.4
+nest_asyncio
+api.video
 instaloader==4.14.1
 loguru==0.7.0
 aiohttp==3.9.5
