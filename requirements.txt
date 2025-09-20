@@ -1,4 +1,4 @@
-aiofiles
+aiofiles==24.1.0
 pycryptodome
 yt-dlp
 requests==2.28.2
