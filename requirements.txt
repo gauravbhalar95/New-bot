@@ -28,7 +28,7 @@ aiofiles==23.2.1
 uvicorn==0.22.0
 gunicorn==21.2.0
 quart
-flask[async]==3.0.3
+flask[async]
 fastapi==0.102.0
 flask==3.1.0
 pytelegrambotapi==4.14.0
