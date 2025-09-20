@@ -8,6 +8,8 @@ import psutil
 import json
 import sys
 import time
+import Crypto
+from Crypto.Cipher import AES
 from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
