@@ -1,3 +1,4 @@
+pycryptodome
 yt-dlp
 requests==2.28.2
 beautifulsoup4==4.13.3
