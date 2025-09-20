@@ -1,4 +1,3 @@
-import aiofiles
 import os
 import gc
 import logging
