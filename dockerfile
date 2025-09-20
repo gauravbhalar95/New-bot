@@ -13,6 +13,8 @@ RUN apt-get update && \
 COPY requirements.txt /app/
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y pycrypto || true && \
+    pip install --no-cache-dir pycryptodome && \
     pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy all project files
