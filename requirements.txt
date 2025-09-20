@@ -27,8 +27,7 @@ python-dotenv==1.0.0
 aiofiles==23.2.1
 uvicorn==0.22.0
 gunicorn==21.2.0
-quart==0.18.0
-dropbox==13.0.0
+quart
 flask[async]==3.0.3
 fastapi==0.102.0
 flask==3.1.0
