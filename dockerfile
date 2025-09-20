@@ -11,9 +11,9 @@ RUN apt-get update && \
 
 # Install Python dependencies
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt && \
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
-RUN pip install --upgrade pip
 
 # Copy all project files
 COPY . /app
@@ -29,6 +29,7 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose the port for Flask
 EXPOSE 8080
 
+# Start the app
 CMD bash -c "/app/update.sh && \
     python webhook.py & \
     sleep 5 && \
