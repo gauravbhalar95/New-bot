@@ -13,6 +13,7 @@ RUN apt-get update && \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
+    pip install --upgrade pip
 
 # Copy all project files
 COPY . /app
