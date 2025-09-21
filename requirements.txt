@@ -10,7 +10,7 @@ ffmpeg
 pytube
 pillow
 cloudscraper
-mega.py-reborn
+mega.py
 psutil
 watchdog
 telebot
