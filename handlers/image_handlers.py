@@ -17,7 +17,7 @@ from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
 # Instagram credentials
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", INSTAGRAM_PASSWORD)
-COOKIE_FILE = "is.txt"
+COOKIE_FILE = "cookies.txt"
 
 # Lock for safe session handling
 SESSION_LOCK = Lock()
