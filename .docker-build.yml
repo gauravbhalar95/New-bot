@@ -24,10 +24,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: username/my-bot:latest
+          tags: gauravabhalara/newbot:latest
 
       - name: Trigger Koyeb redeploy
         run: |
-          curl -X POST "https://app.koyeb.com/v1/services/YOUR_SERVICE_ID/deploy" \
+          curl -X POST "https://app.koyeb.com/services/d8416d2c-c190-409e-9909-816bf13d3025?deploymentId=04374151-d9de-4e0e-b6e1-0b7baa13f224" \
           -H "Authorization: Bearer ${{ secrets.KOYEB_API_KEY }}" \
           -H "Content-Type: application/json"
