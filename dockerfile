@@ -13,12 +13,14 @@ RUN apt-get update && \
 COPY requirements.txt /app/
 
 # Install Python dependencies
+COPY requirements.txt /app/
 RUN pip install --upgrade pip && \
     pip uninstall -y pycrypto || true && \
     pip install --no-cache-dir pycryptodome && \
     pip install --no-cache-dir tenacity>=9.0.0 && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp
+    pip install --no-cache-dir --upgrade yt-dlp && \
+    pip install --no-cache-dir git+https://github.com/odwyersoftware/mega.py.git
 
 # Copy all project files
 COPY . /app
