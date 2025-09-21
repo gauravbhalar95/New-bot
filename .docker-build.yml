@@ -1,11 +1,12 @@
-name: Build and Push Docker image
+name: Build, Push to Docker Hub & Redeploy Koyeb
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,8 +19,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v4
         with:
+          context: .
           push: true
-          tags: gauravabhalara/newbot:latest
+          tags: username/my-bot:latest
+
+      - name: Trigger Koyeb redeploy
+        run: |
+          curl -X POST "https://app.koyeb.com/v1/services/YOUR_SERVICE_ID/deploy" \
+          -H "Authorization: Bearer ${{ secrets.KOYEB_API_KEY }}" \
+          -H "Content-Type: application/json"
