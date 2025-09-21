@@ -10,7 +10,7 @@ ffmpeg
 pytube
 pillow
 cloudscraper
-mega.py
+mega.py-reborn
 psutil
 watchdog
 telebot
@@ -33,7 +33,7 @@ flask[async]
 fastapi
 flask==3.1.0
 pytelegrambotapi==4.14.0
-tenacity==5.1.5
+tenacity>=9.0.0
 psutil
 aiofiles
 rclone
