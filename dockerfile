@@ -1,4 +1,4 @@
-# Use official Python 3.13.7 slim image
+# Use official Python image
 FROM python:3.10-slim
 
 # Set the working directory
@@ -6,27 +6,19 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl bash && \
+    apt-get install -y --no-install-recommends ffmpeg curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for Docker caching
-COPY requirements.txt /app/
 
 # Install Python dependencies
 COPY requirements.txt /app/
-RUN pip install --upgrade pip && \
-    pip uninstall -y pycrypto || true && \
-    pip install --no-cache-dir pycryptodome && \
-    pip install --no-cache-dir tenacity>=9.0.0 && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp && \
-    pip install --no-cache-dir git+https://github.com/odwyersoftware/mega.py.git
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy all project files
 COPY . /app
 
 # Make scripts executable
-RUN chmod +x /app/update.sh || true
+RUN chmod +x /app/update.sh
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -36,7 +28,6 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose the port for Flask
 EXPOSE 8080
 
-# Start the app
 CMD bash -c "/app/update.sh && \
     python webhook.py & \
     sleep 5 && \
