@@ -1,4 +1,4 @@
-# Use official Python image
+# Use official Python 3.13.7 slim image
 FROM python:3.13.7-slim
 
 # Set the working directory
@@ -6,22 +6,25 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl && \
+    apt-get install -y --no-install-recommends ffmpeg curl bash && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements first for Docker caching
 COPY requirements.txt /app/
+
+# Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
     pip uninstall -y pycrypto || true && \
     pip install --no-cache-dir pycryptodome && \
+    pip install --no-cache-dir tenacity>=9.0.0 && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy all project files
 COPY . /app
 
 # Make scripts executable
-RUN chmod +x /app/update.sh
+RUN chmod +x /app/update.sh || true
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
