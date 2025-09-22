@@ -21,9 +21,12 @@ COPY . /app
 RUN chmod +x /app/update.sh
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    FLASK_ENV=production \
-    PORT=8080
+[program:telegram-bot]
+command=python /app/bot.py
+autostart=true
+autorestart=true
+priority=3
+environment=PYTHONUNBUFFERED=1,INSTAGRAM_USERNAME=%(ENV_INSTAGRAM_USERNAME)s,INSTAGRAM_PASSWORD=%(ENV_INSTAGRAM_PASSWORD)s,API_TOKEN=%(ENV_API_TOKEN)s,MEGA_EMAIL=%(ENV_MEGA_EMAIL)s,MEGA_PASSWORD=%(ENV_MEGA_PASSWORD)s
 
 # Expose the port for Flask
 EXPOSE 8080
