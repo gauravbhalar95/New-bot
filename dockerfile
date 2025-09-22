@@ -21,18 +21,15 @@ COPY . /app
 RUN chmod +x /app/update.sh
 
 # Set environment variables
-[program:telegram-bot]
-command=python /app/bot.py
-autostart=true
-autorestart=true
-priority=3
-environment=PYTHONUNBUFFERED=1,INSTAGRAM_USERNAME=%(ENV_INSTAGRAM_USERNAME)s,INSTAGRAM_PASSWORD=%(ENV_INSTAGRAM_PASSWORD)s,API_TOKEN=%(ENV_API_TOKEN)s,MEGA_EMAIL=%(ENV_MEGA_EMAIL)s,MEGA_PASSWORD=%(ENV_MEGA_PASSWORD)s
+ENV PYTHONUNBUFFERED=1 \
+    FLASK_ENV=production \
+    PORT=8080
 
 # Expose the port for Flask
 EXPOSE 8080
 
-# Copy supervisor config
+# Copy supervisor config into container
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Start Supervisor (which will manage your processes)
+# Run supervisor as PID 1
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
