@@ -40,7 +40,7 @@ def initialize_instagram_session():
 
     try:
         INSTALOADER_INSTANCE.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-        INSTALOADER_INSTANCE.save_session_to_file(COOKIE_FILE)
+        INSTALOADER_INSTANCE.save_session_to_file(INSTAGRAM_FILE)
         logger.info("✅ Logged in and session saved (forced login).")
     except Exception as e:
         logger.error(f"❌ Instagram forced login failed: {e}")
