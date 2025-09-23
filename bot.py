@@ -463,51 +463,16 @@ async def handle_message(message):
     await send_message(message.chat.id, "🎬 Added to video download queue!")
 
 # Main bot runner
-# Main bot runner
 async def main():
     """Runs the bot and initializes worker processes."""
+    num_workers = min(3, os.cpu_count() or 1)
+    for _ in range(num_workers):
+        asyncio.create_task(worker())
+
     try:
-        # Initialize bot first to prevent the username error
-        if not await initialize_bot():
-            logger.error(f"[{get_current_utc()}] Failed to initialize bot. Exiting.")
-            return
-
-        # Initialize worker processes
-        num_workers = min(3, os.cpu_count() or 1)
-        logger.info(f"[{get_current_utc()}] Starting {num_workers} worker processes...")
-        
-        for i in range(num_workers):
-            asyncio.create_task(worker())
-            logger.info(f"[{get_current_utc()}] Worker {i+1} started")
-
-        # Start cleanup task
-        cleanup_task = asyncio.create_task(cleanup_files())
-        cleanup_tasks.add(cleanup_task)
-        
-        logger.info(f"[{get_current_utc()}] All workers initialized. Starting bot polling...")
-        
-        # Start polling with error handling
-        await start_polling_with_error_handling()
-        
-    except KeyboardInterrupt:
-        logger.info(f"[{get_current_utc()}] Bot stopped by user")
+        await bot.infinity_polling(timeout=30)
     except Exception as e:
-        logger.error(f"[{get_current_utc()}] Unexpected error in main: {e}", exc_info=True)
-    finally:
-        # Clean up tasks
-        for task in cleanup_tasks:
-            task.cancel()
-            
-        logger.info(f"[{get_current_utc()}] Cleanup completed")
+        logger.error(f"Bot polling error: {e}")
 
 if __name__ == "__main__":
-    # Handle graceful shutdown
-    def signal_handler(sig, frame):
-        logger.info(f"[{get_current_utc()}] Received signal {sig}, shutting down...")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Run the bot
     asyncio.run(main())
