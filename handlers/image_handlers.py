@@ -12,12 +12,12 @@ from asyncio import Lock
 
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD
+from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD, INSTAGRAM_FILE
 
 # Instagram credentials
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", INSTAGRAM_PASSWORD)
-COOKIE_FILE = "Lcookies.txt"
+
 
 # Lock for safe session handling
 SESSION_LOCK = Lock()
@@ -45,8 +45,8 @@ def initialize_instagram_session():
     except Exception as e:
         logger.error(f"❌ Instagram forced login failed: {e}")
         # Remove cookies if login failed
-        if os.path.exists(COOKIE_FILE):
-            os.remove(COOKIE_FILE)
+        if os.path.exists(INSTAGRAM_FILE):
+            os.remove(INSTAGRAM_FILE)
 
 
 async def get_instaloader(force_login: bool = False):
