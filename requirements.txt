@@ -33,8 +33,8 @@ dropbox
 flask[async]
 fastapi
 flask
-pytelegrambotapi==4.14.0
-tenacity==5.1.5
+pytelegrambotapi
+tenacity
 psutil
 aiofiles
 rclone
