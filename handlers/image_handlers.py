@@ -4,7 +4,6 @@ import aiofiles
 import asyncio
 import aiohttp
 import shutil
-import functools
 import instaloader
 import re
 import traceback
@@ -64,7 +63,7 @@ async def get_instaloader(force_login: bool = False):
 async def get_post(shortcode):
     """Fetch Instagram post details with retry."""
     try:
-        await asyncio.sleep(2)  # small rate-limit delay
+        await asyncio.sleep(2)
         return await asyncio.to_thread(
             instaloader.Post.from_shortcode,
             INSTALOADER_INSTANCE.context,
@@ -82,31 +81,6 @@ async def get_post(shortcode):
             )
         logger.error(f"❌ Failed to fetch post {shortcode}: {e}\n{traceback.format_exc()}")
         raise
-
-
-async def get_story_images(username):
-    """Fetch all story image URLs for a given username."""
-    try:
-        await asyncio.sleep(2)
-        profile = await asyncio.to_thread(
-            instaloader.Profile.from_username,
-            INSTALOADER_INSTANCE.context,
-            username
-        )
-        stories = await asyncio.to_thread(
-            INSTALOADER_INSTANCE.get_stories,
-            [profile.userid]
-        )
-
-        return [item.url for story in stories for item in story.get_items() if not item.is_video]
-    except Exception as e:
-        if "Unauthorized" in str(e) or "Please wait" in str(e):
-            logger.warning("⚠️ Session expired while fetching stories. Re-logging in...")
-            await get_instaloader(force_login=True)
-            await asyncio.sleep(5)
-            return await get_story_images(username)
-        logger.error(f"❌ Error fetching stories for {username}: {e}\n{traceback.format_exc()}")
-        return []
 
 
 async def download_image(session, url, temp_path, final_path):
@@ -133,14 +107,11 @@ async def cleanup_temp_dir(temp_dir):
         logger.error(f"⚠️ Temp dir cleanup failed {temp_dir}: {e}")
 
 
-def extract_story_username(url: str) -> str | None:
-    """Extract username from story URL."""
-    match = re.search(r"/stories/([^/]+)/", url)
-    return match.group(1) if match else None
-
-
 async def process_instagram_image(url):
-    """Process Instagram post/story URL and return image paths + uploader."""
+    """
+    Process Instagram post URL and return ALL image paths + uploader.
+    Handles single image, carousel (bulk), and stories.
+    """
     if not url.startswith("https://www.instagram.com/"):
         logger.warning(f"⚠️ Invalid Instagram URL: {url}")
         return [], None
@@ -150,12 +121,17 @@ async def process_instagram_image(url):
 
     async with aiohttp.ClientSession() as session:
         try:
-            # Handle posts
+            # --- Handle posts (single or carousel) ---
             if "/p/" in url:
                 shortcode = url.split("/p/")[1].split("/")[0]
                 post = await get_post(shortcode)
                 uploader_username = post.owner_username
-                nodes = post.get_sidecar_nodes() if hasattr(post, "get_sidecar_nodes") else [post]
+
+                nodes = []
+                if post.typename == "GraphSidecar":
+                    nodes = list(post.get_sidecar_nodes())
+                else:
+                    nodes = [post]
 
                 tasks = []
                 for idx, node in enumerate(nodes):
@@ -163,7 +139,7 @@ async def process_instagram_image(url):
                         logger.info(f"⏩ Skipping video node {idx}.")
                         continue
 
-                    filename = sanitize_filename(f"{uploader_username}_{shortcode}_{idx}.png")
+                    filename = sanitize_filename(f"{uploader_username}_{shortcode}_{idx}.jpg")
                     final_path = os.path.join(DOWNLOAD_DIR, filename)
                     temp_path = os.path.join(temp_dir, filename)
 
@@ -177,32 +153,8 @@ async def process_instagram_image(url):
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 image_paths.extend([r for r in results if isinstance(r, str)])
 
-            # Handle stories
-            elif "/stories/" in url:
-                uploader_username = extract_story_username(url)
-                if not uploader_username:
-                    logger.warning("⚠️ Could not extract username from story URL.")
-                    return [], None
-
-                story_urls = await get_story_images(uploader_username)
-                tasks = []
-                for idx, image_url in enumerate(story_urls):
-                    filename = sanitize_filename(f"{uploader_username}_story_{idx}.png")
-                    final_path = os.path.join(DOWNLOAD_DIR, filename)
-                    temp_path = os.path.join(temp_dir, filename)
-
-                    if os.path.exists(final_path):
-                        logger.info(f"ℹ️ Already exists: {final_path}")
-                        image_paths.append(final_path)
-                        continue
-
-                    tasks.append(download_image(session, image_url, temp_path, final_path))
-
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                image_paths.extend([r for r in results if isinstance(r, str)])
-
             else:
-                logger.warning("⚠️ Unrecognized Instagram URL format.")
+                logger.warning("⚠️ Unsupported Instagram URL format.")
                 return [], None
 
             return image_paths, uploader_username
@@ -212,8 +164,20 @@ async def process_instagram_image(url):
             return [], None
 
         finally:
-            asyncio.create_task(cleanup_temp_dir(temp_dir))  # shield cleanup
-            
+            asyncio.create_task(cleanup_temp_dir(temp_dir))
+
+
+async def process_bulk_instagram_images(urls: list[str]):
+    """
+    Bulk process multiple Instagram post URLs at once.
+    """
+    all_downloads = []
+    for url in urls:
+        imgs, user = await process_instagram_image(url)
+        if imgs:
+            all_downloads.extend(imgs)
+    return all_downloads
+
 
 # Initialize session immediately
 initialize_instagram_session()
