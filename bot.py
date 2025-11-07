@@ -405,7 +405,7 @@ async def handle_audio_request(message):
     await send_message(message.chat.id, "🎵 Added to audio extraction queue!")
 
 # Instagram image download handler
-@bot.message_handler(commands=["I"])
+@bot.message_handler(commands=["image"])
 async def handle_image_request(message):
     """Handles Instagram image download requests."""
     url = message.text.replace("/image", "").strip()
