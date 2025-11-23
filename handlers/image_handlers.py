@@ -15,7 +15,7 @@ from config import DOWNLOAD_DIR, INSTAGRAM_FILE
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "top_deals_station")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD")
 SESSION_LOCK = Lock()
-INSTALOADER_INSTANCE = instaloader.Instaloader(download_videos=False, ...)
+INSTALOADER_INSTANCE = instaloader.Instaloader(download_videos=False)
 
 def initialize_instagram_session(force_login: bool = False):
     ...
