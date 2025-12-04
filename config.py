@@ -71,7 +71,7 @@ os.makedirs(DOWNLOAD_DIR3, exist_ok=True)
 # Cookies file for authenticated downloads
 X_FILE = "x.txt"
 YOUTUBE_FILE = "youtube_cookies.txt"
-INSTAGRAM_FILE = "www.instagram.com_cookies.txt"
+INSTAGRAM_FILE = "ig.txt"
 COOKIES_FILE = "cookies.txt"
 FACEBOOK_FILE = "facebook.txt"
 
