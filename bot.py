@@ -74,6 +74,20 @@ def get_current_utc():
     """Returns current UTC time in YYYY-MM-DD HH:MM:SS format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
+
+
+
+def create_instagram_cookie_file():
+    cookie_data = os.getenv("INSTAGRAM_COOKIES")
+    if cookie_data:
+        with open("ig.txt", "w") as f:
+            f.write(cookie_data)
+        print("ig.txt created successfully")
+    else:
+        print("INSTAGRAM_COOKIES variable not found")
+
+create_instagram_cookie_file()
+
 async def check_memory_usage():
     """Checks current memory usage and returns True if it's safe to proceed."""
     process = psutil.Process(os.getpid())
