@@ -1,6 +1,7 @@
 # handlers/instagram_handler.py
 import os
 import gc
+import logging
 import asyncio
 from pathlib import Path
 from urllib.parse import urlparse
