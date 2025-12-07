@@ -76,10 +76,9 @@ def get_current_utc():
     """Returns current UTC time in YYYY-MM-DD HH:MM:SS format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-asyncio.create_task(auto_refresh_cookies(
-    INSTAGRAM_USERNAME,
-    INSTAGRAM_PASSWORD
-))
+# Start auto-refresh in the background
+asyncio.create_task(auto_refresh_cookies())
+
 
 
 async def check_memory_usage():
