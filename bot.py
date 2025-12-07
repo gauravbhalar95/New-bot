@@ -30,6 +30,7 @@ from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim
 from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
+from utils.instagram_cookies import auto_refresh_cookies
 
 # Constants for memory management
 MAX_MEMORY_USAGE = 500 * 1024 * 1024  # 500MB
