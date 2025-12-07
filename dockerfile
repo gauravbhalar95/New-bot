@@ -18,8 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 RUN pip install --no-cache-dir playwright && \
     playwright install --with-deps chromium
 
-# Copy project files
+# Copy all project files
 COPY . /app
+
+# Create cookies directory
+RUN mkdir -p /app/cookies
 
 # 🔥 Ensure Instagram cookies are copied to the container
 # (THIS FIXES your "cookies not deploying" issue)
