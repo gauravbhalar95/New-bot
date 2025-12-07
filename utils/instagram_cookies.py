@@ -38,3 +38,15 @@ async def load_cookies_to_instaloader(loader):
             )
 
     return loader
+
+async def auto_refresh_cookies():
+    while True:
+        print("🔄 Refreshing Instagram cookies...")
+        try:
+            await fetch_instagram_cookies(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+            print("✅ Instagram cookies updated successfully!")
+        except Exception as e:
+            print(f"❌ Failed to refresh cookies: {e}")
+
+        # Refresh every 7 days (604800 seconds)
+        await asyncio.sleep(7 * 24 * 60 * 60)
