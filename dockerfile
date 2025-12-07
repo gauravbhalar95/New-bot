@@ -23,7 +23,7 @@ COPY . /app
 
 # 🔥 Ensure Instagram cookies are copied to the container
 # (THIS FIXES your "cookies not deploying" issue)
-COPY utils/instagram_cookies /app/utils/instagram_cookies
+COPY utils/instagram_cookies.py /app/utils/instagram_cookies.py
 
 # Make scripts executable
 RUN chmod +x /app/update.sh
