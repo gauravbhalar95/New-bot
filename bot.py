@@ -77,7 +77,7 @@ def get_current_utc():
 
 asyncio.create_task(auto_refresh_cookies(
     INSTAGRAM_USERNAME,
-    INSTAGRAM_PASSWARD
+    INSTAGRAM_PASSWORD
 ))
 
 
