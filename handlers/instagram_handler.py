@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
 from config import DOWNLOAD_DIR
-from utills.instagram_cookies import COOKIES_FILE
+from utils.instagram_cookies import COOKIES_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
