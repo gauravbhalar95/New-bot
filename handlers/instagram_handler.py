@@ -4,7 +4,8 @@ import asyncio
 from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
-from config import DOWNLOAD_DIR, INSTAGRAM_FILE
+from config import DOWNLOAD_DIR
+from utills.instagram_cookies import COOKIES_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
@@ -48,7 +49,7 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
     url = url.split('#')[0]    
 
     # Validate cookies
-    cookie_path = Path(INSTAGRAM_FILE)
+    cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
         logger.error("❌ Instagram cookies file is missing or empty!")
         return None, 0, "Instagram cookies file is missing or empty"
