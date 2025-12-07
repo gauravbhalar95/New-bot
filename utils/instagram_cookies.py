@@ -2,6 +2,8 @@ from playwright.async_api import async_playwright
 import json
 import asyncio
 import os
+from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWARD
+
 
 COOKIES_FILE = "instagram_cookies.json"
 
