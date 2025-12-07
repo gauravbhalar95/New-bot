@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from mega import Mega
 from telebot.async_telebot import AsyncTeleBot
 from asyncio import Semaphore
+from config import DOWNLOAD_DIR, INSTAGRAM_PASSWORD, INSTAGRAM_USERNAME
 
 # Import local modules
 from config import (
@@ -20,9 +21,7 @@ from config import (
     MEGA_EMAIL,
     MEGA_PASSWORD,
     DEFAULT_ADMIN,
-    ADMIN_IDS,
-    INSTAGRAM_PASSWARD,
-    INSTAGRAM_USERNAME
+    ADMIN_IDS
 )
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
