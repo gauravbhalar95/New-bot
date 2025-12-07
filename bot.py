@@ -20,7 +20,9 @@ from config import (
     MEGA_EMAIL,
     MEGA_PASSWORD,
     DEFAULT_ADMIN,
-    ADMIN_IDS
+    ADMIN_IDS,
+    INSTAGRAM_PASSWARD,
+    INSTAGRAM_USERNAME
 )
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
