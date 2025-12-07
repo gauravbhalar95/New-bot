@@ -8,6 +8,7 @@ from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 RAW_JSON_COOKIES = "cookies/instagram_raw.json"
 NETSCAPE_COOKIES = "cookies/instagram_cookies.txt"
 
+COOKIES_FILE = NETSCAPE_COOKIES
 
 # Convert JSON cookies → Netscape format
 def convert_to_netscape(json_file, output_file):
