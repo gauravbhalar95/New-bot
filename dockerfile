@@ -13,6 +13,8 @@ apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt && \
 pip install --no-cache-dir --upgrade yt-dlp
+RUN pip install playwright
+RUN playwright install chromium
 
 #Copy all project files
 COPY . /app
