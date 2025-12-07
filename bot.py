@@ -76,8 +76,10 @@ def get_current_utc():
     """Returns current UTC time in YYYY-MM-DD HH:MM:SS format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-# Start auto-refresh in the background
-asyncio.create_task(auto_refresh_cookies())
+async def main():
+    # Start background tasks inside the running loop
+    asyncio.create_task(auto_refresh_cookies())
+    asyncio.create_task(cleanup_files())
 
 
 
