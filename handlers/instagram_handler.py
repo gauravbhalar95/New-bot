@@ -8,9 +8,8 @@ from urllib.parse import urlparse
 import yt_dlp
 import aiofiles
 from typing import Optional, Tuple
-
 from config import DOWNLOAD_DIR
-from utils.instagram_cookies import COOKIES_FILE
+from utils.instagram_cookies import COOKIES_FILE  # ensure this is a Netscape cookies.txt
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
@@ -18,153 +17,129 @@ from utils.logger import setup_logging
 logger = setup_logging(logging.DEBUG)
 logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
-SUPPORTED_DOMAINS = ["instagram.com"]
+# Supported Domains
+SUPPORTED_DOMAINS = ['instagram.com']
 
+# Ensure download dir exists
 Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
-
-# ------------------------------
-# Validate URL
-# ------------------------------
+# URL Validation
 def is_valid_url(url: str) -> bool:
     try:
-        parsed = urlparse(url)
-        return parsed.scheme in ["http", "https"] and any(d in parsed.netloc for d in SUPPORTED_DOMAINS)
-    except:
+        result = urlparse(url)
+        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
+    except ValueError:
         return False
 
-
-# ------------------------------
-# Recognize Reel / TV / Video
-# ------------------------------
+# Identify Instagram Video
 def is_instagram_video(url: str) -> bool:
-    return any(x in url for x in ["/reel/", "/tv/", "/video/"])
+    return any(x in url for x in ['/reel/', '/tv/', '/video/'])
 
-
-# ------------------------------
-# Progress hook
-# ------------------------------
-def download_progress_hook(d: dict):
-    if d.get("status") == "downloading":
-        logger.info(f"Downloading {d.get('_percent_str')} at {d.get('_speed_str')} ETA {d.get('_eta_str')}")
-    elif d.get("status") == "finished":
+# Progress Hook for Downloads
+def download_progress_hook(d: dict) -> None:
+    status = d.get('status')
+    if status == 'downloading':
+        percent = d.get('_percent_str', '0%')
+        speed = d.get('_speed_str', 'N/A')
+        eta = d.get('_eta_str', 'N/A')
+        logger.info(f"Downloading... {percent} at {speed}, ETA: {eta}")
+    elif status == 'finished':
         logger.info(f"✅ Download finished: {d.get('filename')}")
 
-
-# ------------------------------
-# FIXED: Skip MP4 Conversion Correctly
-# ------------------------------
-def skip_mp4_convert(info, *, file_path: str) -> str:
-    """
-    If file is already .mp4 → return same file
-    Otherwise → yt-dlp will convert automatically
-    """
-    if file_path.lower().endswith(".mp4"):
-        logger.info("🟢 File already MP4 → skipping ffmpeg convert.")
-        return file_path
-
-    return file_path  # let yt-dlp handle conversion if needed
-
-
-# ------------------------------
-# Instagram Downloader
-# ------------------------------
+# Instagram Video Downloader
 async def process_instagram(url: str) -> Tuple[Optional[str], int, Optional[str]]:
-    url = url.split("#")[0]
+    # Clean URL (strip fragment only)
+    url = url.split('#')[0]
 
+    # Validate cookie file exists and is readable
     cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        return None, 0, "❌ Instagram cookies file is missing or empty"
+        logger.error("❌ Instagram cookies file is missing or empty!")
+        return None, 0, "Instagram cookies file is missing or empty"
 
-    OUT_TEMPLATE = str(Path(DOWNLOAD_DIR) / "%(uploader)s-%(id)s.%(ext)s")
+    # Output template - sanitize will be applied later
+    outtmpl = str(Path(DOWNLOAD_DIR) / '%(uploader)s - %(title)s.%(ext)s')
 
     ydl_opts = {
-        "format": "bv+ba/b",
-        "outtmpl": OUT_TEMPLATE,
-        "socket_timeout": 15,
-        "retries": 5,
-        "cookiefile": str(cookie_path),
-        "progress_hooks": [download_progress_hook],
-
-        # ❌ Removed FFmpegVideoConvertor — causes double-convert
-        # yt-dlp already outputs mp4 because merge_output_format is set
-
-        "merge_output_format": "mp4",
-
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0 "
-                "Gecko/20100101 Firefox/123.0"
+        'format': 'bv+ba/b',
+        'merge_output_format': 'mp4',
+        'outtmpl': outtmpl,
+        'socket_timeout': 10,
+        'retries': 5,
+        'progress_hooks': [download_progress_hook],
+        'cookiefile': str(cookie_path),
+        # Keep verbose only during debug
+        # 'verbose': True,
+        'postprocessors': [
+            {
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }
+        ],
+        'http_headers': {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0 '
+                'Gecko/20100101 Firefox/123.0'
             ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.instagram.com/",
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
         },
     }
 
     try:
-        def _run():
+        # Run blocking yt-dlp in threadpool
+        def run_extract():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
 
-        info = await asyncio.to_thread(_run)
+        info_dict = await asyncio.to_thread(run_extract)
 
-        if not info:
-            return None, 0, "❌ Failed to extract Instagram info"
+        if not info_dict:
+            return None, 0, "❌ Failed to extract info"
 
-        uploader = info.get("uploader") or "instagram"
-        video_id = info.get("id")
-        ext = info.get("ext") or "mp4"
-
-        raw_name = f"{uploader}-{video_id}.{ext}"
+        # prepare_filename may need a YDL instance; reconstruct safe filename using fields
+        uploader = info_dict.get('uploader') or info_dict.get('uploader_id') or 'instagram'
+        title = info_dict.get('title') or info_dict.get('id') or 'video'
+        ext = info_dict.get('ext') or 'mp4'
+        raw_name = f"{uploader} - {title}.{ext}"
         safe_name = sanitize_filename(raw_name)
-
         video_path = Path(DOWNLOAD_DIR) / safe_name
 
-        # Detect actual downloaded file if template mismatch
+        # If yt-dlp created a different filename, try to detect it:
         if not video_path.exists():
-            found = sorted(
-                Path(DOWNLOAD_DIR).glob(f"*{video_id}*"),
-                key=lambda x: x.stat().st_mtime,
-                reverse=True
-            )
-            if found:
-                video_path = found[0]
+            # try to find candidate file in DOWNLOAD_DIR modified recently
+            candidates = sorted(Path(DOWNLOAD_DIR).glob(f"*{info_dict.get('id','')}*"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if candidates:
+                video_path = candidates[0]
 
-        # 🟢 FIX: If MP4 → skip convert
-        final_path = skip_mp4_convert(info, file_path=str(video_path))
+        file_size = info_dict.get('filesize') or (video_path.stat().st_size if video_path.exists() else 0)
+        return str(video_path), int(file_size), None
 
-        size = video_path.stat().st_size if video_path.exists() else 0
-
-        return str(final_path), size, None
-
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"❌ Instagram download error: {e}")
+        return None, 0, str(e)
     except Exception as e:
-        logger.exception(f"❌ Instagram download failed: {e}")
+        logger.exception(f"⚠️ Unexpected error downloading Instagram video: {e}")
         return None, 0, str(e)
 
-
-# ------------------------------
-# Send video
-# ------------------------------
-async def send_video_to_user(bot, chat_id: int, file_path: str):
+# Send Video to User (async, non-blocking)
+async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     try:
-        async with aiofiles.open(file_path, "rb") as f:
+        # Read file asynchronously to bytes (careful with very large files)
+        async with aiofiles.open(video_path, 'rb') as f:
             data = await f.read()
-
         await bot.send_video(chat_id, data, supports_streaming=True)
-        logger.info(f"📤 Video sent to user {chat_id}")
+        logger.info(f"✅ Video successfully sent to user {chat_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to send video: {e}")
+        logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
 
-
-# ------------------------------
-# Cleanup
-# ------------------------------
-def cleanup_video(file_path: str):
+# Cleanup Downloaded Files
+def cleanup_video(video_path: str) -> None:
+    video_file = Path(video_path)
     try:
-        p = Path(file_path)
-        if p.exists():
-            p.unlink()
+        if video_file.exists():
+            video_file.unlink()
             gc.collect()
-            logger.info(f"🧹 Cleaned: {file_path}")
+            logger.info(f"🧹 Cleaned up {video_path}")
     except Exception as e:
-        logger.error(f"❌ Cleanup failed: {e}")
+        logger.error(f"❌ Failed to clean up {video_path}: {e}")
