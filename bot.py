@@ -29,13 +29,15 @@ from handlers.image_handlers import process_instagram_image
 from utils.logger import setup_logging
 from utils.instagram_cookies import auto_refresh_cookies
 
-# ---------------- CONFIG ----------------
+# ---------------- CONSTANTS ----------------
 MAX_MEMORY_USAGE = 500 * 1024 * 1024  # 500MB
 MAX_CONCURRENT_DOWNLOADS = 2
-CLEANUP_INTERVAL = 300
+CLEANUP_INTERVAL = 300  # 5 minutes
 
+# ---------------- LOGGER ----------------
 logger = setup_logging(logging.DEBUG)
 
+# ---------------- BOT ----------------
 bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 download_semaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
@@ -43,6 +45,7 @@ download_semaphore = Semaphore(MAX_CONCURRENT_DOWNLOADS)
 mega = None
 active_downloads = set()
 
+# ---------------- PLATFORMS ----------------
 PLATFORM_PATTERNS = {
     "YouTube": re.compile(r"(youtube\.com|youtu\.be)"),
     "Instagram": re.compile(r"instagram\.com"),
@@ -76,20 +79,21 @@ async def send_message(chat_id, text):
     await bot.send_message(chat_id, text)
 
 # ---------------- MEGA ----------------
-async def get_mega():
+async def get_mega_client():
     global mega
     if mega is None:
         m = Mega()
         mega = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
+        logger.info("✅ MEGA logged in")
     return mega
 
 async def upload_to_mega(file_path):
     try:
-        client = await get_mega()
+        client = await get_mega_client()
         f = await asyncio.to_thread(client.upload, file_path)
         return await asyncio.to_thread(client.get_upload_link, f)
     except Exception as e:
-        logger.error(f"[{now()}] MEGA upload failed: {e}")
+        logger.error(f"MEGA upload error: {e}")
         return None
 
 # ---------------- CLEANUP ----------------
@@ -106,10 +110,10 @@ async def cleanup_files():
             logger.error(f"Cleanup error: {e}")
             await asyncio.sleep(60)
 
-# ---------------- DOWNLOAD PROCESS ----------------
+# ---------------- DOWNLOAD ----------------
 async def process_download(message, url, is_audio=False, is_video_trim=False, is_audio_trim=False, start=None, end=None):
     if not await check_memory():
-        await send_message(message.chat.id, "⚠️ Server busy. Try later.")
+        await send_message(message.chat.id, "⚠️ Server busy, try later")
         return
 
     async with download_semaphore:
@@ -121,8 +125,6 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
             return
 
         try:
-            result = None
-
             if is_video_trim:
                 result = await process_video_trim(url, start, end)
             elif is_audio_trim:
@@ -162,7 +164,7 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
                 os.remove(file_path)
 
         except Exception as e:
-            logger.error(f"[{now()}] Error: {e}")
+            logger.error(f"Download error: {e}")
             await send_message(message.chat.id, f"❌ Error: {e}")
 
         gc.collect()
@@ -171,7 +173,6 @@ async def process_download(message, url, is_audio=False, is_video_trim=False, is
 async def process_image_download(message, url):
     await send_message(message.chat.id, "🖼 Processing image...")
     result = await process_instagram_image(url)
-
     paths = result if isinstance(result, list) else [result]
 
     for p in paths:
@@ -219,6 +220,10 @@ async def handle_url(message):
 
 # ---------------- MAIN ----------------
 async def main():
+    # 🔥 FORCE INITIAL COOKIE GENERATION
+    await auto_refresh_cookies()
+
+    # 🔁 KEEP REFRESHING IN BACKGROUND
     asyncio.create_task(auto_refresh_cookies())
     asyncio.create_task(cleanup_files())
 
