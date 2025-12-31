@@ -30,8 +30,8 @@ from handlers.trim_handlers import process_video_trim, process_audio_trim
 from utils.logger import setup_logging
 from utils.instagram_cookies import auto_refresh_cookies
 
-# ================= CONFIG =================
-MAX_MEMORY_USAGE = 450 * 1024 * 1024  # 450MB (safe for Koyeb)
+# ================= SETTINGS =================
+MAX_MEMORY_USAGE = 450 * 1024 * 1024  # 450MB
 MAX_CONCURRENT_DOWNLOADS = 1
 CLEANUP_INTERVAL = 300
 
@@ -73,7 +73,7 @@ def detect_platform(url):
             return name
     return None
 
-async def memory_ok():
+def memory_ok():
     return psutil.Process(os.getpid()).memory_info().rss < MAX_MEMORY_USAGE
 
 # ================= CLEANUP =================
@@ -93,13 +93,9 @@ async def cleanup_task():
 async def get_mega():
     global mega_client
     if mega_client is None:
-        try:
-            m = Mega()
-            mega_client = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
-            logger.info("MEGA logged in")
-        except Exception as e:
-            logger.error(f"MEGA login failed: {e}")
-            return None
+        m = Mega()
+        mega_client = await asyncio.to_thread(m.login, MEGA_EMAIL, MEGA_PASSWORD)
+        logger.info("MEGA logged in")
     return mega_client
 
 async def upload_to_mega(path):
@@ -111,14 +107,35 @@ async def upload_to_mega(path):
         logger.error(f"MEGA upload error: {e}")
         return None
 
-# ================= CORE DOWNLOAD =================
+# ================= RESULT NORMALIZER (IMPORTANT FIX) =================
+def normalize_result(result):
+    if isinstance(result, tuple):
+        if isinstance(result[0], list):
+            path = result[0][0]
+        else:
+            path = result[0]
+        size = result[1]
+    elif isinstance(result, list):
+        path = result[0]
+        size = os.path.getsize(path)
+    elif isinstance(result, str):
+        path = result
+        size = os.path.getsize(path)
+    else:
+        raise ValueError("Unknown result format")
+    return path, size
+
+# ================= CORE PROCESS =================
 async def process_download(task):
+    file_path = None
+    size = None
+
     message = task["message"]
     url = task["url"]
 
     async with download_semaphore:
-        if not await memory_ok():
-            await bot.send_message(message.chat.id, "⚠️ Server busy. Try again later.")
+        if not memory_ok():
+            await bot.send_message(message.chat.id, "⚠️ Server busy, try later.")
             return
 
         platform = detect_platform(url)
@@ -129,7 +146,6 @@ async def process_download(task):
         await bot.send_message(message.chat.id, "📥 Processing...")
 
         try:
-            # ---------- PROCESS ----------
             if task["type"] == "audio":
                 file_path, size = await extract_audio_ffmpeg(url)
 
@@ -145,18 +161,13 @@ async def process_download(task):
 
             else:
                 result = await PLATFORM_HANDLERS[platform](url)
-                if isinstance(result, tuple):
-                    file_path, size = result
-                else:
-                    file_path = result
-                    size = os.path.getsize(file_path)
+                file_path, size = normalize_result(result)
 
-            # ---------- SEND ----------
             if size > TELEGRAM_FILE_LIMIT:
                 link = await upload_to_mega(file_path)
                 await bot.send_message(message.chat.id, f"📦 File too large:\n{link}")
             else:
-                if task["type"] in ["audio", "audio_trim"]:
+                if task["type"] in ("audio", "audio_trim"):
                     await bot.send_audio(message.chat.id, open(file_path, "rb"))
                 else:
                     await bot.send_video(
@@ -176,9 +187,7 @@ async def process_download(task):
 
 # ================= IMAGE =================
 async def process_image(message, url):
-    await bot.send_message(message.chat.id, "🖼️ Processing image...")
     files = await process_instagram_image(url)
-
     for img in files:
         if os.path.getsize(img) > TELEGRAM_FILE_LIMIT:
             link = await upload_to_mega(img)
@@ -191,7 +200,6 @@ async def process_image(message, url):
 async def worker():
     while True:
         task = await download_queue.get()
-        logger.info(f"Worker got task: {task}")
         try:
             if task["type"] == "image":
                 await process_image(task["message"], task["url"])
@@ -211,17 +219,13 @@ async def start(message):
 @bot.message_handler(commands=["audio"])
 async def audio_cmd(message):
     url = message.text.replace("/audio", "").strip()
-    await download_queue.put(
-        {"type": "audio", "url": url, "message": message}
-    )
+    await download_queue.put({"type": "audio", "url": url, "message": message})
     await bot.send_message(message.chat.id, "🎵 Added to queue")
 
 @bot.message_handler(commands=["image"])
 async def image_cmd(message):
     url = message.text.replace("/image", "").strip()
-    await download_queue.put(
-        {"type": "image", "url": url, "message": message}
-    )
+    await download_queue.put({"type": "image", "url": url, "message": message})
     await bot.send_message(message.chat.id, "🖼️ Added to queue")
 
 @bot.message_handler(commands=["trim"])
@@ -235,6 +239,7 @@ async def trim_cmd(message):
             "end": m.group(3),
             "message": message,
         })
+        await bot.send_message(message.chat.id, "✂️ Added to queue")
 
 @bot.message_handler(func=lambda m: True)
 async def normal_url(message):
@@ -245,11 +250,12 @@ async def normal_url(message):
 
 # ================= MAIN =================
 async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
+
     asyncio.create_task(cleanup_task())
     asyncio.create_task(auto_refresh_cookies())
 
-    for _ in range(1):
-        asyncio.create_task(worker())
+    asyncio.create_task(worker())
 
     await bot.infinity_polling(timeout=30)
 
