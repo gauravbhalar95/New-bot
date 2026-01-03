@@ -1,126 +1,174 @@
 import logging
 import gc
 import asyncio
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
+
 import yt_dlp
+
 from config import DOWNLOAD_DIR
 from utils.instagram_cookies import COOKIES_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
-# Logger setup
+
+# ================= LOGGER =================
 logger = setup_logging(logging.DEBUG)
 logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
-# Supported Domains
-SUPPORTED_DOMAINS = ['instagram.com']
 
-# URL Validation
+# ================= CONSTANTS =================
+SUPPORTED_DOMAINS = ["instagram.com"]
+
+
+# ================= URL VALIDATION =================
 def is_valid_url(url: str) -> bool:
-    """Check if the given URL is a valid Instagram link."""
     try:
         result = urlparse(url)
-        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
-    except ValueError:
+        return result.scheme in ("http", "https") and any(
+            d in result.netloc for d in SUPPORTED_DOMAINS
+        )
+    except Exception:
         return False
 
-# Identify Instagram Video
+
 def is_instagram_video(url: str) -> bool:
-    """Identify if the given URL points to an Instagram video."""
-    return any(x in url for x in ['/reel/', '/tv/', '/video/'])
+    return any(x in url for x in ("/reel/", "/tv/", "/video/"))
 
-# Progress Hook for Downloads
+
+# ================= PROGRESS HOOK =================
 def download_progress_hook(d: dict) -> None:
-    """Track and log download progress."""
-    if d['status'] == 'downloading':
-        percent = d.get('_percent_str', '0%')
-        speed = d.get('_speed_str', 'N/A')
-        eta = d.get('_eta_str', 'N/A')
-        logger.info(f"Downloading... {percent} at {speed}, ETA: {eta}")
-    elif d['status'] == 'finished':
-        logger.info(f"✅ Download finished: {d['filename']}")
+    if d["status"] == "downloading":
+        logger.info(
+            f"⬇ {d.get('_percent_str', '')} "
+            f"at {d.get('_speed_str', '')} "
+            f"ETA {d.get('_eta_str', '')}"
+        )
+    elif d["status"] == "finished":
+        logger.info(f"✅ Download finished: {d.get('filename')}")
 
-# Instagram Video Downloader
+
+# ================= AUDIO CHECK =================
+def has_audio(video_path: Path) -> bool:
+    """
+    Ensure audio stream exists (prevents silent Telegram videos)
+    """
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "json",
+            str(video_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return '"index"' in result.stdout
+    except Exception as e:
+        logger.error(f"Audio check failed: {e}")
+        return False
+
+
+# ================= MAIN DOWNLOAD FUNCTION =================
 async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
-    """Download Instagram video asynchronously and return its path, size, and any errors."""
+    """
+    Download Instagram Reel with BEST video + BEST audio
+    """
 
-    # Clean URL to avoid unwanted parameters (Keep query parameters)
-    url = url.split('#')[0]    
+    url = url.split("#")[0]
 
-    # Validate cookies
     cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        logger.error("❌ Instagram cookies file is missing or empty!")
-        return None, 0, "Instagram cookies file is missing or empty"
+        return None, 0, "❌ Instagram cookies file missing or empty"
+
+    output_dir = Path(DOWNLOAD_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     ydl_opts = {
-        'format': 'bv+ba/b',
-        'merge_output_format': 'mp4',
-        'outtmpl': str(Path(DOWNLOAD_DIR) / '%(uploader)s - %(title)s.%(ext)s'),
-        'socket_timeout': 10,
-        'retries': 5,
-        'compat_opts': ['instagram:login_all'],  # Compatibility fix
-        'force_generic_extractor': True,         # Fallback fix
-        'progress_hooks': [download_progress_hook],
-        'verbose': True,
-        'cookiefile': str(cookie_path),
-        'extractor_args': {
-            'instagram:ap_user': ['1'],
-            'instagram:viewport_width': ['1920'],
+        # 🔥 BEST QUALITY VIDEO + AUDIO
+        "format": "bv*[ext=mp4]+ba[ext=m4a]/b",
+
+        "merge_output_format": "mp4",
+
+        "outtmpl": str(
+            output_dir / "%(uploader)s - %(title)s.%(ext)s"
+        ),
+
+        "cookiefile": str(cookie_path),
+
+        "retries": 5,
+        "socket_timeout": 20,
+
+        "progress_hooks": [download_progress_hook],
+
+        # ❌ NEVER USE generic extractor for Instagram
+        # "force_generic_extractor": True,
+
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://www.instagram.com/",
         },
-        'http_headers': {
-            'User-Agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0 '
-                'Gecko/20100101 Firefox/123.0'
-            ),
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://www.instagram.com/',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Dest': 'document'
-        },
-        'postprocessors': [
-            {
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }
+
+        # 🎬 Merge audio + video correctly
+        "postprocessors": [
+            {"key": "FFmpegMerger"}
         ],
+
+        "verbose": True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
-            if info_dict:
-                video_path = Path(ydl.prepare_filename(info_dict))
-                file_size = info_dict.get('filesize', video_path.stat().st_size if video_path.exists() else 0)
-                return str(video_path), file_size, None
-            return None, 0, "❌ Failed to extract info"
+            info = await asyncio.to_thread(
+                ydl.extract_info, url, True
+            )
+
+            if not info:
+                return None, 0, "❌ Failed to extract info"
+
+            file_path = Path(ydl.prepare_filename(info))
+
+            if not file_path.exists():
+                return None, 0, "❌ Downloaded file not found"
+
+            # 🔒 Ensure audio exists
+            if not has_audio(file_path):
+                return None, 0, "❌ Downloaded video has no audio"
+
+            file_size = file_path.stat().st_size
+            return str(file_path), file_size, None
+
     except yt_dlp.utils.DownloadError as e:
-        logger.error(f"❌ Instagram download error: {e}")
-        return None, 0, str(e)
-    except Exception as e:
-        logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
+        logger.error(f"Instagram download error: {e}")
         return None, 0, str(e)
 
-# Send Video to User
+    except Exception as e:
+        logger.exception("Unexpected Instagram error")
+        return None, 0, str(e)
+
+
+# ================= SEND TO TELEGRAM =================
 async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
-    """Send the downloaded Instagram video to the specified user."""
     try:
-        with open(video_path, 'rb') as video:
-            await bot.send_video(chat_id, video)
-        logger.info(f"✅ Video successfully sent to user {chat_id}")
+        with open(video_path, "rb") as video:
+            await bot.send_video(
+                chat_id,
+                video,
+                supports_streaming=True
+            )
+        logger.info(f"📤 Sent video to {chat_id}")
     except Exception as e:
-        logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
+        logger.error(f"Telegram send failed: {e}")
 
-# Cleanup Downloaded Files
+
+# ================= CLEANUP =================
 def cleanup_video(video_path: str) -> None:
-    """Remove the downloaded video file to free up space."""
-    video_file = Path(video_path)
     try:
-        if video_file.exists():
-            video_file.unlink()
+        path = Path(video_path)
+        if path.exists():
+            path.unlink()
             gc.collect()
-            logger.info(f"🧹 Cleaned up {video_path}")
+            logger.info(f"🧹 Cleaned {video_path}")
     except Exception as e:
-        logger.error(f"❌ Failed to clean up {video_path}: {e}")
+        logger.error(f"Cleanup failed: {e}")
