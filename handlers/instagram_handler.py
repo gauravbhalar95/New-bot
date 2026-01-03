@@ -9,7 +9,6 @@ import yt_dlp
 
 from config import DOWNLOAD_DIR
 from utils.instagram_cookies import COOKIES_FILE
-from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
 
@@ -19,22 +18,32 @@ logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
 
 # ================= CONSTANTS =================
-SUPPORTED_DOMAINS = ["instagram.com"]
+SUPPORTED_DOMAINS = ("instagram.com",)
+MAX_PARALLEL_DOWNLOADS = 3   # 🔥 change if needed
 
 
-# ================= URL VALIDATION =================
+# ================= URL HELPERS =================
 def is_valid_url(url: str) -> bool:
     try:
-        result = urlparse(url)
-        return result.scheme in ("http", "https") and any(
-            d in result.netloc for d in SUPPORTED_DOMAINS
+        r = urlparse(url)
+        return r.scheme in ("http", "https") and any(
+            d in r.netloc for d in SUPPORTED_DOMAINS
         )
     except Exception:
         return False
 
 
-def is_instagram_video(url: str) -> bool:
-    return any(x in url for x in ("/reel/", "/tv/", "/video/"))
+def detect_instagram_type(url: str) -> str:
+    """
+    Auto-detect Instagram content type
+    """
+    if "/reel/" in url:
+        return "reel"
+    if "/tv/" in url:
+        return "tv"
+    if "/p/" in url:
+        return "post"
+    return "video"
 
 
 # ================= PROGRESS HOOK =================
@@ -42,67 +51,50 @@ def download_progress_hook(d: dict) -> None:
     if d["status"] == "downloading":
         logger.info(
             f"⬇ {d.get('_percent_str', '')} "
-            f"at {d.get('_speed_str', '')} "
+            f"{d.get('_speed_str', '')} "
             f"ETA {d.get('_eta_str', '')}"
         )
     elif d["status"] == "finished":
-        logger.info(f"✅ Download finished: {d.get('filename')}")
+        logger.info(f"✅ Downloaded: {d.get('filename')}")
 
 
 # ================= AUDIO CHECK =================
-def has_audio(video_path: Path) -> bool:
-    """
-    Ensure audio stream exists (prevents silent Telegram videos)
-    """
+def has_audio(video: Path) -> bool:
     try:
         cmd = [
-            "ffprobe",
-            "-v", "error",
+            "ffprobe", "-v", "error",
             "-select_streams", "a",
             "-show_entries", "stream=index",
             "-of", "json",
-            str(video_path),
+            str(video),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return '"index"' in result.stdout
-    except Exception as e:
-        logger.error(f"Audio check failed: {e}")
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        return '"index"' in r.stdout
+    except Exception:
         return False
 
 
-# ================= MAIN DOWNLOAD FUNCTION =================
-async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
-    """
-    Download Instagram Reel with BEST video + BEST audio
-    """
-
-    url = url.split("#")[0]
-
-    cookie_path = Path(COOKIES_FILE)
-    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        return None, 0, "❌ Instagram cookies file missing or empty"
-
-    output_dir = Path(DOWNLOAD_DIR)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    ydl_opts = {
-        # 🔥 BEST QUALITY VIDEO + AUDIO
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/b",
+# ================= YT-DLP OPTIONS =================
+def build_ydl_opts(cookie_path: Path) -> dict:
+    return {
+        # 🧠 SMART HQ FORMAT (NO CRASH)
+        "format": "(bv*[ext=mp4]+ba[ext=m4a])/(best[ext=mp4]/best)",
 
         "merge_output_format": "mp4",
 
         "outtmpl": str(
-            output_dir / "%(uploader)s - %(title)s.%(ext)s"
+            Path(DOWNLOAD_DIR) / "%(uploader)s - %(title)s.%(ext)s"
         ),
 
         "cookiefile": str(cookie_path),
 
         "retries": 5,
+        "fragment_retries": 5,
         "socket_timeout": 20,
 
         "progress_hooks": [download_progress_hook],
 
-        # ❌ NEVER USE generic extractor for Instagram
+        # ❌ NEVER enable generic extractor
         # "force_generic_extractor": True,
 
         "http_headers": {
@@ -110,13 +102,21 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
             "Referer": "https://www.instagram.com/",
         },
 
-        # 🎬 Merge audio + video correctly
-        "postprocessors": [
-            {"key": "FFmpegMerger"}
-        ],
-
-        "verbose": True,
+        "verbose": False,
     }
+
+
+# ================= SINGLE DOWNLOAD =================
+async def download_instagram(url: str) -> tuple[str | None, int, str | None]:
+    url = url.split("#")[0]
+
+    cookie_path = Path(COOKIES_FILE)
+    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
+        return None, 0, "Instagram cookies missing"
+
+    Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
+
+    ydl_opts = build_ydl_opts(cookie_path)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -125,50 +125,83 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
             )
 
             if not info:
-                return None, 0, "❌ Failed to extract info"
+                return None, 0, "Extraction failed"
 
             file_path = Path(ydl.prepare_filename(info))
 
             if not file_path.exists():
-                return None, 0, "❌ Downloaded file not found"
+                return None, 0, "File not found"
 
-            # 🔒 Ensure audio exists
             if not has_audio(file_path):
-                return None, 0, "❌ Downloaded video has no audio"
+                return None, 0, "Silent video detected"
 
-            file_size = file_path.stat().st_size
-            return str(file_path), file_size, None
-
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"Instagram download error: {e}")
-        return None, 0, str(e)
+            return str(file_path), file_path.stat().st_size, None
 
     except Exception as e:
-        logger.exception("Unexpected Instagram error")
+        logger.exception("Instagram download failed")
         return None, 0, str(e)
 
 
-# ================= SEND TO TELEGRAM =================
-async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
+# ================= PARALLEL QUEUE =================
+download_queue: asyncio.Queue = asyncio.Queue()
+
+
+async def instagram_worker(worker_id: int):
+    while True:
+        url, future = await download_queue.get()
+        logger.info(f"[Worker {worker_id}] Processing {url}")
+
+        try:
+            result = await download_instagram(url)
+            future.set_result(result)
+        except Exception as e:
+            future.set_exception(e)
+        finally:
+            download_queue.task_done()
+
+
+def start_instagram_workers():
+    for i in range(MAX_PARALLEL_DOWNLOADS):
+        asyncio.create_task(instagram_worker(i + 1))
+
+
+async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
+    """
+    Public API – auto-detect + parallel
+    """
+    if not is_valid_url(url):
+        return None, 0, "Invalid Instagram URL"
+
+    ig_type = detect_instagram_type(url)
+    logger.info(f"Detected Instagram type: {ig_type}")
+
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    await download_queue.put((url, future))
+    return await future
+
+
+# ================= TELEGRAM SEND =================
+async def send_video_to_user(bot, chat_id: int, video_path: str):
     try:
-        with open(video_path, "rb") as video:
+        with open(video_path, "rb") as v:
             await bot.send_video(
                 chat_id,
-                video,
+                v,
                 supports_streaming=True
             )
-        logger.info(f"📤 Sent video to {chat_id}")
+        logger.info(f"📤 Sent to {chat_id}")
     except Exception as e:
-        logger.error(f"Telegram send failed: {e}")
+        logger.error(f"Telegram send error: {e}")
 
 
 # ================= CLEANUP =================
-def cleanup_video(video_path: str) -> None:
+def cleanup_video(path: str):
     try:
-        path = Path(video_path)
-        if path.exists():
-            path.unlink()
+        p = Path(path)
+        if p.exists():
+            p.unlink()
             gc.collect()
-            logger.info(f"🧹 Cleaned {video_path}")
-    except Exception as e:
-        logger.error(f"Cleanup failed: {e}")
+    except Exception:
+        pass
