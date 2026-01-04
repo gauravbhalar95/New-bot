@@ -1,43 +1,73 @@
-# Use official Python image
-FROM python:3.15
+# -------------------------------
+# Use official Python base image
+# -------------------------------
+FROM python:3.13-slim
 
+# -------------------------------
 # Set working directory
+# -------------------------------
 WORKDIR /app
 
+# -------------------------------
 # Install system dependencies
+# -------------------------------
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl chromium && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        curl \
+        chromium \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp
+# -------------------------------
+# Copy & install Python dependencies
+# -------------------------------
+COPY requirements.txt .
 
-# Install Playwright
-RUN pip install --no-cache-dir playwright && \
-    playwright install --with-deps chromium
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade yt-dlp playwright
 
-# Copy all project files
-COPY . /app
+# -------------------------------
+# Install Playwright Chromium
+# -------------------------------
+RUN playwright install --with-deps chromium
 
-# Create cookies directory
+# -------------------------------
+# Copy project files
+# -------------------------------
+COPY . .
+
+# -------------------------------
+# Create required directories
+# -------------------------------
 RUN mkdir -p /app/cookies
 
-# 🔥 Ensure Instagram cookies are copied to the container
-# (THIS FIXES your "cookies not deploying" issue)
+# -------------------------------
+# Ensure Instagram cookies are present
+# (Fixes cookies not deploying issue)
+# -------------------------------
 COPY utils/instagram_cookies.py /app/utils/instagram_cookies.py
 
-# Make scripts executable
+# -------------------------------
+# Make shell scripts executable
+# -------------------------------
 RUN chmod +x /app/update.sh
 
-# Set environment variables
+# -------------------------------
+# Environment variables
+# -------------------------------
 ENV PYTHONUNBUFFERED=1 \
     FLASK_ENV=production \
     PORT=8080
 
-# Expose port for Flask
+# -------------------------------
+# Expose Flask port
+# -------------------------------
 EXPOSE 8080
 
-# Start Webhook server first, then Bot
-CMD bash -c "python webhook.py & sleep 3 && python bot.py"
+# -------------------------------
+# Start Webhook server first, then Telegram bot
+# -------------------------------
+CMD ["bash", "-c", "python webhook.py & sleep 3 && python bot.py"]
