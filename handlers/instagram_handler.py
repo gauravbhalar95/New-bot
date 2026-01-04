@@ -61,7 +61,7 @@ async def process_instagram(url: str) -> Tuple[Optional[str], int, Optional[str]
     outtmpl = str(Path(DOWNLOAD_DIR) / '%(uploader)s - %(title)s.%(ext)s')
 
     ydl_opts = {
-        'format': 'bv+ba/b',
+        'format': 'best',
         'merge_output_format': 'mp4',
         'outtmpl': outtmpl,
         'socket_timeout': 10,
