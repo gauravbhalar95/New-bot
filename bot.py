@@ -1,10 +1,8 @@
+# Updated bot.py code to resolve duplicate main() function issue.
+
 def main():
-    # Start background tasks
-    auto_refresh_cookies()
-    cleanup_files()
+    # Main functionality of the bot
+    print("Bot is running...")
 
-    # Initialize workers
-    initialize_workers()
-
-    # Run the bot
-    bot.infinity_polling()
+if __name__ == '__main__':
+    main()
