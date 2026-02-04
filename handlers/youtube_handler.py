@@ -2,89 +2,50 @@ import os
 import asyncio
 import yt_dlp
 import logging
-
 from utils.sanitize import sanitize_filename
-from config import YOUTUBE_FILE, DOWNLOAD_DIR
+from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.logger import setup_logging
 
-# Telegram bot upload limit (safe side)
-MAX_TG_SIZE = 50 * 1024 * 1024  # 50MB
-
-logger = setup_logging(logging.INFO)
+logger = setup_logging(logging.DEBUG)
 
 
-# =========================
-# 🎥 YOUTUBE VIDEO DOWNLOAD
-# =========================
 async def process_youtube(url: str):
     """
-    Download YouTube video as MP4 with audio.
+    Download YouTube video / Shorts safely using yt-dlp.
     Returns: (file_path, file_size, error_message)
     """
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     ydl_opts = {
-        "format": "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]",
+        # ✅ Shorts-safe + normal video safe
+        "format": (
+            "bv*[ext=mp4]+ba[ext=m4a]/"
+            "bv*+ba/b/"
+            "best"
+        ),
         "merge_output_format": "mp4",
+
         "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
+
+        # cookies optional
         "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+
         "retries": 5,
-        "socket_timeout": 10,
+        "socket_timeout": 15,
+
+        # stability
         "quiet": True,
         "no_warnings": True,
-        "logger": logger,
-    }
 
-    try:
-        loop = asyncio.get_running_loop()
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = await loop.run_in_executor(
-                None, lambda: ydl.extract_info(url, download=True)
-            )
-
-        if not info:
-            return None, 0, "❌ Failed to fetch video info."
-
-        file_path = info.get("_filename")
-        if not file_path or not os.path.exists(file_path):
-            return None, 0, "❌ Video file not found after download."
-
-        file_size = os.path.getsize(file_path)
-        logger.info(f"✅ YouTube downloaded: {file_path} ({file_size / 1024 / 1024:.2f} MB)")
-
-        return file_path, file_size, None
-
-    except yt_dlp.utils.ExtractorError:
-        return None, 0, "❌ Video is private, deleted, or restricted."
-    except Exception as e:
-        logger.exception("YouTube download error")
-        return None, 0, str(e)
-
-
-# =========================
-# 🎵 YOUTUBE AUDIO (MP3)
-# =========================
-async def extract_audio_ffmpeg(url: str):
-    """
-    Download YouTube audio and convert to MP3.
-    Returns: (file_path, file_size, error_message)
-    """
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "320",
+        # important for Shorts / SABR
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+                "skip": ["dash"],
             }
-        ],
-        "quiet": True,
-        "no_warnings": True,
+        },
+
         "logger": logger,
     }
 
@@ -96,42 +57,34 @@ async def extract_audio_ffmpeg(url: str):
                 None, lambda: ydl.extract_info(url, download=True)
             )
 
-        if not info:
-            return None, 0, "❌ Failed to extract audio."
+            if not info:
+                return None, 0, "❌ Failed to extract video info"
 
-        base = ydl.prepare_filename(info)
-        audio_path = os.path.splitext(base)[0] + ".mp3"
+            # Playlist safety
+            if "entries" in info:
+                info = info["entries"][0]
 
-        if not os.path.exists(audio_path):
-            return None, 0, "❌ MP3 file not found."
+            file_path = ydl.prepare_filename(info)
 
-        size = os.path.getsize(audio_path)
-        logger.info(f"✅ Audio extracted: {audio_path}")
+            # If merged to mp4, yt-dlp may rename it
+            if not os.path.exists(file_path):
+                base, _ = os.path.splitext(file_path)
+                mp4_path = base + ".mp4"
+                if os.path.exists(mp4_path):
+                    file_path = mp4_path
 
-        return audio_path, size, None
+            if not os.path.exists(file_path):
+                return None, 0, "❌ Download completed but file not found"
 
-    except yt_dlp.utils.ExtractorError:
-        return None, 0, "❌ Audio extraction failed."
+            file_size = os.path.getsize(file_path)
+
+            logger.info(f"✅ YouTube download finished: {file_path}")
+            return file_path, file_size, None
+
+    except yt_dlp.utils.DownloadError as e:
+        logger.error(f"YouTube DownloadError: {e}")
+        return None, 0, "❌ YouTube format unavailable or restricted"
+
     except Exception as e:
-        logger.exception("Audio extraction error")
+        logger.exception("YouTube handler crashed")
         return None, 0, str(e)
-
-
-# =========================
-# 📤 TELEGRAM SEND HELPER
-# =========================
-async def send_video_safely(bot, chat_id, file_path, file_size, upload_fallback_func):
-    """
-    Sends video to Telegram if <= 50MB
-    Otherwise uploads to MEGA / Dropbox and sends link
-    """
-    if file_size <= MAX_TG_SIZE:
-        video = open(file_path, "rb")
-        await bot.send_video(chat_id, video)
-        video.close()
-    else:
-        link = await upload_fallback_func(file_path)
-        await bot.send_message(
-            chat_id,
-            f"📦 Video too large for Telegram\n🔗 Download link:\n{link}"
-        )
