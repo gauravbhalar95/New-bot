@@ -10,7 +10,7 @@ ADMIN_IDS = [
 ]
 DEFAULT_ADMIN = 1302277958  # Your Telegram ID as the default admin
 
-WEBHOOK_PORT = 8443  # Changed from PORT to be more specific
+WEBHOOK_PORT = 8080  # Changed from PORT to be more specific
 HEALTH_CHECK_PORT = 8080  # New configuration for health check port
 
 
