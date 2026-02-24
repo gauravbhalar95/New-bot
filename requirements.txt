@@ -1,6 +1,6 @@
 cryptography
 pycryptodome
-yt-dlp==2025.09.23
+yt-dlp==2026.2.21
 requests
 beautifulsoup4
 lxml
