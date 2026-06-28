@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-sessionid = os.getenv("session")
+session_id = os.getenv("session")
 csrftoken = os.getenv("crf")
 ds_user_id = os.getenv("user")
 ig_did = os.getenv("did")
