@@ -6,7 +6,7 @@ load_dotenv()
 
 
 session_id = os.getenv("session")
-csrftoken = os.getenv("crf")
+crf_tk = os.getenv("crf")
 ds_user_id = os.getenv("user")
 ig_did = os.getenv("did")
 
