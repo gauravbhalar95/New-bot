@@ -44,11 +44,8 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 def initialize_instagram_session():
     """Load Instagram cookies safely."""
     try:
-        if os.path.exists(COOKIE_FILE):
-            INSTALOADER_INSTANCE.context.load_cookies(COOKIE_FILE)
+INSTALOADER_INSTANCE.context.load_cookies(COOKIE_FILE)
             logger.info("✅ Instagram cookies loaded successfully!")
-        else:
-            logger.error(f"❌ Cookie file missing: {COOKIE_FILE}")
     except Exception as e:
         logger.error(f"❌ Failed to load Instagram cookies: {e}")
 
