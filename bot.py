@@ -477,11 +477,5 @@ async def main():
     num_workers = min(3, os.cpu_count() or 1)
     for _ in range(num_workers):
         asyncio.create_task(worker())
-
-    try:
-        await bot.infinity_polling(timeout=30)
-    except Exception as e:
-        logger.error(f"Bot polling error: {e}")
-
 if __name__ == "__main__":
     asyncio.run(main())
