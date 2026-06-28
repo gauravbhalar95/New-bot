@@ -4,6 +4,12 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+
+sessionid = os.getenv("session")
+csrftoken = os.getenv("crf")
+ds_user_id = os.getenv("user")
+ig_did = os.getenv("did")
+
 # Add this to config.py
 ADMIN_IDS = [
     1302277958,  # Your Telegram ID
