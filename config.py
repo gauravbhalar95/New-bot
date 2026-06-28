@@ -8,7 +8,7 @@ load_dotenv()
 session_id = os.getenv("session")
 crf_tk = os.getenv("crf")
 ds_user = os.getenv("user")
-ig_did = os.getenv("did")
+ig_dd = os.getenv("did")
 
 # Add this to config.py
 ADMIN_IDS = [
