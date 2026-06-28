@@ -13,10 +13,15 @@ from instaloader.exceptions import ConnectionException
 
 from utils.logger import logger
 from utils.sanitize import sanitize_filename
-from config import DOWNLOAD_DIR
+from config import *
 
 # Path to your cookie file
-COOKIE_FILE = "cookies/instagram_cookies.txt"
+COOKIE_FILE = {
+"sessionid": session_id,
+    "csrftoken": crf_tk,
+    "ds_user_id": ds_user,
+    "ig_did": ig_dd 
+}
 
 # Lock for safe access (VERY IMPORTANT)
 SESSION_LOCK = Lock()
