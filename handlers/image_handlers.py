@@ -41,13 +41,30 @@ INSTALOADER_INSTANCE = instaloader.Instaloader(
 # -------------------------------
 # SESSION INITIALIZATION
 # -------------------------------
+
 def initialize_instagram_session():
     """Load Instagram cookies safely."""
     try:
-            INSTALOADER_INSTANCE.context.load_cookies(COOKIE_FILE)
-            logger.info("✅ Instagram cookies loaded successfully!")
+        # Access the underlying requests session
+        session = requests.Session()
+        
+        # Set cookies directly on the session
+        session.cookies.set("sessionid", session_id, domain=".instagram.com")
+        session.cookies.set("csrftoken", crf_tk, domain=".instagram.com")
+        session.cookies.set("ds_user_id", ds_user, domain=".instagram.com")
+        session.cookies.set("ig_did", ig_dd, domain=".instagram.com")
+        
+        # Load the session into Instaloader using the correct method
+        INSTALOADER_INSTANCE.context._session = session
+        
+        # Test the session is valid by fetching the logged-in username
+        username = INSTALOADER_INSTANCE.test_login()
+        if username:
+            logger.info(f"✅ Instagram session loaded successfully! Logged in as: {username}")
+        else:
+            logger.error("❌ Session loaded but login test failed — cookies may be expired.")
     except Exception as e:
-        logger.error(f"❌ Failed to load Instagram cookies: {e}")
+        logger.error(f"❌ Failed to load Instagram session: {e}")
 
 
 # -------------------------------
