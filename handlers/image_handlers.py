@@ -8,6 +8,7 @@ import instaloader
 import traceback
 import random
 import time
+import requests
 from asyncio import Lock
 from instaloader.exceptions import ConnectionException
 
