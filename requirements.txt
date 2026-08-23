@@ -39,3 +39,4 @@ psutil
 aiofiles
 rclone
 telegram
+playwright
