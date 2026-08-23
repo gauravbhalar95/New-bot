@@ -24,12 +24,20 @@ app = Flask(__name__)
 def webhook():
     """Handles incoming Telegram updates."""
     try:
-        update = request.get_json()  # No need for 'await'
+        update = request.get_json()
+
         if update:
-            asyncio.create_task(bot.process_new_updates([telebot.types.Update.de_json(update)]))  # Run async task
+            telegram_update = telebot.types.Update.de_json(update)
+
+            # Flask thread has no running event loop
+            asyncio.run(
+                bot.process_new_updates([telegram_update])
+            )
+
         return jsonify({"status": "success"}), 200
+
     except Exception as e:
-        logger.error(f"Error processing update: {e}")
+        logger.error(f"Error processing update: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/")
