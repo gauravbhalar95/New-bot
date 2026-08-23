@@ -37,16 +37,37 @@ def home():
     """Root endpoint"""
     return "Telegram bot is running!", 200
 
-def set_webhook():
-    """Sets the Telegram webhook manually."""
-    asyncio.run(bot.remove_webhook())
-    success = asyncio.run(bot.set_webhook(url=f"{WEBHOOK_URL}/{API_TOKEN}", timeout=60))
-    if success:
-        logger.info("Webhook set successfully")
-    else:
-        logger.error("Failed to set webhook")
+async def set_webhook():
+    """Set Telegram webhook only if it is not already set."""
+    try:
+        info = await bot.get_webhook_info()
+
+        if info.url == f"{WEBHOOK_URL}/{API_TOKEN}":
+            logger.info("Webhook already set. Skipping...")
+            return
+
+        success = await bot.set_webhook(
+            url=f"{WEBHOOK_URL}/{API_TOKEN}",
+            timeout=60
+        )
+
+        if success:
+            logger.info("Webhook set successfully")
+        else:
+            logger.error("Failed to set webhook")
+
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+
 
 if __name__ == "__main__":
-    set_webhook()  # Set webhook manually
+    asyncio.run(set_webhook())
+
     logger.info(f"Starting Flask webhook server on port {PORT}...")
-    app.run(host="0.0.0.0", port=PORT, debug=False,use_reloader=False)
+
+    app.run(
+        host="0.0.0.0",
+        port=PORT,
+        debug=False,
+        use_reloader=False
+    )
