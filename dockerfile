@@ -70,4 +70,4 @@ EXPOSE 8080
 # -------------------------------
 # Start Webhook server first, then Telegram bot
 # -------------------------------
-CMD ["bash", "-c", "python webhook.py & sleep 3 && python bot.py"]
+CMD ["python", "webhook.py"]
