@@ -1,77 +1,204 @@
 import os
-import logging
 import asyncio
+import logging
+
 from flask import Flask, request, jsonify
-from dotenv import load_dotenv
 import telebot
+
 from telebot.async_telebot import AsyncTeleBot
+
 from config import API_TOKEN, WEBHOOK_URL, PORT
 
-# Load environment variables
-load_dotenv()
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 logger = logging.getLogger(__name__)
 
-# Initialize bot
-bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 
-# Flask app for webhook
+# ============================================================
+# BOT
+# ============================================================
+
+bot = AsyncTeleBot(
+    API_TOKEN,
+    parse_mode="HTML"
+)
+
+
+# ============================================================
+# FLASK
+# ============================================================
+
 app = Flask(__name__)
 
-@app.route(f"/{API_TOKEN}", methods=["POST"])
+
+# ============================================================
+# WEBHOOK URL
+# ============================================================
+
+WEBHOOK_PATH = f"/{API_TOKEN}"
+FULL_WEBHOOK_URL = f"{WEBHOOK_URL.rstrip('/')}/{API_TOKEN}"
+
+
+# ============================================================
+# WEBHOOK
+# ============================================================
+
+@app.route(
+    WEBHOOK_PATH,
+    methods=["POST"]
+)
 def webhook():
-    """Handles incoming Telegram updates."""
+
     try:
-        update = request.get_json()
 
-        if update:
-            telegram_update = telebot.types.Update.de_json(update)
+        data = request.get_json(
+            silent=True
+        )
 
-            # Flask thread has no running event loop
-            asyncio.run(
-                bot.process_new_updates([telegram_update])
+        if not data:
+
+            return jsonify({
+                "status": "no data"
+            }), 400
+
+        update = telebot.types.Update.de_json(
+            data
+        )
+
+        # Run async handler
+        asyncio.run(
+            bot.process_new_updates(
+                [update]
             )
+        )
 
-        return jsonify({"status": "success"}), 200
+        return jsonify({
+            "status": "ok"
+        }), 200
 
     except Exception as e:
-        logger.error(f"Error processing update: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+
+        logger.error(
+            f"Webhook error: {e}",
+            exc_info=True
+        )
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.route("/")
 def home():
-    """Root endpoint"""
-    return "Telegram bot is running!", 200
+
+    return (
+        "Telegram bot is running!",
+        200
+    )
+
+
+@app.route("/health")
+def health():
+
+    return jsonify({
+        "status": "healthy"
+    }), 200
+
+
+# ============================================================
+# SET WEBHOOK
+# ============================================================
 
 async def set_webhook():
-    """Set Telegram webhook only if it is not already set."""
+
     try:
+
         info = await bot.get_webhook_info()
 
-        if info.url == f"{WEBHOOK_URL}/{API_TOKEN}":
-            logger.info("Webhook already set. Skipping...")
+        logger.info(
+            f"Current webhook: {info.url}"
+        )
+
+        # Already correct
+        if info.url == FULL_WEBHOOK_URL:
+
+            logger.info(
+                "Webhook already configured."
+            )
+
             return
 
+        # Remove old webhook first
+        logger.info(
+            "Removing old webhook..."
+        )
+
+        await bot.delete_webhook(
+            drop_pending_updates=True
+        )
+
+        await asyncio.sleep(1)
+
+        # Set new webhook
+        logger.info(
+            f"Setting webhook: "
+            f"{FULL_WEBHOOK_URL}"
+        )
+
         success = await bot.set_webhook(
-            url=f"{WEBHOOK_URL}/{API_TOKEN}",
-            timeout=60
+            url=FULL_WEBHOOK_URL
         )
 
         if success:
-            logger.info("Webhook set successfully")
+
+            logger.info(
+                "✅ Webhook set successfully."
+            )
+
         else:
-            logger.error("Failed to set webhook")
+
+            logger.error(
+                "❌ Failed to set webhook."
+            )
 
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
 
+        logger.error(
+            f"Webhook setup error: {e}",
+            exc_info=True
+        )
+
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
-    asyncio.run(set_webhook())
 
-    logger.info(f"Starting Flask webhook server on port {PORT}...")
+    logger.info(
+        "Configuring Telegram webhook..."
+    )
+
+    asyncio.run(
+        set_webhook()
+    )
+
+    logger.info(
+        f"Starting Flask server "
+        f"on port {PORT}..."
+    )
 
     app.run(
         host="0.0.0.0",
