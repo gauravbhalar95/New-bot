@@ -7,7 +7,7 @@ lxml
 urllib3
 moviepy
 imageio[ffmpeg]
-ffmpeg
+ffmpeg-python
 pytube
 pillow
 cloudscraper
@@ -39,4 +39,3 @@ psutil
 aiofiles
 rclone
 telegram
-playwright
