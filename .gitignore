@@ -1,7 +1,31 @@
-# Add this line to .gitignore
-mega_config.json
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
 
-import stat
+# Authentication cookies / session exports
+*.cookies
+*.cookie
+cookies/
+cookies.txt
+facebook.txt
+x.txt
+youtube_cookies.txt
 
-# Add this to initialize_mega_config()
-os.chmod('mega_config.json', stat.S_IRUSR | stat.S_IWUSR)  # Read/write for owner only
+# Runtime data
+downloads/
+TEMP_DIR/
+thumbnails/
+logs/
+*.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editor files
+.vscode/
+.idea/
+.DS_Store
