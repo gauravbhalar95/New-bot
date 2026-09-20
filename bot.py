@@ -1035,10 +1035,6 @@ async def main():
         "Bot polling started."
     )
 
-    await bot.polling(
-        non_stop=True
-    )
-
 
 # ============================================================
 # RUN
