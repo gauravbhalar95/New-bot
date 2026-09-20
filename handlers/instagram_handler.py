@@ -8,8 +8,7 @@ from urllib.parse import urlparse
 import yt_dlp
 import aiofiles
 from typing import Optional, Tuple
-from config import DOWNLOAD_DIR
-from utils.instagram_cookies import COOKIES_FILE  # ensure this is a Netscape cookies.txt
+from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
