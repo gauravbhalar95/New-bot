@@ -994,9 +994,14 @@ async def main():
     # Instagram cookie refresh
     # ----------------------------------------------
 
-    asyncio.create_task(
-        auto_refresh_cookies()
-    )
+    # Instagram auto-login is optional. Do not start a failing refresh task
+    # when credentials are intentionally not configured.
+    from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
+
+    if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
+        asyncio.create_task(auto_refresh_cookies())
+    else:
+        logger.info("Instagram auto-refresh disabled: credentials not configured.")
 
     # ----------------------------------------------
     # Cleanup task
