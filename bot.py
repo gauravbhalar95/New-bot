@@ -6,6 +6,7 @@ import aiofiles
 import re
 import time
 import psutil
+
 from datetime import datetime, timezone
 from asyncio import Semaphore
 
@@ -16,14 +17,35 @@ from config import (
     TELEGRAM_FILE_LIMIT,
 )
 
-# Import local modules
-from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import process_instagram
-from handlers.facebook_handlers import process_facebook
-from handlers.common_handler import process_adult
-from handlers.x_handler import download_twitter_media
-from handlers.trim_handlers import process_video_trim, process_audio_trim
-from handlers.image_handlers import process_instagram_image
+# ============================================================
+# LOCAL HANDLERS
+# ============================================================
+
+from handlers.youtube_handler import (
+    process_youtube,
+    extract_audio_ffmpeg
+)
+
+from handlers.instagram_handler import (
+    process_instagram
+)
+
+from handlers.facebook_handlers import (
+    process_facebook
+)
+
+from handlers.common_handler import (
+    process_adult
+)
+
+from handlers.x_handler import (
+    download_twitter_media
+)
+
+from handlers.trim_handlers import (
+    process_video_trim,
+    process_audio_trim
+)
 
 from utils.logger import setup_logging
 from utils.instagram_cookies import auto_refresh_cookies
@@ -431,16 +453,14 @@ async def process_download(
 
                             file_size = result[1]
 
-                    else:
+                    elif result:
 
-                        if result:
-
-                            file_paths = [
-                                result
-                            ]
+                        file_paths = [
+                            result
+                        ]
 
                 # ============================================
-                # NORMAL DOWNLOAD
+                # NORMAL VIDEO DOWNLOAD
                 # ============================================
 
                 else:
@@ -458,9 +478,7 @@ async def process_download(
                             list
                         ):
 
-                            file_paths = (
-                                result[0]
-                            )
+                            file_paths = result[0]
 
                         elif result[0]:
 
@@ -472,13 +490,11 @@ async def process_download(
 
                             file_size = result[1]
 
-                    else:
+                    elif result:
 
-                        if result:
-
-                            file_paths = [
-                                result
-                            ]
+                        file_paths = [
+                            result
+                        ]
 
                 # ------------------------------------------------
                 # NO FILE
@@ -515,7 +531,10 @@ async def process_download(
 
                         continue
 
-                    # Get actual file size
+                    # --------------------------------------------
+                    # ACTUAL FILE SIZE
+                    # --------------------------------------------
+
                     actual_file_size = (
                         os.path.getsize(
                             file_path
@@ -528,9 +547,9 @@ async def process_download(
                             actual_file_size
                         )
 
-                    # ============================================
+                    # --------------------------------------------
                     # TELEGRAM FILE SIZE CHECK
-                    # ============================================
+                    # --------------------------------------------
 
                     if actual_file_size > TELEGRAM_FILE_LIMIT:
 
@@ -546,9 +565,9 @@ async def process_download(
                             f"{actual_file_size} bytes"
                         )
 
-                    # ============================================
-                    # SEND FILE TO TELEGRAM
-                    # ============================================
+                    # --------------------------------------------
+                    # SEND FILE
+                    # --------------------------------------------
 
                     else:
 
@@ -563,9 +582,9 @@ async def process_download(
                                     await file.read()
                                 )
 
-                            # ------------------------------------
+                            # --------------------------------
                             # AUDIO
-                            # ------------------------------------
+                            # --------------------------------
 
                             if (
                                 is_audio
@@ -578,9 +597,9 @@ async def process_download(
                                     content
                                 )
 
-                            # ------------------------------------
+                            # --------------------------------
                             # VIDEO
-                            # ------------------------------------
+                            # --------------------------------
 
                             else:
 
@@ -607,13 +626,13 @@ async def process_download(
 
                             await send_message(
                                 message.chat.id,
-                                f"❌ Error sending file: "
+                                "❌ Error sending file: "
                                 f"{send_error}"
                             )
 
-                    # ============================================
+                    # --------------------------------------------
                     # CLEANUP FILE
-                    # ============================================
+                    # --------------------------------------------
 
                     try:
 
@@ -650,7 +669,7 @@ async def process_download(
 
                 await send_message(
                     message.chat.id,
-                    f"❌ An error occurred: "
+                    "❌ An error occurred: "
                     f"{process_error}"
                 )
 
@@ -678,235 +697,6 @@ async def process_download(
 
 
 # ============================================================
-# INSTAGRAM IMAGE DOWNLOAD
-# ============================================================
-
-async def process_image_download(
-    message,
-    url
-):
-
-    try:
-
-        await send_message(
-            message.chat.id,
-            "🖼️ Processing Instagram image..."
-        )
-
-        logger.info(
-            f"Processing Instagram image URL: {url}"
-        )
-
-        try:
-
-            result = (
-                await process_instagram_image(
-                    url
-                )
-            )
-
-            # ----------------------------------------------
-            # RETURN FORMAT
-            # ----------------------------------------------
-
-            if isinstance(result, list):
-
-                file_paths = result
-
-            elif (
-                isinstance(result, tuple)
-                and
-                len(result) >= 2
-            ):
-
-                file_paths = (
-                    result[0]
-                    if isinstance(
-                        result[0],
-                        list
-                    )
-                    else [result[0]]
-                )
-
-            else:
-
-                file_paths = (
-                    [result]
-                    if result
-                    else []
-                )
-
-            # ----------------------------------------------
-            # NO FILE
-            # ----------------------------------------------
-
-            if (
-                not file_paths
-                or
-                all(
-                    not path
-                    for path in file_paths
-                )
-            ):
-
-                logger.warning(
-                    "No valid image paths returned"
-                )
-
-                await send_message(
-                    message.chat.id,
-                    "❌ Download failed. "
-                    "No images found."
-                )
-
-                return
-
-            # ----------------------------------------------
-            # PROCESS IMAGES
-            # ----------------------------------------------
-
-            success_count = 0
-
-            for file_path in file_paths:
-
-                if (
-                    not file_path
-                    or
-                    not os.path.exists(
-                        file_path
-                    )
-                ):
-
-                    logger.warning(
-                        f"Image path does not exist: "
-                        f"{file_path}"
-                    )
-
-                    continue
-
-                file_size = (
-                    os.path.getsize(
-                        file_path
-                    )
-                )
-
-                # ------------------------------------------
-                # FILE TOO LARGE
-                # ------------------------------------------
-
-                if file_size > TELEGRAM_FILE_LIMIT:
-
-                    await send_message(
-                        message.chat.id,
-                        "❌ Image is too large "
-                        "to send on Telegram."
-                    )
-
-                # ------------------------------------------
-                # SEND IMAGE
-                # ------------------------------------------
-
-                else:
-
-                    try:
-
-                        async with aiofiles.open(
-                            file_path,
-                            "rb"
-                        ) as file:
-
-                            file_content = (
-                                await file.read()
-                            )
-
-                        await bot.send_photo(
-                            message.chat.id,
-                            file_content,
-                            timeout=60
-                        )
-
-                        success_count += 1
-
-                        logger.info(
-                            "Successfully sent image"
-                        )
-
-                    except Exception as send_error:
-
-                        logger.error(
-                            f"Error sending image: "
-                            f"{send_error}",
-                            exc_info=True
-                        )
-
-                        await send_message(
-                            message.chat.id,
-                            f"❌ Error sending image: "
-                            f"{send_error}"
-                        )
-
-                # ------------------------------------------
-                # CLEANUP
-                # ------------------------------------------
-
-                try:
-
-                    if os.path.exists(
-                        file_path
-                    ):
-
-                        os.remove(
-                            file_path
-                        )
-
-                except Exception as cleanup_error:
-
-                    logger.error(
-                        f"Failed to cleanup image: "
-                        f"{cleanup_error}"
-                    )
-
-            # ----------------------------------------------
-            # SUCCESS
-            # ----------------------------------------------
-
-            if success_count > 0:
-
-                await send_message(
-                    message.chat.id,
-                    f"✅ {success_count} "
-                    f"Instagram image(s) downloaded "
-                    f"successfully!"
-                )
-
-        except Exception as e:
-
-            logger.error(
-                f"Error processing Instagram image: "
-                f"{e}",
-                exc_info=True
-            )
-
-            await send_message(
-                message.chat.id,
-                f"❌ An error occurred: {e}"
-            )
-
-    except Exception as e:
-
-        logger.error(
-            f"Comprehensive error in "
-            f"process_image_download: {e}",
-            exc_info=True
-        )
-
-        await send_message(
-            message.chat.id,
-            f"❌ An error occurred: {e}"
-        )
-
-
-# ============================================================
 # DOWNLOAD WORKER
 # ============================================================
 
@@ -918,44 +708,25 @@ async def worker():
 
         try:
 
-            # ================================================
-            # IMAGE TASK
-            # ================================================
+            (
+                message,
+                url,
+                is_audio,
+                is_video_trim,
+                is_audio_trim,
+                start_time,
+                end_time
+            ) = task
 
-            if len(task) == 2:
-
-                message, url = task
-
-                await process_image_download(
-                    message,
-                    url
-                )
-
-            # ================================================
-            # NORMAL TASK
-            # ================================================
-
-            else:
-
-                (
-                    message,
-                    url,
-                    is_audio,
-                    is_video_trim,
-                    is_audio_trim,
-                    start_time,
-                    end_time
-                ) = task
-
-                await process_download(
-                    message,
-                    url,
-                    is_audio,
-                    is_video_trim,
-                    is_audio_trim,
-                    start_time,
-                    end_time
-                )
+            await process_download(
+                message,
+                url,
+                is_audio,
+                is_video_trim,
+                is_audio_trim,
+                start_time,
+                end_time
+            )
 
         except Exception as e:
 
@@ -994,30 +765,29 @@ async def send_welcome(message):
     welcome_text = (
         "🤖 Media Download Bot 🤖\n\n"
 
-        "I can help you download media "
-        "from various platforms:\n"
+        "I can help you download video/audio "
+        "from various platforms:\n\n"
 
         "• YouTube\n"
         "• Instagram\n"
         "• Facebook\n"
         "• Twitter/X\n\n"
 
-        "Commands:\n"
+        "Commands:\n\n"
 
         "• Send a direct URL to download video\n"
         "• /audio <URL> - Extract full audio\n"
-        "• /image <URL> - Download Instagram images\n"
         "• /trim <URL> <Start Time> <End Time> "
         "- Trim video segment\n"
         "• /trimAudio <URL> <Start Time> <End Time> "
         "- Extract audio segment\n\n"
 
-        "Examples:\n"
+        "Examples:\n\n"
 
-        "• /image https://instagram.com/p/example\n"
+        "• /audio https://youtube.com/watch?v=example\n\n"
 
         "• /trim https://youtube.com/watch?v=example "
-        "00:01:00 00:02:30\n"
+        "00:01:00 00:02:30\n\n"
 
         "• /trimAudio https://youtube.com/watch?v=example "
         "00:01:00 00:02:30"
@@ -1026,59 +796,6 @@ async def send_welcome(message):
     await bot.send_message(
         message.chat.id,
         welcome_text
-    )
-
-
-# ============================================================
-# INSTAGRAM STORY
-# ============================================================
-
-@bot.message_handler(
-    commands=["story"]
-)
-async def handle_story_request(message):
-
-    url = (
-        message.text
-        .replace("/story", "", 1)
-        .strip()
-    )
-
-    if not url:
-
-        await send_message(
-            message.chat.id,
-            "⚠️ Please provide an Instagram story URL."
-        )
-
-        return
-
-    if (
-        "/stories/" not in url
-        or
-        not PLATFORM_PATTERNS[
-            "Instagram"
-        ].search(url)
-    ):
-
-        await send_message(
-            message.chat.id,
-            "⚠️ Please provide a valid Instagram story URL."
-        )
-
-        return
-
-    await send_message(
-        message.chat.id,
-        "📲 Instagram story detected! "
-        "Fetching image(s)..."
-    )
-
-    await download_queue.put(
-        (
-            message,
-            url
-        )
     )
 
 
@@ -1121,55 +838,6 @@ async def handle_audio_request(message):
     await send_message(
         message.chat.id,
         "🎵 Added to audio extraction queue!"
-    )
-
-
-# ============================================================
-# INSTAGRAM IMAGE COMMAND
-# ============================================================
-
-@bot.message_handler(
-    commands=["image"]
-)
-async def handle_image_request(message):
-
-    url = (
-        message.text
-        .replace("/image", "", 1)
-        .strip()
-    )
-
-    if not url:
-
-        await send_message(
-            message.chat.id,
-            "⚠️ Please provide an Instagram image URL."
-        )
-
-        return
-
-    if not PLATFORM_PATTERNS[
-        "Instagram"
-    ].search(url):
-
-        await send_message(
-            message.chat.id,
-            "⚠️ This command only works "
-            "with Instagram image URLs."
-        )
-
-        return
-
-    await download_queue.put(
-        (
-            message,
-            url
-        )
-    )
-
-    await send_message(
-        message.chat.id,
-        "🖼️ Added to image download queue!"
     )
 
 
