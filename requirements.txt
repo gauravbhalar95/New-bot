@@ -18,6 +18,7 @@ telebot
 pylint
 telethon
 asyncio
+cv2
 nest_asyncio
 psutil
 api.video
