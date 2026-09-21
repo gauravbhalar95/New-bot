@@ -7,7 +7,6 @@ lxml
 urllib3
 moviepy
 imageio[ffmpeg]
-ffmpeg
 pytube
 pillow
 cloudscraper
@@ -17,8 +16,7 @@ watchdog
 telebot
 pylint
 telethon
-asyncio
-cv2
+opencv-python-headless
 nest_asyncio
 psutil
 api.video
