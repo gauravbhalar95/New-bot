@@ -31,6 +31,8 @@ def health():
     }), 200
 
 
+# Accept both the configured path and the common /webhook path.
+@app.route("/webhook", methods=["POST"])
 @app.route(WEBHOOK_ENDPOINT, methods=["POST"])
 def telegram_webhook():
 
