@@ -1,1 +1,1 @@
-web: python3 webhook.py
+web: hypercorn webhook:app --bind 0.0.0.0:$PORT
