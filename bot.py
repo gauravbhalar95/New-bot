@@ -921,51 +921,24 @@ def main():
         "Starting Media Download Bot..."
     )
 
+    # In bot.py, replace your current main() with this:
+
+def start_background_tasks():
+    logger.info(f"[{get_current_utc()}] Starting background tasks...")
+    
     from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
-
     if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-
-        threading.Thread(
-            target=lambda: run_async(
-                auto_refresh_cookies
-            ),
-            daemon=True
-        ).start()
-
+        threading.Thread(target=lambda: run_async(auto_refresh_cookies), daemon=True).start()
     else:
+        logger.info("Instagram auto-refresh disabled: credentials not configured.")
 
-        logger.info(
-            "Instagram auto-refresh disabled: "
-            "credentials not configured."
-        )
+    threading.Thread(target=cleanup_files, daemon=True).start()
 
-    threading.Thread(
-        target=cleanup_files,
-        daemon=True
-    ).start()
-
-    num_workers = min(
-        3,
-        os.cpu_count() or 1
-    )
-
-    logger.info(
-        f"[{get_current_utc()}] "
-        f"Starting {num_workers} workers..."
-    )
+    num_workers = min(3, os.cpu_count() or 1)
+    logger.info(f"[{get_current_utc()}] Starting {num_workers} workers...")
 
     for _ in range(num_workers):
+        threading.Thread(target=worker, daemon=True).start()
+        
+    # DO NOT put bot.infinity_polling() here. Webhooks replace polling.
 
-        threading.Thread(
-            target=worker,
-            daemon=True
-        ).start()
-
-    logger.info(
-        f"[{get_current_utc()}] "
-        "Bot polling started."
-    )
-
-    bot.infinity_polling(
-        skip_pending=True
-    )
