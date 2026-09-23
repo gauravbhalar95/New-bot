@@ -11,7 +11,9 @@ imageio[ffmpeg]>=2.37.0
 Pillow>=11.0.0
 cryptography>=46.0.0
 pycryptodome>=3.23.0
-Flask[async]>=3.1.0
+Flask>=3.1.0
+Quart>=0.20.0
+Hypercorn>=0.17.3
 gunicorn>=23.0.0
 ffmpeg-python>=0.2.0
 opencv-python-headless
