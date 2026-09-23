@@ -1,10 +1,9 @@
 import logging
+from bot import bot, start_background_tasks  # Import the new function
+from config import WEBHOOK_SECRET, PORT
 
 from flask import Flask, jsonify, request
 import telebot
-
-from bot import bot
-from config import WEBHOOK_SECRET, PORT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,13 +80,15 @@ def telegram_webhook():
         }), 500
 
 
+# In webhook.py, modify the imports and the bottom block:
+
+# ... (keep all your flask routes the same) ...
+
 if __name__ == "__main__":
+    logger.info("Starting background tasks...")
+    start_background_tasks()  # Start the queue workers!
 
-    logger.info(
-        "Starting Flask server on port %s",
-        PORT
-    )
-
+    logger.info("Starting Flask server on port %s", PORT)
     app.run(
         host="0.0.0.0",
         port=PORT,
