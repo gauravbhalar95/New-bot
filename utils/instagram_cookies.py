@@ -46,12 +46,13 @@ def convert_to_netscape(json_file, output_file):
 def fetch_instagram_cookies(username, password):
     print("🔄 Logging in to Instagram...")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context()
-        page = context.new_page()
+    browser = None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context()
+            page = context.new_page()
 
-        try:
             page.goto("https://www.instagram.com/accounts/login/")
             page.wait_for_timeout(5000)
 
@@ -66,13 +67,16 @@ def fetch_instagram_cookies(username, password):
                 json.dump(cookies, f, indent=4)
 
             print("✅ Raw cookies saved:", RAW_JSON_COOKIES)
-
             convert_to_netscape(RAW_JSON_COOKIES, NETSCAPE_COOKIES)
+            return True
 
-        except Exception as e:
-            print("❌ Instagram login failed:", e)
-
-        browser.close()
+    except Exception as e:
+        # Missing browser binaries must not terminate the bot's background worker.
+        print("⚠️ Instagram cookie refresh skipped:", e)
+        return False
+    finally:
+        if browser is not None:
+            browser.close()
 
 
 # Auto refresh cookies every 7 days
