@@ -1,6 +1,10 @@
 import os
 import yt_dlp
 import logging
+import platform
+import shutil
+import urllib.request
+import zipfile
 
 from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
@@ -9,6 +13,32 @@ from utils.logger import setup_logging
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
+
+
+def _ensure_deno():
+    """Return a usable Deno executable for yt-dlp EJS challenge solving."""
+    existing = shutil.which("deno")
+    if existing:
+        return existing
+
+    bin_dir = os.path.join(DOWNLOAD_DIR, ".bin")
+    deno_path = os.path.join(bin_dir, "deno")
+    if os.path.isfile(deno_path) and os.access(deno_path, os.X_OK):
+        return deno_path
+
+    os.makedirs(bin_dir, exist_ok=True)
+    machine = platform.machine().lower()
+    asset = "deno-aarch64-unknown-linux-gnu.zip" if machine in ("aarch64", "arm64") else "deno-x86_64-unknown-linux-gnu.zip"
+    archive = os.path.join(bin_dir, "deno.zip")
+    url = f"https://github.com/denoland/deno/releases/latest/download/{asset}"
+
+    logger.info("Installing Deno for yt-dlp EJS challenge solving...")
+    urllib.request.urlretrieve(url, archive)
+    with zipfile.ZipFile(archive) as zf:
+        zf.extract("deno", bin_dir)
+    os.remove(archive)
+    os.chmod(deno_path, 0o755)
+    return deno_path
 
 
 def process_youtube(url):
@@ -23,10 +53,18 @@ def process_youtube(url):
     # Try a normal/default extraction first, then Safari/embedded clients.
     client_attempts = [
         None,
-        ["web_safari", "web_embedded"],
+        ["android_vr"],
+        ["web_embedded"],
     ]
 
     last_error = None
+
+    try:
+        deno_path = _ensure_deno()
+        logger.info(f"Using Deno for yt-dlp EJS: {deno_path}")
+    except Exception as e:
+        logger.warning(f"Could not install Deno: {e}")
+        deno_path = None
 
     for attempt, player_clients in enumerate(client_attempts, start=1):
         ydl_opts = {
@@ -46,6 +84,8 @@ def process_youtube(url):
             "merge_output_format": "mp4",
             "noplaylist": True,
             "ignoreerrors": False,
+            "remote_components": ["ejs:github"],
+            "js_runtimes": {"deno": deno_path} if deno_path else {},
         }
 
         if player_clients:
