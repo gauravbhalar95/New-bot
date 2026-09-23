@@ -12,66 +12,156 @@ logger = setup_logging(logging.DEBUG)
 
 
 def process_youtube(url):
-    """Download video using yt-dlp synchronously."""
+    """Download a YouTube video with format/client fallbacks."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    ydl_opts = {
-        "format": "bv+ba/b",
-        "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
-        "socket_timeout": 10,
-        "retries": 5,
-        "logger": logger,
-        "verbose": True,
-        "merge_output_format": "mp4",
-        "noplaylist": True,
-    }
+    output_template = (
+        f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
+    )
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
+    # YouTube is currently rolling out PO-token/SABR enforcement.
+    # Try a normal/default extraction first, then Safari/embedded clients.
+    client_attempts = [
+        None,
+        ["web_safari", "web_embedded"],
+    ]
 
-            if not info_dict:
-                logger.error("❌ No info_dict returned. Download failed.")
-                return None, 0, "❌ No video information found."
+    last_error = None
 
-            if "entries" in info_dict and not info_dict["entries"]:
-                logger.error("❌ Video unavailable or restricted.")
-                return None, 0, "❌ Video unavailable or restricted."
+    for attempt, player_clients in enumerate(client_attempts, start=1):
+        ydl_opts = {
+            # More tolerant than the old hard-coded "bv+ba/b".
+            "format": "bestvideo*+bestaudio/best",
+            "outtmpl": output_template,
+            "cookiefile": (
+                YOUTUBE_FILE
+                if os.path.exists(YOUTUBE_FILE)
+                else None
+            ),
+            "socket_timeout": 20,
+            "retries": 5,
+            "fragment_retries": 5,
+            "logger": logger,
+            "verbose": True,
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+            "ignoreerrors": False,
+        }
 
-            file_path = ydl.prepare_filename(info_dict)
+        if player_clients:
+            ydl_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": player_clients
+                }
+            }
 
-            mp4_path = os.path.splitext(file_path)[0] + ".mp4"
-
-            if os.path.exists(mp4_path):
-                file_path = mp4_path
-
-            file_size = (
-                os.path.getsize(file_path)
-                if os.path.exists(file_path)
-                else 0
+        try:
+            logger.info(
+                f"▶️ YouTube attempt {attempt}/"
+                f"{len(client_attempts)}"
+                + (
+                    f" using clients: {','.join(player_clients)}"
+                    if player_clients
+                    else " using default clients"
+                )
             )
 
-            return file_path, file_size, None
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=True)
 
-    except yt_dlp.utils.ExtractorError as e:
-        logger.error(f"❌ Extractor Error: {e}")
-        return (
-            None,
-            0,
-            "❌ Video may be private, deleted, or region-restricted."
-        )
+                if not info_dict:
+                    raise yt_dlp.utils.DownloadError(
+                        "No video information returned"
+                    )
 
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"❌ Download Error: {e}")
-        return None, 0, str(e)
+                if (
+                    "entries" in info_dict
+                    and info_dict.get("entries") is not None
+                    and not info_dict["entries"]
+                ):
+                    raise yt_dlp.utils.DownloadError(
+                        "Video unavailable or restricted"
+                    )
 
-    except Exception as e:
-        logger.error(
-            f"⚠️ Error downloading video: {e}",
-            exc_info=True
-        )
-        return None, 0, str(e)
+                # Prefer the actual final filepath reported by yt-dlp.
+                candidates = []
+
+                requested_downloads = (
+                    info_dict.get("requested_downloads") or []
+                )
+
+                for item in requested_downloads:
+                    path = item.get("filepath")
+                    if path and os.path.isfile(path):
+                        candidates.append(path)
+
+                for key in ("_filename", "filename"):
+                    path = info_dict.get(key)
+                    if path and os.path.isfile(path):
+                        candidates.append(path)
+
+                prepared = ydl.prepare_filename(info_dict)
+                candidates.extend([
+                    prepared,
+                    os.path.splitext(prepared)[0] + ".mp4",
+                ])
+
+                file_path = next(
+                    (
+                        path for path in candidates
+                        if path and os.path.isfile(path)
+                    ),
+                    None,
+                )
+
+                if not file_path:
+                    raise yt_dlp.utils.DownloadError(
+                        "yt-dlp completed but the output file was not found"
+                    )
+
+                file_size = os.path.getsize(file_path)
+
+                logger.info(
+                    f"✅ YouTube download finished: {file_path} "
+                    f"({file_size / (1024 ** 2):.2f} MB)"
+                )
+
+                return file_path, file_size, None
+
+        except (
+            yt_dlp.utils.ExtractorError,
+            yt_dlp.utils.DownloadError,
+        ) as e:
+            last_error = e
+            logger.warning(
+                f"⚠️ YouTube attempt {attempt} failed: {e}"
+            )
+
+            if attempt < len(client_attempts):
+                logger.info("🔄 Retrying YouTube with fallback client...")
+                continue
+
+            break
+
+        except Exception as e:
+            last_error = e
+            logger.error(
+                f"⚠️ Unexpected YouTube error: {e}",
+                exc_info=True,
+            )
+
+            if attempt < len(client_attempts):
+                continue
+
+            break
+
+    logger.error(f"❌ All YouTube download attempts failed: {last_error}")
+
+    return (
+        None,
+        0,
+        str(last_error) if last_error else "YouTube download failed.",
+    )
 
 
 def extract_audio_ffmpeg(url):
