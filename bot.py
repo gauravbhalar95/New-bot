@@ -48,7 +48,6 @@ from handlers.trim_handlers import (
 )
 
 from utils.logger import setup_logging
-from utils.instagram_cookies import auto_refresh_cookies
 
 
 # ============================================================
@@ -926,12 +925,7 @@ def main():
 def start_background_tasks():
     logger.info(f"[{get_current_utc()}] Starting background tasks...")
     
-    from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
-    if INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD:
-        threading.Thread(target=lambda: run_async(auto_refresh_cookies), daemon=True).start()
-    else:
-        logger.info("Instagram auto-refresh disabled: credentials not configured.")
-
+    logger.info("Using manual Instagram cookies from cookies/instagram_cookies.txt when needed.")
     threading.Thread(target=cleanup_files, daemon=True).start()
 
     num_workers = min(3, os.cpu_count() or 1)
