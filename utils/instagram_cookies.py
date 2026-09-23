@@ -55,8 +55,8 @@ def fetch_instagram_cookies(username, password):
             page.goto("https://www.instagram.com/accounts/login/")
             page.wait_for_timeout(5000)
 
-            page.fill("input[name='username']", username)
-            page.fill("input[name='password']", password)
+            page.fill(username)
+            page.fill(password)
             page.click("button[type='submit']")
             page.wait_for_timeout(8000)
 
