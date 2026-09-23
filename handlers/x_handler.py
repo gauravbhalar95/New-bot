@@ -1,5 +1,4 @@
 import os
-import asyncio
 import yt_dlp
 import telebot
 import logging
@@ -13,7 +12,7 @@ logger = setup_logging(logging.DEBUG)
 # Initialize Telegram bot
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
-async def download_twitter_media(url):
+def download_twitter_media(url):
     """
     Downloads a Twitter/X video in HD and returns (file_path, file_size, thumbnail_path).
     """
@@ -38,9 +37,8 @@ async def download_twitter_media(url):
     }
 
     try:
-        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await loop.run_in_executor(None, ydl.extract_info, url, True)
+            info_dict = ydl.extract_info(url, True)
             if not info_dict or "requested_downloads" not in info_dict:
                 logger.error("❌ No video found.")
                 return None, None, None
@@ -50,8 +48,8 @@ async def download_twitter_media(url):
             # Check if file exists before getting size
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
-            # ✅ Await async function & check for None
-            thumbnail_path = await generate_thumbnail(file_path)
+            # Synchronous function call
+            thumbnail_path = generate_thumbnail(file_path)
 
             if thumbnail_path and os.path.exists(thumbnail_path):
                 logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
