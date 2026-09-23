@@ -11,23 +11,14 @@ WORKDIR /app
 # -------------------------------
 # Install system dependencies
 # -------------------------------
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ffmpeg \
-        curl \
-        chromium \
-        ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update &&     apt-get install -y --no-install-recommends         ffmpeg         curl         chromium         ca-certificates     && apt-get clean     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
 # Copy & install Python dependencies
 # -------------------------------
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --upgrade yt-dlp playwright
+RUN pip install --no-cache-dir --upgrade pip &&     pip install --no-cache-dir -r requirements.txt &&     pip install --no-cache-dir --upgrade yt-dlp playwright
 
 # -------------------------------
 # Install Playwright Chromium
@@ -68,6 +59,6 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 8080
 
 # -------------------------------
-# Start Webhook server first, then Telegram bot
+# Start the long-running webhook service
 # -------------------------------
-CMD ["python", "webhook.py"]
+CMD ["python3", "webhook.py"]
