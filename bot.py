@@ -88,6 +88,40 @@ async def run_blocking(function, *args):
     return await asyncio.to_thread(function, *args)
 
 
+async def send_downloaded_file(chat_id, file_path, is_audio=False):
+    """Send the downloaded file without converting it.
+
+    Video files are sent as video first. If Telegram rejects the file as a
+    video (unsupported codec/container, etc.), the exact same file is sent
+    as a document instead. No conversion is performed here.
+    """
+    telegram_file = types.InputFile(file_path)
+
+    if is_audio:
+        await bot.send_audio(chat_id, telegram_file)
+        return "audio"
+
+    try:
+        await bot.send_video(
+            chat_id,
+            telegram_file,
+            supports_streaming=True,
+        )
+        return "video"
+    except Exception as video_error:
+        logger.warning(
+            "send_video failed for %s; sending original file as document: %s",
+            file_path,
+            video_error,
+            exc_info=True,
+        )
+
+        # InputFile streams the file, so create a fresh object for the retry.
+        telegram_file = types.InputFile(file_path)
+        await bot.send_document(chat_id, telegram_file)
+        return "document"
+
+
 async def process_download(
     message,
     url,
@@ -178,21 +212,20 @@ async def process_download(
                     continue
 
                 try:
-                    telegram_file = types.InputFile(file_path)
+                    # For normal video downloads, send the original downloaded
+                    # file. No FFmpeg conversion is performed in this path.
+                    # Trim/audio requests still use their existing processors.
+                    sent_as = await send_downloaded_file(
+                        message.chat.id,
+                        file_path,
+                        is_audio=is_audio or is_audio_trim,
+                    )
 
-                    if is_audio or is_audio_trim:
-                        await bot.send_audio(
-                            message.chat.id,
-                            telegram_file,
-                        )
-                    else:
-                        await bot.send_video(
-                            message.chat.id,
-                            telegram_file,
-                            supports_streaming=True,
-                        )
-
-                    logger.info("Successfully sent: %s", file_path)
+                    logger.info(
+                        "Successfully sent original file: %s as %s",
+                        file_path,
+                        sent_as,
+                    )
 
                 except Exception as send_error:
                     logger.error(
