@@ -1,7 +1,6 @@
 import logging
-import asyncio
 
-from flask import Flask, jsonify, request
+from quart import Quart, jsonify, request
 import telebot
 
 from bot import bot, start_background_tasks
@@ -13,37 +12,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Quart(__name__)
 
 WEBHOOK_ENDPOINT = "/telegram-webhook"
 
 
-@app.route("/", methods=["GET"])
-def home():
+@app.before_serving
+async def startup():
+    logger.info("Starting async background tasks...")
+    app.background_tasks = await start_background_tasks()
+
+
+@app.after_serving
+async def shutdown():
+    logger.info("Stopping async background tasks...")
+    for task in getattr(app, "background_tasks", []):
+        task.cancel()
+
+
+@app.get("/")
+async def home():
     return "Telegram bot is running", 200
 
 
-@app.route("/health", methods=["GET"])
-def health():
+@app.get("/health")
+async def health():
     return jsonify({"status": "healthy"}), 200
 
 
-@app.route("/webhook", methods=["POST"])
-@app.route(WEBHOOK_ENDPOINT, methods=["POST"])
-def telegram_webhook():
+@app.post("/webhook")
+@app.post(WEBHOOK_ENDPOINT)
+async def telegram_webhook():
     if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
         return jsonify({"error": "unauthorized"}), 403
 
-    data = request.get_json(silent=True)
+    data = await request.get_json(silent=True)
+
     if not data:
         return jsonify({"error": "invalid update"}), 400
 
     try:
         update = telebot.types.Update.de_json(data)
-
-        # Run the AsyncTeleBot update handler in a dedicated event loop.
-        asyncio.run(bot.process_new_updates([update]))
-
+        await bot.process_new_updates([update])
         return jsonify({"ok": True}), 200
 
     except Exception:
@@ -52,20 +62,8 @@ def telegram_webhook():
 
 
 if __name__ == "__main__":
-    async def startup():
-        return await start_background_tasks()
-
-    background_tasks = asyncio.run(startup())
-
-    try:
-        logger.info("Starting Flask server on port %s", PORT)
-        app.run(
-            host="0.0.0.0",
-            port=PORT,
-            debug=False,
-            use_reloader=False,
-            threaded=True,
-        )
-    finally:
-        for task in background_tasks:
-            task.cancel()
+    app.run(
+        host="0.0.0.0",
+        port=PORT,
+        debug=False,
+    )
