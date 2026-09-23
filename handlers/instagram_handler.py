@@ -194,66 +194,72 @@ def process_instagram(
                 "❌ Failed to extract info"
             )
 
-        uploader = (
-            info_dict.get("uploader")
-            or
-            info_dict.get("uploader_id")
-            or
-            "instagram"
-        )
+        # IMPORTANT:
+        # Do not reconstruct the filename from uploader/title/ext here.
+        # yt-dlp/postprocessors can change the final filename. Use the
+        # actual downloaded filepath first, so an already-MP4 file can be
+        # sent directly by bot.py without requiring conversion.
+        video_path = None
 
-        title = (
-            info_dict.get("title")
-            or
-            info_dict.get("id")
-            or
-            "video"
-        )
+        requested_downloads = info_dict.get("requested_downloads") or []
 
-        ext = (
-            info_dict.get("ext")
-            or
-            "mp4"
-        )
+        for item in requested_downloads:
+            filepath = item.get("filepath")
+            if filepath and Path(filepath).is_file():
+                video_path = Path(filepath)
+                break
 
-        raw_name = (
-            f"{uploader} - "
-            f"{title}.{ext}"
-        )
+        # yt-dlp may expose the final filename through these fields.
+        if video_path is None:
+            for key in ("_filename", "filename"):
+                filepath = info_dict.get(key)
+                if filepath and Path(filepath).is_file():
+                    video_path = Path(filepath)
+                    break
 
-        safe_name = sanitize_filename(
-            raw_name
-        )
-
-        video_path = (
-            Path(DOWNLOAD_DIR)
-            /
-            safe_name
-        )
-
-        if not video_path.exists():
+        # Final fallback: choose the newest media file created by this
+        # download. Prefer MP4 so an already-converted/downloaded MP4 is
+        # sent directly instead of looking for a different filename.
+        if video_path is None:
+            media_extensions = {
+                ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"
+            }
 
             candidates = sorted(
-                Path(DOWNLOAD_DIR).glob(
-                    f"*{info_dict.get('id', '')}*"
+                (
+                    p for p in Path(DOWNLOAD_DIR).iterdir()
+                    if p.is_file() and p.suffix.lower() in media_extensions
                 ),
                 key=lambda p: p.stat().st_mtime,
-                reverse=True
+                reverse=True,
             )
 
             if candidates:
-
                 video_path = candidates[0]
 
-        file_size = (
-            info_dict.get("filesize")
-            or
-            (
-                video_path.stat().st_size
-                if video_path.exists()
-                else 0
+        if video_path is None or not video_path.is_file():
+            logger.error(
+                "❌ Download completed but the final media file "
+                "could not be located."
             )
+            return (
+                None,
+                0,
+                "❌ Download completed, but the video file could not be found."
+            )
+
+        file_size = video_path.stat().st_size
+
+        logger.info(
+            f"✅ Final video ready: {video_path} "
+            f"({file_size / (1024 ** 2):.2f} MB)"
         )
+
+        if video_path.suffix.lower() == ".mp4":
+            logger.info(
+                "✅ File is already MP4. It will be sent directly; "
+                "no conversion required."
+            )
 
         return (
             str(video_path),
