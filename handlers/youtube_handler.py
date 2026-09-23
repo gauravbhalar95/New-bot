@@ -85,7 +85,7 @@ def process_youtube(url):
             "noplaylist": True,
             "ignoreerrors": False,
             "remote_components": ["ejs:github"],
-            "js_runtimes": {"deno": deno_path} if deno_path else {},
+            "js_runtimes": {"deno": {"path": deno_path}} if deno_path else {},
         }
 
         if player_clients:
@@ -174,7 +174,8 @@ def process_youtube(url):
         ) as e:
             last_error = e
             logger.warning(
-                f"⚠️ YouTube attempt {attempt} failed: {e}"
+                "⚠️ YouTube attempt %s failed: %r", attempt, e,
+                exc_info=True,
             )
 
             if attempt < len(client_attempts):
