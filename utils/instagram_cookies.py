@@ -46,7 +46,6 @@ def convert_to_netscape(json_file, output_file):
 def fetch_instagram_cookies(username, password):
     print("🔄 Logging in to Instagram...")
 
-    browser = None
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -74,9 +73,6 @@ def fetch_instagram_cookies(username, password):
         # Missing browser binaries must not terminate the bot's background worker.
         print("⚠️ Instagram cookie refresh skipped:", e)
         return False
-    finally:
-        if browser is not None:
-            browser.close()
 
 
 # Auto refresh cookies every 7 days
