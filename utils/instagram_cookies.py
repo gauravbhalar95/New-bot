@@ -5,6 +5,11 @@ from playwright.async_api import async_playwright
 
 from config import INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 
+
+username = INSTAGRAM_USERNAME
+password = INSTAGRAM_PASSWORD
+
+
 RAW_JSON_COOKIES = "cookies/instagram_raw.json"
 NETSCAPE_COOKIES = "cookies/instagram_cookies.txt"
 
