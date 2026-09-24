@@ -182,8 +182,6 @@ def _download_images(url: str) -> list[Path]:
 def process_threads(url: str):
     """Automatically download a Threads reel/video or image post."""
     url = url.split("#")[0]
-    media_type = _detect_media_type(url)
-    logger.info("Threads media type detected: %s", media_type)
 
     ydl_opts = {
         "format": "bestvideo*+bestaudio/best",
@@ -203,60 +201,56 @@ def process_threads(url: str):
         },
     }
 
-    if media_type == "image":
-        try:
-            image_paths = _download_images(url)
-            if image_paths:
-                total_size = sum(p.stat().st_size for p in image_paths)
-                logger.info(
-                    "Threads image post ready: %s file(s), %.2f MB total",
-                    len(image_paths), total_size / (1024 ** 2),
-                )
-                return (
-                    [str(p) for p in image_paths]
-                    if len(image_paths) > 1 else str(image_paths[0]),
-                    int(total_size), None,
-                )
-            raise RuntimeError("No Threads image found")
-        except Exception as image_error:
-            logger.warning("Threads image download failed: %s", image_error)
-            return None, 0, str(image_error)
-
+    # Always try yt-dlp first. Threads reels do not always expose og:video
+    # in the HTML, so HTML-based detection can incorrectly classify a reel
+    # as an image.
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
 
         media_paths = _find_downloaded_files(info_dict) if info_dict else []
-        if media_paths:
-            total_size = sum(p.stat().st_size for p in media_paths)
+        video_paths = [
+            p for p in media_paths
+            if p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"}
+        ]
+
+        if video_paths:
+            total_size = sum(p.stat().st_size for p in video_paths)
             logger.info(
-                "Threads video ready: %s file(s), %.2f MB total",
-                len(media_paths), total_size / (1024 ** 2),
+                "Threads reel/video ready: %s file(s), %.2f MB total",
+                len(video_paths), total_size / (1024 ** 2),
             )
             return (
-                [str(p) for p in media_paths]
-                if len(media_paths) > 1 else str(media_paths[0]),
-                int(total_size), None,
+                [str(p) for p in video_paths]
+                if len(video_paths) > 1 else str(video_paths[0]),
+                int(total_size),
+                None,
             )
-        raise RuntimeError("yt-dlp returned no Threads video files")
+
+        logger.info("Threads post contains no downloadable video; trying image fallback.")
+
     except Exception as ytdlp_error:
         logger.warning("yt-dlp Threads video extraction failed: %s", ytdlp_error)
-        try:
-            image_paths = _download_images(url)
-            if image_paths:
-                total_size = sum(p.stat().st_size for p in image_paths)
-                logger.info(
-                    "Threads image fallback ready: %s file(s), %.2f MB total",
-                    len(image_paths), total_size / (1024 ** 2),
-                )
-                return (
-                    [str(p) for p in image_paths]
-                    if len(image_paths) > 1 else str(image_paths[0]),
-                    int(total_size), None,
-                )
-        except Exception as image_error:
-            logger.error("Threads image fallback failed: %s", image_error, exc_info=True)
-        return None, 0, str(ytdlp_error)
+
+    # Image/carousel fallback.
+    try:
+        image_paths = _download_images(url)
+        if image_paths:
+            total_size = sum(p.stat().st_size for p in image_paths)
+            logger.info(
+                "Threads image post ready: %s file(s), %.2f MB total",
+                len(image_paths), total_size / (1024 ** 2),
+            )
+            return (
+                [str(p) for p in image_paths]
+                if len(image_paths) > 1 else str(image_paths[0]),
+                int(total_size),
+                None,
+            )
+        raise RuntimeError("No Threads image or video found")
+    except Exception as image_error:
+        logger.error("Threads image fallback failed: %s", image_error, exc_info=True)
+        return None, 0, str(image_error)
 
 
 def cleanup_media(media_path: str) -> None:
