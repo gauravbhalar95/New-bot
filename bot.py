@@ -13,6 +13,7 @@ from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import process_instagram
+from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
@@ -50,6 +51,7 @@ PLATFORM_PATTERNS = {
 PLATFORM_HANDLERS = {
     "YouTube": process_youtube,
     "Instagram": process_instagram,
+    "Threads": process_threads,
     "Facebook": process_facebook,
     "Twitter/X": download_twitter_media,
     "Adult": process_adult,
@@ -171,6 +173,21 @@ def split_large_file(file_path):
 async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None):
     if cancel_key in cancelled_downloads:
         return False
+
+    extension = os.path.splitext(file_path)[1].lower()
+    image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+
+    if extension in image_extensions:
+        try:
+            await bot.send_photo(chat_id, types.InputFile(file_path))
+        except Exception as photo_error:
+            logger.warning(
+                "send_photo failed; sending image as document: %s",
+                photo_error,
+                exc_info=True,
+            )
+            await bot.send_document(chat_id, types.InputFile(file_path))
+        return True
 
     if is_audio:
         await bot.send_audio(chat_id, types.InputFile(file_path))
