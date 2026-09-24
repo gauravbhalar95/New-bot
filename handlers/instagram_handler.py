@@ -1,7 +1,10 @@
 # handlers/instagram_handler.py
 
 import gc
+import html
 import logging
+import re
+import requests
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional, Tuple, Union
@@ -53,6 +56,82 @@ def download_progress_hook(d: dict) -> None:
     elif status == "finished":
         logger.info("✅ Download finished: %s", d.get("filename"))
 
+
+
+def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
+    """Download Instagram post images when the post has no video."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/140.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml",
+        "Referer": "https://www.instagram.com/",
+    }
+
+    response = requests.get(
+        url,
+        headers=headers,
+        timeout=25,
+    )
+    response.raise_for_status()
+
+    page_html = html.unescape(response.text).replace("\\/", "/")
+    image_urls = re.findall(
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+        page_html,
+        re.IGNORECASE,
+    )
+
+    unique_urls = []
+    seen = set()
+    for image_url in image_urls:
+        image_url = image_url.replace("\\u0026", "&").replace("\\/", "/")
+        if image_url.startswith("//"):
+            image_url = "https:" + image_url
+        if image_url.startswith("http") and image_url not in seen:
+            seen.add(image_url)
+            unique_urls.append(image_url)
+
+    if not unique_urls:
+        return []
+
+    post_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
+    downloaded = []
+
+    for index, image_url in enumerate(unique_urls, start=1):
+        try:
+            image_response = requests.get(
+                image_url,
+                headers=headers,
+                timeout=30,
+                stream=True,
+            )
+            image_response.raise_for_status()
+
+            content_type = image_response.headers.get("Content-Type", "").lower()
+            extension = ".jpg"
+            for candidate in (".jpg", ".jpeg", ".png", ".webp"):
+                if candidate in content_type:
+                    extension = candidate
+                    break
+
+            output = Path(DOWNLOAD_DIR) / f"instagram_{post_id}_{index}{extension}"
+            with output.open("wb") as file:
+                for chunk in image_response.iter_content(chunk_size=262144):
+                    if chunk:
+                        file.write(chunk)
+
+            if output.is_file() and output.stat().st_size > 0:
+                downloaded.append(output)
+        except Exception as image_error:
+            logger.warning(
+                "Instagram image fallback failed for %s: %s",
+                image_url,
+                image_error,
+            )
+
+    return downloaded
 
 def _find_downloaded_files(info_dict) -> list[Path]:
     """Find all final media files produced by yt-dlp, including carousels."""
@@ -188,6 +267,33 @@ def process_instagram(
 
     except yt_dlp.utils.DownloadError as e:
         logger.error("❌ Instagram download error: %s", e, exc_info=True)
+
+        # /p/ posts can contain only images. Fall back when yt-dlp
+        # explicitly reports that the post has no video.
+        error_text = str(e).lower()
+        if "no video formats found" in error_text or "there is no video" in error_text:
+            try:
+                image_paths = _download_image_fallback(url, cookie_path)
+                if image_paths:
+                    total_size = sum(p.stat().st_size for p in image_paths)
+                    logger.info(
+                        "✅ Instagram image fallback ready: %s file(s), %.2f MB total",
+                        len(image_paths),
+                        total_size / (1024 ** 2),
+                    )
+                    return (
+                        [str(p) for p in image_paths]
+                        if len(image_paths) > 1 else str(image_paths[0]),
+                        int(total_size),
+                        None,
+                    )
+            except Exception as image_error:
+                logger.warning(
+                    "Instagram image fallback failed: %s",
+                    image_error,
+                    exc_info=True,
+                )
+
         return None, 0, str(e)
 
     except Exception as e:
