@@ -40,6 +40,7 @@ cancelled_downloads = set()
 PLATFORM_PATTERNS = {
     "YouTube": re.compile(r"(youtube\.com|youtu\.be)", re.IGNORECASE),
     "Instagram": re.compile(r"instagram\.com", re.IGNORECASE),
+    "Threads": re.compile(r"(threads\.net|threads\.com)", re.IGNORECASE),
     "Facebook": re.compile(r"facebook\.com", re.IGNORECASE),
     "Twitter/X": re.compile(r"(x\.com|twitter\.com)", re.IGNORECASE),
     "Adult": re.compile(
