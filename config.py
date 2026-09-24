@@ -5,6 +5,17 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
+# Make the bundled imageio-ffmpeg binary available to yt-dlp and subprocess calls.
+try:
+    import imageio_ffmpeg
+
+    FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+    FFMPEG_DIR = str(Path(FFMPEG_PATH).parent)
+    os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
+except Exception:
+    # Docker deployments may provide a system ffmpeg binary instead.
+    FFMPEG_PATH = "ffmpeg"
+
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
 PORT = int(os.getenv("PORT", "8080"))
