@@ -109,7 +109,7 @@ def process_instagram(
         # best video AND best audio, then let FFmpeg MERGE them. This is
         # a mux/remux operation when the codecs are already compatible;
         # it does not re-encode the video just to send it to Telegram.
-        "format": "bestvideo*+bestaudio/best",
+        "format": "best",
         "merge_output_format": "mp4",
 
         "outtmpl": outtmpl,
