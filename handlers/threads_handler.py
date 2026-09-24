@@ -79,7 +79,7 @@ def _find_downloaded_files(info_dict) -> list[Path]:
 
 def _extract_image_urls(page_html: str) -> list[str]:
     """Extract public Threads image URLs from server-rendered HTML."""
-    page_html = html.unescape(page_html).replace("\/", "/")
+    page_html = html.unescape(page_html).replace("\\/", "/")
     found = []
 
     # og:image covers the common single-image post case.
@@ -91,19 +91,12 @@ def _extract_image_urls(page_html: str) -> list[str]:
         )
     )
 
-    # Also inspect embedded JSON for additional carousel image URLs.
-    found.extend(
-        re.findall(
-            r'https?://[^"\\\'<> ]+?\.(?:jpe?g|png|webp|gif)(?:\?[^"\\\'<> ]*)?',
-            page_html,
-            re.IGNORECASE,
-        )
-    )
+    # Do not scrape every image URL from the page.\n    # Threads pages contain logos, avatars, icons, and other unrelated images.\n    # og:image is the post preview image and avoids downloading those assets.\n
 
     urls = []
     seen = set()
     for image_url in found:
-        image_url = image_url.replace("\u0026", "&").replace("\/", "/")
+        image_url = image_url.replace("\u0026", "&").replace("\\/", "/")
         if image_url.startswith("//"):
             image_url = "https:" + image_url
         if image_url.startswith("http") and image_url not in seen:
