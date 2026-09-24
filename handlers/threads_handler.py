@@ -91,7 +91,10 @@ def _extract_image_urls(page_html: str) -> list[str]:
         )
     )
 
-    # Do not scrape every image URL from the page.\n    # Threads pages contain logos, avatars, icons, and other unrelated images.\n    # og:image is the post preview image and avoids downloading those assets.\n
+    # Do not scrape every image URL from the page.
+    # Threads pages contain logos, avatars, icons, and other unrelated images.
+    # og:image is the post preview image and avoids downloading those assets.
+
 
     urls = []
     seen = set()
