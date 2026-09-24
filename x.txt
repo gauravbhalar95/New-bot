@@ -1,0 +1,17 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.x.com	TRUE	/	TRUE	1824769292	guest_id_marketing	v1%3A179020924183423465
+.x.com	TRUE	/	TRUE	1824769292	guest_id_ads	v1%3A179020924183423465
+.x.com	TRUE	/	TRUE	1790218250	gt	2102916094428348800
+.x.com	TRUE	/	TRUE	1824769242	personalization_id	"v1_90amgdx8ArGaYyfluzovVw=="
+.x.com	TRUE	/	TRUE	1824769242	guest_id	v1%3A179020924183423465
+x.com	FALSE	/	FALSE	1824769290	__cuid	ece191e5-26ca-433f-ade5-9b8d722fec07
+.x.com	TRUE	/	FALSE	1824769290	__cuid	ece191e5-26ca-433f-ade5-9b8d722fec07
+x.com	FALSE	/	TRUE	1805761284	g_state	{"i_l":0,"i_ll":1790209263769,"i_e":{"enable_itp_optimization":24},"i_et":1790209263769}
+.x.com	TRUE	/	TRUE	1821745293	twid	u%3D1666375496257650688
+.x.com	TRUE	/	TRUE	1821745287	auth_token	9cd9aa511599b8ad731354139f5d315a6b746581
+x.com	FALSE	/	FALSE	0	lang	en
+.x.com	TRUE	/	TRUE	1824769287	ct0	47f21dbb409fe57bed38f73de1a04021497449ad50c4a5e397151430aad32022d4526d79aeba139feffc724da4e579455eaffac3bb002a8ba404d438f7f676948c6228460d284581129bcd9ad67bbc56
+.x.com	TRUE	/	TRUE	1790211090	__cf_bm	tqw6mflOekLtD5fNDdLGRlTW.O5imEktYebQ8SmnjsQ-1790209289.430796-1.0.1.1-oE25hg.g0G.rvQN8UOuoSOXkdq7ZkCCcA3LHkxljSeUjA7i.jE1vmm.wdjn8IXvki0MbnQUDgXfA10fC68QJqKQQVBtwGHqhQihFqSUFT9yWW93DOEvZHvfORciYyCCi
