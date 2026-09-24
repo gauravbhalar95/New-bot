@@ -4,6 +4,7 @@ import logging
 import re
 import time
 import asyncio
+import subprocess
 from datetime import datetime, timezone
 
 from telebot import types
@@ -21,6 +22,9 @@ from utils.logger import setup_logging
 MAX_MEMORY_USAGE = 500 * 1024 * 1024
 MAX_CONCURRENT_DOWNLOADS = 2
 CLEANUP_INTERVAL = 300
+MAX_DOWNLOAD_RETRIES = 3
+PROGRESS_INTERVAL = 5
+SPLIT_TARGET_RATIO = 0.90
 
 logger = setup_logging(logging.DEBUG)
 
@@ -29,6 +33,8 @@ bot = AsyncTeleBot(API_TOKEN, parse_mode="HTML")
 download_queue = asyncio.Queue()
 download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DOWNLOADS)
 active_downloads = set()
+active_tasks = {}
+cancelled_downloads = set()
 
 PLATFORM_PATTERNS = {
     "YouTube": re.compile(r"(youtube\.com|youtu\.be)", re.IGNORECASE),
@@ -71,9 +77,10 @@ def check_memory_usage():
 
 async def send_message(chat_id, text):
     try:
-        await bot.send_message(chat_id, text)
+        return await bot.send_message(chat_id, text)
     except Exception as e:
         logger.error("Error sending message: %s", e, exc_info=True)
+        return None
 
 
 def detect_platform(url):
@@ -84,42 +91,141 @@ def detect_platform(url):
 
 
 async def run_blocking(function, *args):
-    """Run existing synchronous download/FFmpeg code outside the event loop."""
     return await asyncio.to_thread(function, *args)
 
 
-async def send_downloaded_file(chat_id, file_path, is_audio=False):
-    """Send the downloaded file without converting it.
+def split_large_file(file_path):
+    """Split a large media file into Telegram-sized chunks without re-encoding."""
+    file_size = os.path.getsize(file_path)
+    target_size = int(TELEGRAM_FILE_LIMIT * SPLIT_TARGET_RATIO)
 
-    Video files are sent as video first. If Telegram rejects the file as a
-    video (unsupported codec/container, etc.), the exact same file is sent
-    as a document instead. No conversion is performed here.
-    """
-    telegram_file = types.InputFile(file_path)
+    if file_size <= TELEGRAM_FILE_LIMIT:
+        return [file_path]
+
+    base, ext = os.path.splitext(file_path)
+    output_pattern = f"{base}.part%03d{ext}"
+
+    # Estimate segment duration from the file size. We then verify each
+    # segment and retry with a smaller duration if necessary.
+    probe = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    duration = float(probe.stdout.strip()) if probe.returncode == 0 and probe.stdout.strip() else 0
+    if duration <= 0:
+        raise RuntimeError("Cannot determine media duration for file splitting")
+
+    seconds = max(10, int(duration * target_size / file_size))
+
+    for attempt in range(1, 6):
+        for old in list(os.path.dirname(file_path) and os.listdir(os.path.dirname(file_path)) or []):
+            if old.startswith(os.path.basename(base) + ".part"):
+                try:
+                    os.remove(os.path.join(os.path.dirname(file_path), old))
+                except OSError:
+                    pass
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", file_path,
+                "-map", "0",
+                "-c", "copy",
+                "-f", "segment",
+                "-segment_time", str(seconds),
+                "-reset_timestamps", "1",
+                output_pattern,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=True,
+        )
+
+        parts = sorted(
+            os.path.join(os.path.dirname(file_path), name)
+            for name in os.listdir(os.path.dirname(file_path))
+            if name.startswith(os.path.basename(base) + ".part")
+            and os.path.isfile(os.path.join(os.path.dirname(file_path), name))
+        )
+
+        if parts and all(os.path.getsize(p) <= TELEGRAM_FILE_LIMIT for p in parts):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            return parts
+
+        seconds = max(5, seconds // 2)
+
+    raise RuntimeError("Unable to split file into Telegram-sized parts")
+
+
+async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None):
+    if cancel_key in cancelled_downloads:
+        return False
 
     if is_audio:
-        await bot.send_audio(chat_id, telegram_file)
-        return "audio"
+        await bot.send_audio(chat_id, types.InputFile(file_path))
+        return True
 
     try:
         await bot.send_video(
             chat_id,
-            telegram_file,
+            types.InputFile(file_path),
             supports_streaming=True,
         )
-        return "video"
+        return True
     except Exception as video_error:
         logger.warning(
-            "send_video failed for %s; sending original file as document: %s",
-            file_path,
+            "send_video failed; sending original file as document: %s",
             video_error,
             exc_info=True,
         )
+        await bot.send_document(chat_id, types.InputFile(file_path))
+        return True
 
-        # InputFile streams the file, so create a fresh object for the retry.
-        telegram_file = types.InputFile(file_path)
-        await bot.send_document(chat_id, telegram_file)
-        return "document"
+
+async def get_media_info(url):
+    """Get lightweight metadata for the media preview feature."""
+    try:
+        import yt_dlp
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": True,
+            "socket_timeout": 10,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = await asyncio.to_thread(ydl.extract_info, url, False)
+        if not info:
+            return None
+
+        duration = info.get("duration")
+        if duration:
+            minutes, seconds = divmod(int(duration), 60)
+            duration_text = f"{minutes}:{seconds:02d}"
+        else:
+            duration_text = "Unknown"
+
+        return {
+            "title": info.get("title") or "Unknown",
+            "duration": duration_text,
+            "uploader": info.get("uploader") or info.get("channel") or "Unknown",
+            "width": info.get("width"),
+            "height": info.get("height"),
+        }
+    except Exception as e:
+        logger.debug("Media info unavailable for %s: %s", url, e)
+        return None
 
 
 async def process_download(
@@ -132,6 +238,8 @@ async def process_download(
     end_time=None,
 ):
     download_id = f"{message.chat.id}_{time.time_ns()}"
+    progress_message = None
+    progress_task = None
 
     try:
         if not check_memory_usage():
@@ -142,6 +250,7 @@ async def process_download(
             return
 
         active_downloads.add(download_id)
+        active_tasks[download_id] = asyncio.current_task()
 
         async with download_semaphore:
             if is_audio:
@@ -153,111 +262,173 @@ async def process_download(
             else:
                 request_type = "Video Download"
 
-            await send_message(
+            progress_message = await send_message(
                 message.chat.id,
-                f"📥 Processing your {request_type.lower()}...",
+                f"📥 Processing {request_type.lower()}...\n"
+                f"🆔 Cancel ID: <code>{download_id}</code>",
             )
+
+            async def update_progress():
+                started = time.monotonic()
+                while True:
+                    await asyncio.sleep(PROGRESS_INTERVAL)
+                    if not progress_message or download_id in cancelled_downloads:
+                        return
+                    elapsed = int(time.monotonic() - started)
+                    try:
+                        await bot.edit_message_text(
+                            f"📥 Downloading...\n"
+                            f"⏱ Elapsed: {elapsed}s\n"
+                            f"🆔 Cancel ID: <code>{download_id}</code>",
+                            message.chat.id,
+                            progress_message.message_id,
+                        )
+                    except Exception:
+                        return
+
+            progress_task = asyncio.create_task(update_progress())
 
             platform = detect_platform(url)
             if not platform:
                 await send_message(message.chat.id, "⚠️ Unsupported URL.")
                 return
 
-            file_paths = []
-            file_size = None
+            result = None
+            last_error = None
 
-            if is_video_trim:
-                result = await run_blocking(
-                    process_video_trim, url, start_time, end_time
-                )
-            elif is_audio_trim:
-                result = await run_blocking(
-                    process_audio_trim, url, start_time, end_time
-                )
-            elif is_audio:
-                result = await run_blocking(extract_audio_ffmpeg, url)
-            else:
-                result = await run_blocking(PLATFORM_HANDLERS[platform], url)
+            for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
+                if download_id in cancelled_downloads:
+                    await send_message(message.chat.id, "🛑 Download cancelled.")
+                    return
 
-            if isinstance(result, tuple):
-                first = result[0] if result else None
-                file_size = result[1] if len(result) > 1 else None
+                try:
+                    if is_video_trim:
+                        result = await run_blocking(
+                            process_video_trim, url, start_time, end_time
+                        )
+                    elif is_audio_trim:
+                        result = await run_blocking(
+                            process_audio_trim, url, start_time, end_time
+                        )
+                    elif is_audio:
+                        result = await run_blocking(extract_audio_ffmpeg, url)
+                    else:
+                        result = await run_blocking(
+                            PLATFORM_HANDLERS[platform], url
+                        )
 
-                if isinstance(first, list):
-                    file_paths = first
-                elif first:
-                    file_paths = [first]
-            elif result:
-                file_paths = [result]
+                    if result:
+                        break
+                    last_error = "No media returned"
+                except Exception as e:
+                    last_error = str(e)
+                    logger.warning(
+                        "Download attempt %s/%s failed: %s",
+                        attempt, MAX_DOWNLOAD_RETRIES, e,
+                        exc_info=True,
+                    )
 
-            if not file_paths:
+                if attempt < MAX_DOWNLOAD_RETRIES:
+                    await send_message(
+                        message.chat.id,
+                        f"🔄 Download failed. Retrying ({attempt + 1}/{MAX_DOWNLOAD_RETRIES})...",
+                    )
+                    await asyncio.sleep(2 * attempt)
+
+            if download_id in cancelled_downloads:
+                await send_message(message.chat.id, "🛑 Download cancelled.")
+                return
+
+            if not result:
                 await send_message(
                     message.chat.id,
-                    "❌ Download failed. No media found.",
+                    f"❌ Download failed after {MAX_DOWNLOAD_RETRIES} attempts.\n"
+                    f"{last_error or ''}",
                 )
                 return
 
-            for file_path in file_paths:
-                if not file_path or not os.path.exists(file_path):
-                    logger.warning("File does not exist: %s", file_path)
+            if isinstance(result, tuple):
+                first = result[0] if result else None
+                file_paths = first if isinstance(first, list) else ([first] if first else [])
+            else:
+                file_paths = [result]
+
+            if not file_paths:
+                await send_message(message.chat.id, "❌ Download failed. No media found.")
+                return
+
+            for original_path in file_paths:
+                if download_id in cancelled_downloads:
+                    await send_message(message.chat.id, "🛑 Download cancelled.")
+                    return
+
+                if not original_path or not os.path.exists(original_path):
+                    logger.warning("File does not exist: %s", original_path)
                     continue
 
-                actual_file_size = os.path.getsize(file_path)
+                actual_size = os.path.getsize(original_path)
 
-                if actual_file_size > TELEGRAM_FILE_LIMIT:
-                    await send_message(
-                        message.chat.id,
-                        "❌ File is too large to send on Telegram.",
-                    )
-                    continue
-
-                try:
-                    # For normal video downloads, send the original downloaded
-                    # file. No FFmpeg conversion is performed in this path.
-                    # Trim/audio requests still use their existing processors.
-                    sent_as = await send_downloaded_file(
-                        message.chat.id,
-                        file_path,
-                        is_audio=is_audio or is_audio_trim,
-                    )
-
-                    logger.info(
-                        "Successfully sent original file: %s as %s",
-                        file_path,
-                        sent_as,
-                    )
-
-                except Exception as send_error:
-                    logger.error(
-                        "Error sending file: %s",
-                        send_error,
-                        exc_info=True,
-                    )
-                    await send_message(
-                        message.chat.id,
-                        f"❌ Error sending file: {send_error}",
-                    )
-                finally:
+                if (
+                    actual_size > TELEGRAM_FILE_LIMIT
+                    and not (is_audio or is_audio_trim)
+                ):
                     try:
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                    except Exception as cleanup_error:
-                        logger.error(
-                            "Cleanup error for %s: %s",
+                        parts = await run_blocking(split_large_file, original_path)
+                    except Exception as split_error:
+                        logger.error("File split failed: %s", split_error, exc_info=True)
+                        await send_message(
+                            message.chat.id,
+                            f"❌ File is too large and could not be split: {split_error}",
+                        )
+                        continue
+                else:
+                    parts = [original_path]
+
+                for part_index, file_path in enumerate(parts, start=1):
+                    if download_id in cancelled_downloads:
+                        await send_message(message.chat.id, "🛑 Download cancelled.")
+                        return
+
+                    try:
+                        if len(parts) > 1:
+                            await send_message(
+                                message.chat.id,
+                                f"📦 Sending part {part_index}/{len(parts)}...",
+                            )
+
+                        await send_downloaded_file(
+                            message.chat.id,
                             file_path,
-                            cleanup_error,
+                            is_audio=is_audio or is_audio_trim,
+                            cancel_key=download_id,
                         )
 
-    except Exception as e:
-        logger.error(
-            "Processing error: %s",
-            e,
-            exc_info=True,
-        )
-        await send_message(message.chat.id, f"❌ An error occurred: {e}")
+                        logger.info("Successfully sent: %s", file_path)
+                    except Exception as send_error:
+                        logger.error("Error sending file: %s", send_error, exc_info=True)
+                        await send_message(
+                            message.chat.id,
+                            f"❌ Error sending file: {send_error}",
+                        )
+                    finally:
+                        try:
+                            if os.path.exists(file_path):
+                                os.remove(file_path)
+                        except Exception as cleanup_error:
+                            logger.error("Cleanup error for %s: %s", file_path, cleanup_error)
 
+    except asyncio.CancelledError:
+        logger.info("Download task cancelled: %s", download_id)
+        raise
+    except Exception as e:
+        logger.error("Processing error: %s", e, exc_info=True)
+        await send_message(message.chat.id, f"❌ An error occurred: {e}")
     finally:
+        if progress_task:
+            progress_task.cancel()
+        active_tasks.pop(download_id, None)
         active_downloads.discard(download_id)
+        cancelled_downloads.discard(download_id)
         gc.collect()
 
 
@@ -287,7 +458,6 @@ async def cleanup_files():
 
                 for filename in os.listdir(temp_dir):
                     filepath = os.path.join(temp_dir, filename)
-
                     try:
                         if (
                             os.path.isfile(filepath)
@@ -296,15 +466,10 @@ async def cleanup_files():
                             os.remove(filepath)
                             logger.info("Removed old file: %s", filepath)
                     except Exception as e:
-                        logger.error(
-                            "Error cleaning file %s: %s",
-                            filepath,
-                            e,
-                        )
+                        logger.error("Error cleaning file %s: %s", filepath, e)
 
             gc.collect()
             await asyncio.sleep(CLEANUP_INTERVAL)
-
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -314,9 +479,7 @@ async def cleanup_files():
 
 async def start_background_tasks():
     logger.info("Starting async background tasks...")
-    tasks = [
-        asyncio.create_task(cleanup_files(), name="cleanup"),
-    ]
+    tasks = [asyncio.create_task(cleanup_files(), name="cleanup")]
 
     worker_count = min(3, os.cpu_count() or 1)
     logger.info("Starting %s async workers...", worker_count)
@@ -333,32 +496,60 @@ async def start_background_tasks():
 async def send_welcome(message):
     welcome_text = (
         "🤖 Media Download Bot 🤖\n\n"
-        "I can help you download video/audio from various platforms:\n\n"
-        "• YouTube\n"
-        "• Instagram\n"
+        "Video/audio downloader with queue, retry, progress and file splitting.\n\n"
+        "• YouTube / Shorts\n"
+        "• Instagram / Reels / Carousels\n"
         "• Facebook\n"
         "• Twitter/X\n\n"
-        "Commands:\n\n"
-        "• Send a direct URL to download video\n"
-        "• /audio <URL> - Extract full audio\n"
-        "• /trim <URL> <Start Time> <End Time> - Trim video\n"
-        "• /trimAudio <URL> <Start Time> <End Time> - Extract audio segment"
+        "Commands:\n"
+        "• Send one or multiple URLs\n"
+        "• /audio <URL> - Extract audio\n"
+        "• /cancel <ID> - Cancel a running download\n"
+        "• /trim <URL> <Start> <End>\n"
+        "• /trimAudio <URL> <Start> <End>"
     )
     await bot.send_message(message.chat.id, welcome_text)
 
 
+@bot.message_handler(commands=["cancel"])
+async def handle_cancel(message):
+    download_id = message.text.replace("/cancel", "", 1).strip()
+
+    if not download_id:
+        await send_message(
+            message.chat.id,
+            "⚠️ Use: /cancel <Cancel ID>\n"
+            "The ID is shown when a download starts.",
+        )
+        return
+
+    if download_id in active_tasks:
+        cancelled_downloads.add(download_id)
+        await send_message(
+            message.chat.id,
+            "🛑 Cancellation requested. The current download will stop "
+            "as soon as the active operation returns.",
+        )
+    else:
+        await send_message(message.chat.id, "⚠️ Download ID not found or already finished.")
+
+
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
-    url = message.text.replace("/audio", "", 1).strip()
-
-    if not url:
+    urls = re.findall(r"https?://[^\s]+", message.text.replace("/audio", "", 1))
+    if not urls:
         await send_message(message.chat.id, "⚠️ Please provide a URL.")
         return
 
-    await download_queue.put(
-        (message, url, True, False, False, None, None)
+    for url in urls:
+        await download_queue.put(
+            (message, url, True, False, False, None, None)
+        )
+
+    await send_message(
+        message.chat.id,
+        f"🎵 Added {len(urls)} audio download(s) to the queue!",
     )
-    await send_message(message.chat.id, "🎵 Added to audio extraction queue!")
 
 
 @bot.message_handler(commands=["trim"])
@@ -376,7 +567,6 @@ async def handle_video_trim_request(message):
         return
 
     url, start_time, end_time = match.groups()
-
     await download_queue.put(
         (message, url, False, True, False, start_time, end_time)
     )
@@ -398,7 +588,6 @@ async def handle_audio_trim_request(message):
         return
 
     url, start_time, end_time = match.groups()
-
     await download_queue.put(
         (message, url, False, False, True, start_time, end_time)
     )
@@ -413,12 +602,42 @@ async def handle_audio_trim_request(message):
     content_types=["text"],
 )
 async def handle_message(message):
-    url = message.text.strip()
+    urls = re.findall(r"https?://[^\s]+", message.text)
 
-    await download_queue.put(
-        (message, url, False, False, False, None, None)
-    )
-    await send_message(
-        message.chat.id,
-        "🎬 Added to video download queue!",
-    )
+    if not urls:
+        await send_message(message.chat.id, "⚠️ Please send a valid media URL.")
+        return
+
+    # Feature 14: multiple URLs in one message.
+    for url in urls:
+        await download_queue.put(
+            (message, url, False, False, False, None, None)
+        )
+
+    if len(urls) == 1:
+        # Feature 13: media information preview before download.
+        info = await get_media_info(urls[0])
+        if info:
+            quality = (
+                f"{info['width']}x{info['height']}"
+                if info.get("width") and info.get("height")
+                else "Unknown"
+            )
+            await send_message(
+                message.chat.id,
+                f"🎬 <b>{info['title']}</b>\n"
+                f"👤 {info['uploader']}\n"
+                f"⏱ {info['duration']}\n"
+                f"📐 {quality}\n\n"
+                f"📥 Added to download queue.",
+            )
+        else:
+            await send_message(
+                message.chat.id,
+                "🎬 Added to download queue!",
+            )
+    else:
+        await send_message(
+            message.chat.id,
+            f"🎬 Added {len(urls)} URLs to the download queue!",
+        )
