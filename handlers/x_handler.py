@@ -4,7 +4,7 @@ import telebot
 import logging
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
-from config import DOWNLOAD_DIR, X_FILE, API_TOKEN
+from config import DOWNLOAD_DIR, X_FILE, API_TOKEN, FFMPEG_PATH
 
 # Initialize logger
 logger = setup_logging(logging.DEBUG)
@@ -21,6 +21,7 @@ def download_twitter_media(url):
     ydl_opts = {
         'outtmpl': output_path,
         'format': 'bv+ba/b',
+        'ffmpeg_location': FFMPEG_PATH,
         'noplaylist': True,
         'socket_timeout': 30,
         'retries': 10,
