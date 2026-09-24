@@ -109,6 +109,29 @@ def _extract_image_urls(page_html: str) -> list[str]:
     return urls
 
 
+def _detect_media_type(url: str) -> str:
+    """Detect a Threads post as video/reel or image before downloading."""
+    headers = {
+        "User-Agent": THREADS_UA,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        page_html = html.unescape(response.text).replace("\\/", "/")
+        lower_html = page_html.lower()
+
+        if re.search(r'<meta[^>]+property=["\']og:video', page_html, re.IGNORECASE):
+            return "video"
+        if "<video" in lower_html or "video_url" in lower_html or "video_versions" in lower_html:
+            return "video"
+        return "image"
+    except Exception as error:
+        logger.debug("Threads media type detection failed: %s", error)
+        return "unknown"
+
+
 def _download_images(url: str) -> list[Path]:
     headers = {
         "User-Agent": "Googlebot/2.1 (+http://www.google.com/bot.html)",
@@ -157,8 +180,10 @@ def _download_images(url: str) -> list[Path]:
 
 
 def process_threads(url: str):
-    """Download Threads videos/carousels through yt-dlp and images through fallback scraping."""
+    """Automatically download a Threads reel/video or image post."""
     url = url.split("#")[0]
+    media_type = _detect_media_type(url)
+    logger.info("Threads media type detected: %s", media_type)
 
     ydl_opts = {
         "format": "bestvideo*+bestaudio/best",
@@ -178,51 +203,59 @@ def process_threads(url: str):
         },
     }
 
+    if media_type == "image":
+        try:
+            image_paths = _download_images(url)
+            if image_paths:
+                total_size = sum(p.stat().st_size for p in image_paths)
+                logger.info(
+                    "Threads image post ready: %s file(s), %.2f MB total",
+                    len(image_paths), total_size / (1024 ** 2),
+                )
+                return (
+                    [str(p) for p in image_paths]
+                    if len(image_paths) > 1 else str(image_paths[0]),
+                    int(total_size), None,
+                )
+            raise RuntimeError("No Threads image found")
+        except Exception as image_error:
+            logger.warning("Threads image download failed: %s", image_error)
+            return None, 0, str(image_error)
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
 
         media_paths = _find_downloaded_files(info_dict) if info_dict else []
-
         if media_paths:
             total_size = sum(p.stat().st_size for p in media_paths)
             logger.info(
-                "Threads media ready: %s file(s), %.2f MB total",
-                len(media_paths),
-                total_size / (1024 ** 2),
+                "Threads video ready: %s file(s), %.2f MB total",
+                len(media_paths), total_size / (1024 ** 2),
             )
             return (
                 [str(p) for p in media_paths]
-                if len(media_paths) > 1
-                else str(media_paths[0]),
-                int(total_size),
-                None,
+                if len(media_paths) > 1 else str(media_paths[0]),
+                int(total_size), None,
             )
-
-        raise RuntimeError("yt-dlp returned no Threads media files")
-
+        raise RuntimeError("yt-dlp returned no Threads video files")
     except Exception as ytdlp_error:
-        logger.warning("yt-dlp Threads extraction failed: %s", ytdlp_error)
-
+        logger.warning("yt-dlp Threads video extraction failed: %s", ytdlp_error)
         try:
             image_paths = _download_images(url)
             if image_paths:
                 total_size = sum(p.stat().st_size for p in image_paths)
                 logger.info(
                     "Threads image fallback ready: %s file(s), %.2f MB total",
-                    len(image_paths),
-                    total_size / (1024 ** 2),
+                    len(image_paths), total_size / (1024 ** 2),
                 )
                 return (
                     [str(p) for p in image_paths]
-                    if len(image_paths) > 1
-                    else str(image_paths[0]),
-                    int(total_size),
-                    None,
+                    if len(image_paths) > 1 else str(image_paths[0]),
+                    int(total_size), None,
                 )
         except Exception as image_error:
             logger.error("Threads image fallback failed: %s", image_error, exc_info=True)
-
         return None, 0, str(ytdlp_error)
 
 
