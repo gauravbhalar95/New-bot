@@ -210,7 +210,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             video_error,
             exc_info=True,
         )
-        await bot.send_document(chat_id, types.InputFile(file_path))
+        await bot.send_document(chat_id, types.InputFile(file_path), caption=caption)
         return True
 
 
