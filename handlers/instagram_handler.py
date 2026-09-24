@@ -244,7 +244,7 @@ def process_instagram(
     ydl_opts = {
         # Download both streams when Instagram exposes separate video/audio.
         # FFmpeg only muxes them; it does not re-encode the video here.
-        "format": "bestvideo*+bestaudio/best",
+        "format": "bv*+ba/b",
         "merge_output_format": "mp4",
         "outtmpl": outtmpl,
         "socket_timeout": 20,
