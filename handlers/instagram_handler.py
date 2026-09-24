@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from typing import Optional, Tuple, Union
 
 import yt_dlp
+from instagrapi import Client
 
 from config import DOWNLOAD_DIR, COOKIES_FILE
 from utils.logger import setup_logging
@@ -57,6 +58,27 @@ def download_progress_hook(d: dict) -> None:
         logger.info("✅ Download finished: %s", d.get("filename"))
 
 
+
+def _download_image_instagrapi(url: str) -> list[Path]:
+    """Download Instagram photo/carousel media using instagrapi."""
+    try:
+        client = Client()
+        client.delay_range = [1, 2]
+        client.read_timeout = 30
+        media_pk = client.media_pk_from_url(url)
+        media = client.media_info(media_pk)
+        media_type = getattr(media, "media_type", None)
+        logger.info("Instagram image handler: media_pk=%s media_type=%s", media_pk, media_type)
+        if media_type == 1:
+            path = client.photo_download(media_pk, folder=DOWNLOAD_DIR, overwrite=True)
+            return [Path(path)] if path and Path(path).is_file() else []
+        if media_type == 8:
+            paths = client.album_download(media_pk, folder=DOWNLOAD_DIR, overwrite=True)
+            return [Path(path) for path in paths if path and Path(path).is_file()]
+        return []
+    except Exception as e:
+        logger.warning("instagrapi image handler failed for %s: %s", url, e)
+        return []
 
 def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     """Download Instagram post images when the post has no video."""
@@ -306,7 +328,9 @@ def process_instagram(
         error_text = str(e).lower()
         if "no video formats found" in error_text or "there is no video" in error_text:
             try:
-                image_paths = _download_image_fallback(url, cookie_path)
+                image_paths = _download_image_instagrapi(url)
+                if not image_paths:
+                    image_paths = _download_image_fallback(url, cookie_path)
                 if image_paths:
                     total_size = sum(p.stat().st_size for p in image_paths)
                     logger.info(
