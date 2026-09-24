@@ -1,4 +1,5 @@
 import os
+import asyncio
 import yt_dlp
 import telebot
 import logging
@@ -50,7 +51,7 @@ def download_twitter_media(url):
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
 
             # Synchronous function call
-            thumbnail_path = generate_thumbnail(file_path)
+            thumbnail_path = asyncio.run(generate_thumbnail(file_path))
 
             if thumbnail_path and os.path.exists(thumbnail_path):
                 logger.info(f"✅ Thumbnail generated: {thumbnail_path}")
