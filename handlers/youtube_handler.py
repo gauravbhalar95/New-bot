@@ -69,7 +69,7 @@ def process_youtube(url):
     for attempt, player_clients in enumerate(client_attempts, start=1):
         ydl_opts = {
             # More tolerant than the old hard-coded "bv+ba/b".
-            "format": "bestvideo*+bestaudio/best",
+            "format": "best",
             "outtmpl": output_template,
             "cookiefile": (
                 YOUTUBE_FILE
