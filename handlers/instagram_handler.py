@@ -61,32 +61,60 @@ def download_progress_hook(d: dict) -> None:
 def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     """Download Instagram post images when the post has no video."""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/140.0.0.0 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/140.0.0.0 Safari/537.36"
+        ),
         "Accept-Language": "en-US,en;q=0.9",
         "Accept": "text/html,application/xhtml+xml",
         "Referer": "https://www.instagram.com/",
     }
 
+    cookies = {}
+    try:
+        import http.cookiejar
+        jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
+        jar.load(ignore_discard=True, ignore_expires=True)
+        cookies = {cookie.name: cookie.value for cookie in jar}
+    except Exception as cookie_error:
+        logger.debug("Instagram image fallback cookie load failed: %s", cookie_error)
+
     response = requests.get(
         url,
         headers=headers,
+        cookies=cookies,
         timeout=25,
     )
     response.raise_for_status()
 
     page_html = html.unescape(response.text).replace("\\/", "/")
-    image_urls = re.findall(
+    image_urls = []
+
+    # Handle both <meta property="og:image" content="..."> and
+    # <meta content="..." property="og:image">.
+    patterns = [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
-        page_html,
-        re.IGNORECASE,
-    )
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        r'<meta[^>]+property=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']twitter:image["\']',
+        r'"display_url"\s*:\s*"([^"]+)"',
+        r'"thumbnail_src"\s*:\s*"([^"]+)"',
+    ]
+
+    for pattern in patterns:
+        image_urls.extend(re.findall(pattern, page_html, re.IGNORECASE))
 
     unique_urls = []
     seen = set()
+
     for image_url in image_urls:
-        image_url = image_url.replace("\\u0026", "&").replace("\\/", "/")
+        image_url = (
+            image_url
+            .replace("\\u0026", "&")
+            .replace("\\/", "/")
+            .replace("\\u002F", "/")
+        )
         if image_url.startswith("//"):
             image_url = "https:" + image_url
         if image_url.startswith("http") and image_url not in seen:
@@ -94,6 +122,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
             unique_urls.append(image_url)
 
     if not unique_urls:
+        logger.warning("Instagram image fallback found no image URL for %s", url)
         return []
 
     post_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
@@ -104,6 +133,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
             image_response = requests.get(
                 image_url,
                 headers=headers,
+                cookies=cookies,
                 timeout=30,
                 stream=True,
             )
@@ -117,6 +147,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
                     break
 
             output = Path(DOWNLOAD_DIR) / f"instagram_{post_id}_{index}{extension}"
+
             with output.open("wb") as file:
                 for chunk in image_response.iter_content(chunk_size=262144):
                     if chunk:
@@ -124,6 +155,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
 
             if output.is_file() and output.stat().st_size > 0:
                 downloaded.append(output)
+
         except Exception as image_error:
             logger.warning(
                 "Instagram image fallback failed for %s: %s",
@@ -132,6 +164,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
             )
 
     return downloaded
+
 
 def _find_downloaded_files(info_dict) -> list[Path]:
     """Find all final media files produced by yt-dlp, including carousels."""
