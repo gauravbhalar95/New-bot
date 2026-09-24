@@ -5,6 +5,8 @@ import html
 import logging
 import re
 import requests
+import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional, Tuple, Union
@@ -188,6 +190,66 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     return downloaded
 
 
+def _get_ffmpeg_path() -> Optional[str]:
+    """Find a usable FFmpeg binary from the system or imageio-ffmpeg."""
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path:
+        return ffmpeg_path
+    try:
+        import imageio_ffmpeg
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        if ffmpeg_path and Path(ffmpeg_path).is_file():
+            return ffmpeg_path
+    except Exception as e:
+        logger.debug("imageio-ffmpeg lookup failed: %s", e)
+    return None
+
+
+def _merge_video_audio(info_dict) -> Optional[Path]:
+    """Explicitly mux separate yt-dlp video/audio files into one MP4."""
+    if not isinstance(info_dict, dict):
+        return None
+    ffmpeg = _get_ffmpeg_path()
+    if not ffmpeg:
+        logger.warning("FFmpeg not found; cannot explicitly merge Instagram video/audio")
+        return None
+    entries = info_dict.get("entries") or [info_dict]
+    for entry in entries:
+        if not entry:
+            continue
+        requested = entry.get("requested_downloads") or []
+        files = []
+        for item in requested:
+            filepath = item.get("filepath")
+            if filepath and Path(filepath).is_file():
+                files.append((item, Path(filepath)))
+        video = next((path for item, path in files if item.get("vcodec") not in (None, "none")), None)
+        audio = next((path for item, path in files if item.get("acodec") not in (None, "none") and item.get("vcodec") in (None, "none")), None)
+        if not video or not audio:
+            continue
+        output = video.with_name(video.stem + "_merged.mp4")
+        try:
+            subprocess.run([
+                ffmpeg, "-y", "-i", str(video), "-i", str(audio),
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart", str(output),
+            ], capture_output=True, text=True, timeout=900, check=True)
+            if output.is_file() and output.stat().st_size > 0:
+                for source in (video, audio):
+                    try:
+                        source.unlink()
+                    except OSError:
+                        pass
+                logger.info("✅ FFmpeg merged Instagram video + audio: %s", output)
+                return output
+        except subprocess.CalledProcessError as e:
+            logger.error("FFmpeg Instagram merge failed: %s", e.stderr[-3000:] if e.stderr else e)
+        except Exception as e:
+            logger.error("Instagram FFmpeg merge error: %s", e, exc_info=True)
+    return None
+
+
 def _find_downloaded_files(info_dict) -> list[Path]:
     """Find all final media files produced by yt-dlp, including carousels."""
     files = []
@@ -269,7 +331,8 @@ def process_instagram(
         if not info_dict:
             return None, 0, "❌ Failed to extract info"
 
-        video_paths = _find_downloaded_files(info_dict)
+        merged_path = _merge_video_audio(info_dict)
+        video_paths = [merged_path] if merged_path else _find_downloaded_files(info_dict)
 
         # Single-item fallback: find the newest media file if yt-dlp did not
         # expose a final filepath.
