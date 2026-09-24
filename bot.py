@@ -171,27 +171,29 @@ def split_large_file(file_path):
     raise RuntimeError("Unable to split file into Telegram-sized parts")
 
 
-async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None):
+async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None, source_url=None):
     if cancel_key in cancelled_downloads:
         return False
 
     extension = os.path.splitext(file_path)[1].lower()
     image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
+    caption = source_url if source_url else None
+
     if extension in image_extensions:
         try:
-            await bot.send_photo(chat_id, types.InputFile(file_path))
+            await bot.send_photo(chat_id, types.InputFile(file_path), caption=caption)
         except Exception as photo_error:
             logger.warning(
                 "send_photo failed; sending image as document: %s",
                 photo_error,
                 exc_info=True,
             )
-            await bot.send_document(chat_id, types.InputFile(file_path))
+            await bot.send_document(chat_id, types.InputFile(file_path), caption=caption)
         return True
 
     if is_audio:
-        await bot.send_audio(chat_id, types.InputFile(file_path))
+        await bot.send_audio(chat_id, types.InputFile(file_path), caption=caption)
         return True
 
     try:
@@ -199,6 +201,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             chat_id,
             types.InputFile(file_path),
             supports_streaming=True,
+            caption=caption,
         )
         return True
     except Exception as video_error:
@@ -419,6 +422,7 @@ async def process_download(
                             file_path,
                             is_audio=is_audio or is_audio_trim,
                             cancel_key=download_id,
+                            source_url=url if platform == "Threads" else None,
                         )
 
                         logger.info("Successfully sent: %s", file_path)
