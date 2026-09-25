@@ -515,7 +515,7 @@ async def start_background_tasks():
     return tasks
 
 
-@bot.message_handler(commands=["start", "help"])
+@bot.message_handler(commands=["start", "help"], content_types=["text"])
 async def send_welcome(message):
     welcome_text = (
         "🤖 Media Download Bot 🤖\n\n"
@@ -621,7 +621,7 @@ async def handle_audio_trim_request(message):
 
 
 @bot.message_handler(
-    func=lambda message: True,
+    func=lambda message: not (message.text or "").strip().startswith("/"),
     content_types=["text"],
 )
 async def handle_message(message):
