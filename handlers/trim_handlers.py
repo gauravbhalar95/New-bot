@@ -16,31 +16,54 @@ logger = setup_logging(logging.DEBUG)
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def _ensure_deno():
-    """Return a usable Deno executable for yt-dlp EJS challenge solving."""
-    existing = shutil.which("deno")
+def _ensure_node():
+    """Return a Node.js 22+ executable for yt-dlp EJS challenge solving."""
+    existing = shutil.which("node")
     if existing:
         return existing
+
     bin_dir = os.path.join(DOWNLOAD_DIR, ".bin")
-    deno_path = os.path.join(bin_dir, "deno")
-    if os.path.isfile(deno_path) and os.access(deno_path, os.X_OK):
-        return deno_path
+    node_root = os.path.join(bin_dir, "node-v22.23.3-linux")
+    node_path = os.path.join(node_root, "bin", "node")
+    if os.path.isfile(node_path) and os.access(node_path, os.X_OK):
+        return node_path
+
     os.makedirs(bin_dir, exist_ok=True)
     machine = platform.machine().lower()
-    asset = (
-        "deno-aarch64-unknown-linux-gnu.zip"
-        if machine in ("aarch64", "arm64")
-        else "deno-x86_64-unknown-linux-gnu.zip"
+    if machine in ("aarch64", "arm64"):
+        arch = "arm64"
+    elif machine in ("x86_64", "amd64"):
+        arch = "x64"
+    else:
+        raise RuntimeError(f"Unsupported CPU architecture for Node.js: {machine}")
+
+    version = "22.23.3"
+    archive = os.path.join(bin_dir, "node.tar.xz")
+    url = (
+        f"https://nodejs.org/download/release/latest-v22.x/"
+        f"node-v{version}-linux-{arch}.tar.xz"
     )
-    archive = os.path.join(bin_dir, "deno.zip")
-    url = "https://github.com/denoland/deno/releases/latest/download/" + asset
-    logger.info("Installing Deno for yt-dlp EJS challenge solving...")
+
+    logger.info("Installing Node.js %s for yt-dlp EJS challenge solving...", version)
     urllib.request.urlretrieve(url, archive)
-    with zipfile.ZipFile(archive) as zf:
-        zf.extract("deno", bin_dir)
+
+    import tarfile
+    extract_dir = os.path.join(bin_dir, "node-extract")
+    os.makedirs(extract_dir, exist_ok=True)
+    with tarfile.open(archive, "r:xz") as tf:
+        tf.extractall(extract_dir)
+
+    extracted = os.path.join(extract_dir, f"node-v{version}-linux-{arch}")
+    if os.path.isdir(node_root):
+        shutil.rmtree(node_root)
+    os.rename(extracted, node_root)
+
     os.remove(archive)
-    os.chmod(deno_path, 0o755)
-    return deno_path
+    shutil.rmtree(extract_dir, ignore_errors=True)
+    os.chmod(node_path, 0o755)
+
+    logger.info("Node.js EJS runtime ready: %s", node_path)
+    return node_path
 
 
 def time_to_seconds(time_str):
@@ -72,8 +95,6 @@ def time_to_seconds(time_str):
 
 
 def download_media(url, is_audio=False):
-    # Keep the Deno EJS subprocess within a small V8 heap on low-memory hosts.
-    os.environ.setdefault("DENO_V8_FLAGS", "--max-old-space-size=96")
     """
     Downloads video or audio using yt-dlp.
 
@@ -81,7 +102,7 @@ def download_media(url, is_audio=False):
         str: Path to downloaded file or None
     """
 
-    output_path = os.path.join(
+    output_path = os.path.join
         DOWNLOAD_DIR,
         "%(title)s_%(id)s.%(ext)s"
     )
@@ -89,11 +110,11 @@ def download_media(url, is_audio=False):
     cookie_file = YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None
 
     try:
-        deno_path = _ensure_deno()
-        logger.info("Using Deno for yt-dlp EJS: %s", deno_path)
+        node_path = _ensure_node()
+        logger.info("Using Node.js for yt-dlp EJS: %s", node_path)
     except Exception as e:
-        logger.warning("Could not install Deno: %s", e)
-        deno_path = None
+        logger.error("Could not install/find Node.js: %s", e, exc_info=True)
+        return None
 
     base_opts = {
         "outtmpl": output_path,
@@ -104,7 +125,8 @@ def download_media(url, is_audio=False):
         "retries": 5,
         "fragment_retries": 5,
         "remote_components": ["ejs:github"],
-        "js_runtimes": {"deno": {"path": deno_path}} if deno_path else {},
+        # Explicitly use Node.js so yt-dlp does not select the failing Deno runtime.
+        "js_runtimes": {"node": {"path": node_path}},
     }
 
     if is_audio:
@@ -122,7 +144,7 @@ def download_media(url, is_audio=False):
             "merge_output_format": "mp4",
         })
 
-    # Avoid cookie-incompatible clients and repeated memory-heavy challenge runs.
+    # Node.js is the primary EJS runtime. Keep one fallback client only.
     client_attempts = [None, ["web_embedded"]]
     last_error = None
 
