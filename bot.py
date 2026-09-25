@@ -816,50 +816,62 @@ async def handle_audio_request(message):
     )
 
 
+TRIM_TIME_PATTERN = r"(?:\d{1,2}:)?(?:\d{1,2}:)?\d{1,2}(?::\d{2})?"
+
+
 @bot.message_handler(commands=["trim"])
 async def handle_video_trim_request(message):
-    match = re.search(
-        r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})",
-        message.text,
-    )
-
-    if not match:
-        await send_message(
-            message.chat.id,
-            "⚠️ Invalid format.\nUse: /trim <URL> <Start Time> <End Time>",
+    try:
+        match = re.search(
+            rf"(https?://[^\\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            message.text or "",
+            re.IGNORECASE,
         )
-        return
 
-    url, start_time, end_time, quality = match.groups()
-    quality = quality[:-1] if quality else "best"
-    await download_queue.put(
-        (message, url, False, True, False, start_time, end_time, quality)
-    )
-    await send_message(message.chat.id, "✂️🎬 Added to video trimming queue!")
+        if not match:
+            await send_message(
+                message.chat.id,
+                "⚠️ Invalid format.\nUse: /trim <URL> <Start> <End>\nExamples: /trim <URL> 00:30 01:45 or /trim <URL> 00:00:30 00:01:45",
+            )
+            return
+
+        url, start_time, end_time = match.groups()
+        await download_queue.put(
+            (message, url, False, True, False, start_time, end_time, None)
+        )
+        await send_message(message.chat.id, "✂️🎬 Added to video trimming queue!")
+    except Exception as e:
+        logger.error("Video trim command error: %s", e, exc_info=True)
+        await send_message(message.chat.id, f"❌ Trim command error: {escape(str(e))}")
 
 
 @bot.message_handler(commands=["trimAudio"])
 async def handle_audio_trim_request(message):
-    match = re.search(
-        r"(https?://[^\s]+)\s+(\d{1,2}:\d{2}:\d{2})\s+(\d{1,2}:\d{2}:\d{2})",
-        message.text,
-    )
+    try:
+        match = re.search(
+            rf"(https?://[^\\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            message.text or "",
+            re.IGNORECASE,
+        )
 
-    if not match:
+        if not match:
+            await send_message(
+                message.chat.id,
+                "⚠️ Invalid format.\nUse: /trimAudio <URL> <Start> <End>\nExample: /trimAudio <URL> 00:30 01:45",
+            )
+            return
+
+        url, start_time, end_time = match.groups()
+        await download_queue.put(
+            (message, url, False, False, True, start_time, end_time, None)
+        )
         await send_message(
             message.chat.id,
-            "⚠️ Invalid format.\nUse: /trimAudio <URL> <Start Time> <End Time>",
+            "✂️🎵 Added to audio segment extraction queue!",
         )
-        return
-
-    url, start_time, end_time = match.groups()
-    await download_queue.put(
-        (message, url, False, False, True, start_time, end_time, None)
-    )
-    await send_message(
-        message.chat.id,
-        "✂️🎵 Added to audio segment extraction queue!",
-    )
+    except Exception as e:
+        logger.error("Audio trim command error: %s", e, exc_info=True)
+        await send_message(message.chat.id, f"❌ Trim audio command error: {escape(str(e))}")
 
 
 @bot.message_handler(
