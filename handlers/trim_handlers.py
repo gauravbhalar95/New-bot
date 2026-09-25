@@ -102,7 +102,7 @@ def download_media(url, is_audio=False):
         str: Path to downloaded file or None
     """
 
-    output_path = os.path.join
+    output_path = os.path.join(
         DOWNLOAD_DIR,
         "%(title)s_%(id)s.%(ext)s"
     )
