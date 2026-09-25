@@ -258,6 +258,7 @@ async def process_download(
     is_audio_trim=False,
     start_time=None,
     end_time=None,
+    quality=None,
 ):
     download_id = f"{message.chat.id}_{time.time_ns()}"
     progress_message = None
@@ -326,7 +327,7 @@ async def process_download(
                 try:
                     if is_video_trim:
                         result = await run_blocking(
-                            process_video_trim, url, start_time, end_time
+                            process_video_trim, url, start_time, end_time, quality
                         )
                     elif is_audio_trim:
                         result = await run_blocking(
@@ -335,9 +336,14 @@ async def process_download(
                     elif is_audio:
                         result = await run_blocking(extract_audio_ffmpeg, url)
                     else:
-                        result = await run_blocking(
-                            PLATFORM_HANDLERS[platform], url
-                        )
+                        if platform == "YouTube":
+                            result = await run_blocking(
+                                process_youtube, url, quality
+                            )
+                        else:
+                            result = await run_blocking(
+                                PLATFORM_HANDLERS[platform], url
+                            )
 
                     if result:
                         break
@@ -557,6 +563,23 @@ async def handle_cancel(message):
         await send_message(message.chat.id, "⚠️ Download ID not found or already finished.")
 
 
+@bot.message_handler(commands=["video"])
+async def handle_video_request(message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        await send_message(message.chat.id, "⚠️ Use: /video <YouTube URL> [quality]\\nQuality: best, 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p")
+        return
+    url = next((p for p in parts[1:] if p.startswith(("http://", "https://"))), None)
+    quality = next((p.lower() for p in parts[1:] if re.fullmatch(r"(best|\\d{3,4}p)", p.lower())), "best")
+    if not url or not re.search(r"(youtube\\.com|youtu\\.be)", url, re.IGNORECASE):
+        await send_message(message.chat.id, "⚠️ Please provide a valid YouTube URL.")
+        return
+    if quality != "best":
+        quality = quality[:-1]
+    await download_queue.put((message, url, False, False, False, None, None, quality))
+    await send_message(message.chat.id, f"🎬 YouTube download added — quality: <b>{escape(quality)}</b>")
+
+
 @bot.message_handler(commands=["audio"])
 async def handle_audio_request(message):
     urls = re.findall(r"https?://[^\s]+", message.text.replace("/audio", "", 1))
@@ -566,7 +589,7 @@ async def handle_audio_request(message):
 
     for url in urls:
         await download_queue.put(
-            (message, url, True, False, False, None, None)
+            (message, url, True, False, False, None, None, None)
         )
 
     await send_message(
@@ -589,9 +612,10 @@ async def handle_video_trim_request(message):
         )
         return
 
-    url, start_time, end_time = match.groups()
+    url, start_time, end_time, quality = match.groups()
+    quality = quality[:-1] if quality else "best"
     await download_queue.put(
-        (message, url, False, True, False, start_time, end_time)
+        (message, url, False, True, False, start_time, end_time, quality)
     )
     await send_message(message.chat.id, "✂️🎬 Added to video trimming queue!")
 
@@ -612,7 +636,7 @@ async def handle_audio_trim_request(message):
 
     url, start_time, end_time = match.groups()
     await download_queue.put(
-        (message, url, False, False, True, start_time, end_time)
+        (message, url, False, False, True, start_time, end_time, None)
     )
     await send_message(
         message.chat.id,
@@ -634,7 +658,7 @@ async def handle_message(message):
     # Feature 14: multiple URLs in one message.
     for url in urls:
         await download_queue.put(
-            (message, url, False, False, False, None, None)
+            (message, url, False, False, False, None, None, None)
         )
 
     if len(urls) == 1:
