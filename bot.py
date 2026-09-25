@@ -26,7 +26,8 @@ MAX_CONCURRENT_DOWNLOADS = 2
 CLEANUP_INTERVAL = 300
 MAX_DOWNLOAD_RETRIES = 3
 PROGRESS_INTERVAL = 5
-SPLIT_TARGET_RATIO = 0.90
+SPLIT_TARGET_RATIO = 0.85
+MAX_UPLOAD_PART_SIZE = 45 * 1024 * 1024
 
 logger = setup_logging(logging.DEBUG)
 
@@ -99,18 +100,16 @@ async def run_blocking(function, *args):
 
 
 def split_large_file(file_path):
-    """Split a large media file into Telegram-sized chunks without re-encoding."""
+    """Split a large media file into Telegram-safe chunks."""
     file_size = os.path.getsize(file_path)
-    target_size = int(TELEGRAM_FILE_LIMIT * SPLIT_TARGET_RATIO)
 
-    if file_size <= TELEGRAM_FILE_LIMIT:
+    if file_size <= MAX_UPLOAD_PART_SIZE:
         return [file_path]
 
+    directory = os.path.dirname(file_path) or "."
     base, ext = os.path.splitext(file_path)
-    output_pattern = f"{base}.part%03d{ext}"
+    target_size = int(MAX_UPLOAD_PART_SIZE * SPLIT_TARGET_RATIO)
 
-    # Estimate segment duration from the file size. We then verify each
-    # segment and retry with a smaller duration if necessary.
     probe = subprocess.run(
         [
             "ffprobe", "-v", "error",
@@ -120,56 +119,80 @@ def split_large_file(file_path):
         ],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
     )
+    if probe.returncode != 0 or not probe.stdout.strip():
+        raise RuntimeError("Cannot determine media duration for file splitting")
 
-    duration = float(probe.stdout.strip()) if probe.returncode == 0 and probe.stdout.strip() else 0
+    try:
+        duration = float(probe.stdout.strip())
+    except ValueError as exc:
+        raise RuntimeError("Invalid media duration returned by ffprobe") from exc
+
     if duration <= 0:
         raise RuntimeError("Cannot determine media duration for file splitting")
 
-    seconds = max(10, int(duration * target_size / file_size))
+    seconds = max(5, int(duration * target_size / file_size))
 
-    for attempt in range(1, 6):
-        for old in list(os.path.dirname(file_path) and os.listdir(os.path.dirname(file_path)) or []):
-            if old.startswith(os.path.basename(base) + ".part"):
+    for attempt in range(1, 7):
+        pattern = f"{base}.part%03d{ext}"
+
+        for name in os.listdir(directory):
+            if name.startswith(os.path.basename(base) + ".part"):
                 try:
-                    os.remove(os.path.join(os.path.dirname(file_path), old))
+                    os.remove(os.path.join(directory, name))
                 except OSError:
                     pass
 
-        subprocess.run(
+        process = subprocess.run(
             [
-                "ffmpeg", "-y", "-i", file_path,
-                "-map", "0",
-                "-c", "copy",
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-y", "-i", file_path,
+                "-map", "0", "-c", "copy",
                 "-f", "segment",
                 "-segment_time", str(seconds),
                 "-reset_timestamps", "1",
-                output_pattern,
+                "-segment_format", "mp4",
+                pattern,
             ],
             capture_output=True,
             text=True,
             timeout=900,
-            check=True,
         )
+
+        if process.returncode != 0:
+            logger.warning(
+                "Video split attempt %s failed: %s",
+                attempt, process.stderr[-2000:],
+            )
+            seconds = max(3, seconds // 2)
+            continue
 
         parts = sorted(
-            os.path.join(os.path.dirname(file_path), name)
-            for name in os.listdir(os.path.dirname(file_path))
+            os.path.join(directory, name)
+            for name in os.listdir(directory)
             if name.startswith(os.path.basename(base) + ".part")
-            and os.path.isfile(os.path.join(os.path.dirname(file_path), name))
+            and os.path.isfile(os.path.join(directory, name))
         )
 
-        if parts and all(os.path.getsize(p) <= TELEGRAM_FILE_LIMIT for p in parts):
+        if parts and all(os.path.getsize(part) <= MAX_UPLOAD_PART_SIZE for part in parts):
+            logger.info(
+                "Split %s into %s parts; largest part %.2f MB",
+                file_path,
+                len(parts),
+                max(os.path.getsize(part) for part in parts) / 1024 / 1024,
+            )
             try:
                 os.remove(file_path)
             except OSError:
                 pass
             return parts
 
-        seconds = max(5, seconds // 2)
+        seconds = max(3, seconds // 2)
 
-    raise RuntimeError("Unable to split file into Telegram-sized parts")
+    raise RuntimeError(
+        f"Unable to split file below {MAX_UPLOAD_PART_SIZE / 1024 / 1024:.0f} MB"
+    )
 
 
 async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None, source_url=None):
@@ -397,7 +420,7 @@ async def process_download(
                 actual_size = os.path.getsize(original_path)
 
                 if (
-                    actual_size > TELEGRAM_FILE_LIMIT
+                    actual_size > MAX_UPLOAD_PART_SIZE
                     and not (is_audio or is_audio_trim)
                 ):
                     try:
