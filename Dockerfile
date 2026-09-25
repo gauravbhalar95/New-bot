@@ -26,12 +26,14 @@ RUN apt-get update && \
 # -------------------------------
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --upgrade pip &&     pip install --no-cache-dir -r requirements.txt &&     pip install --no-cache-dir --upgrade yt-dlp playwright
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade playwright
 
 # -------------------------------
 # Install Playwright Chromium
 # -------------------------------
-RUN playwright install --with-deps chromium
+RUN playwright install chromium
 
 # -------------------------------
 # Copy project files
