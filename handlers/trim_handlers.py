@@ -86,7 +86,12 @@ def download_media(url, is_audio=False, quality=None):
         # Step 1: Python yt-dlp downloads the best video + audio.
         # yt-dlp uses FFmpeg internally to merge them into one MP4.
         base_opts.update({
-            "format": (\n                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"\n                if quality else\n                "bestvideo*+bestaudio/best"\n            ),
+            "format": (
+                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
+                if quality
+                else
+                "bestvideo*+bestaudio/best"
+            ),
             "merge_output_format": "mp4",
         })
 
