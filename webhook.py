@@ -1,10 +1,19 @@
 import logging
+import traceback
 
 from quart import Quart, jsonify, request
 import telebot
 
-from bot import bot, start_background_tasks
-from config import WEBHOOK_SECRET, PORT
+# Keep startup errors visible in Koyeb logs. Importing bot loads all handlers
+# and can fail before Quart starts serving requests.
+try:
+    from bot import bot, start_background_tasks
+    from config import WEBHOOK_SECRET, PORT
+except Exception:
+    logging.basicConfig(level=logging.INFO)
+    logging.exception("FATAL: application import/startup failed")
+    traceback.print_exc()
+    raise
 
 logging.basicConfig(
     level=logging.INFO,
