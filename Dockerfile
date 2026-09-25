@@ -11,8 +11,15 @@ WORKDIR /app
 # -------------------------------
 # Install system dependencies
 # -------------------------------
-RUN apt-get update && apt-get install -y ffmpeg
-RUN apt-get update &&     apt-get install -y --no-install-recommends         ffmpeg         curl         chromium         ca-certificates     && apt-get clean     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        git \
+        curl \
+        chromium \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
 # Copy & install Python dependencies
