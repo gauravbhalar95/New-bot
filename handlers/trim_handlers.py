@@ -77,6 +77,8 @@ def download_media(url, is_audio=False):
             }],
         })
     else:
+        # Step 1: Python yt-dlp downloads the best video + audio.
+        # yt-dlp uses FFmpeg internally to merge them into one MP4.
         base_opts.update({
             "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
@@ -104,7 +106,10 @@ def download_media(url, is_audio=False):
 
             if is_audio:
                 file_path = file_path.rsplit(".", 1)[0] + ".mp3"
-                return file_path if os.path.exists(file_path) else None
+                if os.path.exists(file_path):
+                logger.info("Trim input video ready for FFmpeg: %s", file_path)
+                return file_path
+            return None
 
             else:
                 mp4_path = file_path.rsplit(".", 1)[0] + ".mp4"
@@ -123,7 +128,7 @@ def download_media(url, is_audio=False):
                             )
                             break
 
-                logger.debug(f"Downloaded file path: {file_path}")
+                logger.info("yt-dlp video download complete: %s", file_path)
 
                 return file_path if os.path.exists(file_path) else None
 
@@ -167,16 +172,24 @@ def trim_video(input_path, start_time, end_time):
         logger.error("FFmpeg not found. Please install FFmpeg.")
         return None, None
 
+    # Step 2: FFmpeg receives the downloaded MP4 and creates the
+    # final trimmed MP4 that the bot sends to Telegram.
+    duration = end_time - start_time
     command = [
         "ffmpeg",
-        "-i", input_path,
+        "-hide_banner",
+        "-loglevel", "error",
         "-ss", str(start_time),
-        "-to", str(end_time),
+        "-i", input_path,
+        "-t", str(duration),
+        "-map", "0:v:0",
+        "-map", "0:a?",
         "-c:v", "libx264",
         "-c:a", "aac",
         "-preset", "fast",
+        "-movflags", "+faststart",
         "-y",
-        output_path
+        output_path,
     ]
 
     logger.debug(
