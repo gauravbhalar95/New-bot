@@ -1,7 +1,7 @@
 # -------------------------------
-# Use official Python base image
+# Use latest stable official Python base image
 # -------------------------------
-FROM python:3.10-slim
+FROM python:3.14-slim
 
 # -------------------------------
 # Set working directory
@@ -64,7 +64,7 @@ ENV PYTHONUNBUFFERED=1 \
     PORT=8080
 
 # -------------------------------
-# Expose Flask port
+# Expose webhook port
 # -------------------------------
 EXPOSE 8080
 
