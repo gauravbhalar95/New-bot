@@ -2,6 +2,10 @@ import os
 import yt_dlp
 import logging
 import subprocess
+import platform
+import shutil
+import urllib.request
+import zipfile
 
 from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.logger import setup_logging
@@ -11,6 +15,32 @@ logger = setup_logging(logging.DEBUG)
 
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+def _ensure_deno():
+    """Return a usable Deno executable for yt-dlp EJS challenge solving."""
+    existing = shutil.which("deno")
+    if existing:
+        return existing
+    bin_dir = os.path.join(DOWNLOAD_DIR, ".bin")
+    deno_path = os.path.join(bin_dir, "deno")
+    if os.path.isfile(deno_path) and os.access(deno_path, os.X_OK):
+        return deno_path
+    os.makedirs(bin_dir, exist_ok=True)
+    machine = platform.machine().lower()
+    asset = (
+        "deno-aarch64-unknown-linux-gnu.zip"
+        if machine in ("aarch64", "arm64")
+        else "deno-x86_64-unknown-linux-gnu.zip"
+    )
+    archive = os.path.join(bin_dir, "deno.zip")
+    url = "https://github.com/denoland/deno/releases/latest/download/" + asset
+    logger.info("Installing Deno for yt-dlp EJS challenge solving...")
+    urllib.request.urlretrieve(url, archive)
+    with zipfile.ZipFile(archive) as zf:
+        zf.extract("deno", bin_dir)
+    os.remove(archive)
+    os.chmod(deno_path, 0o755)
+    return deno_path
 
 
 def time_to_seconds(time_str):
@@ -56,33 +86,53 @@ def download_media(url, is_audio=False):
 
     cookie_file = YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None
 
+    try:
+        deno_path = _ensure_deno()
+        logger.info("Using Deno for yt-dlp EJS: %s", deno_path)
+    except Exception as e:
+        logger.warning("Could not install Deno: %s", e)
+        deno_path = None
+
+    base_opts = {
+        "outtmpl": output_path,
+        "cookiefile": cookie_file,
+        "quiet": False,
+        "noplaylist": True,
+        "socket_timeout": 20,
+        "retries": 5,
+        "fragment_retries": 5,
+        "remote_components": ["ejs:github"],
+        "js_runtimes": {"deno": {"path": deno_path}} if deno_path else {},
+    }
+
     if is_audio:
-        ydl_opts = {
-            "format": "bestaudio",
-            "outtmpl": output_path,
+        base_opts.update({
+            "format": "bestaudio/best",
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
-            "cookiefile": cookie_file,
-            "quiet": False,
-            "noplaylist": True,
-        }
-
+        })
     else:
-        ydl_opts = {
-            "format": "bestvideo+bestaudio/best",
-            "outtmpl": output_path,
+        base_opts.update({
+            "format": "bestvideo*+bestaudio/best",
             "merge_output_format": "mp4",
-            "cookiefile": cookie_file,
-            "quiet": False,
-            "noplaylist": True,
-        }
+        })
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+    client_attempts = [None, ["android_vr"], ["web_embedded"]]
+    last_error = None
+
+    for player_clients in client_attempts:
+        ydl_opts = dict(base_opts)
+        if player_clients:
+            ydl_opts["extractor_args"] = {
+                "youtube": {"player_client": player_clients}
+            }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
 
             if not info:
                 return None
@@ -109,20 +159,21 @@ def download_media(url, is_audio=False):
                             )
                             break
 
-            logger.debug(f"Downloaded file path: {file_path}")
+                logger.debug(f"Downloaded file path: {file_path}")
 
-            return file_path if os.path.exists(file_path) else None
+                return file_path if os.path.exists(file_path) else None
 
-    except yt_dlp.utils.DownloadError as e:
-        logger.error(f"Error downloading media: {e}")
-        return None
+        except yt_dlp.utils.DownloadError as e:
+            last_error = e
+            logger.warning("YouTube trim download attempt failed: %s", e, exc_info=True)
+            continue
+        except Exception as e:
+            last_error = e
+            logger.warning("Unexpected trim download error: %s", e, exc_info=True)
+            continue
 
-    except Exception as e:
-        logger.error(
-            f"Unexpected error during download: {str(e)}",
-            exc_info=True
-        )
-        return None
+    logger.error("All YouTube trim download attempts failed: %s", last_error)
+    return None
 
 
 def trim_video(input_path, start_time, end_time):
