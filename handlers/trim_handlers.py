@@ -2,11 +2,6 @@ import os
 import yt_dlp
 import logging
 import subprocess
-import platform
-import shutil
-import urllib.request
-import zipfile
-
 from config import DOWNLOAD_DIR, YOUTUBE_FILE
 from utils.logger import setup_logging
 
@@ -15,56 +10,6 @@ logger = setup_logging(logging.DEBUG)
 
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-def _ensure_node():
-    """Return a Node.js 22+ executable for yt-dlp EJS challenge solving."""
-    existing = shutil.which("node")
-    if existing:
-        return existing
-
-    bin_dir = os.path.join(DOWNLOAD_DIR, ".bin")
-    node_root = os.path.join(bin_dir, "node-v22.23.3-linux")
-    node_path = os.path.join(node_root, "bin", "node")
-    if os.path.isfile(node_path) and os.access(node_path, os.X_OK):
-        return node_path
-
-    os.makedirs(bin_dir, exist_ok=True)
-    machine = platform.machine().lower()
-    if machine in ("aarch64", "arm64"):
-        arch = "arm64"
-    elif machine in ("x86_64", "amd64"):
-        arch = "x64"
-    else:
-        raise RuntimeError(f"Unsupported CPU architecture for Node.js: {machine}")
-
-    version = "22.23.3"
-    archive = os.path.join(bin_dir, "node.tar.xz")
-    url = (
-        f"https://nodejs.org/download/release/latest-v22.x/"
-        f"node-v{version}-linux-{arch}.tar.xz"
-    )
-
-    logger.info("Installing Node.js %s for yt-dlp EJS challenge solving...", version)
-    urllib.request.urlretrieve(url, archive)
-
-    import tarfile
-    extract_dir = os.path.join(bin_dir, "node-extract")
-    os.makedirs(extract_dir, exist_ok=True)
-    with tarfile.open(archive, "r:xz") as tf:
-        tf.extractall(extract_dir)
-
-    extracted = os.path.join(extract_dir, f"node-v{version}-linux-{arch}")
-    if os.path.isdir(node_root):
-        shutil.rmtree(node_root)
-    os.rename(extracted, node_root)
-
-    os.remove(archive)
-    shutil.rmtree(extract_dir, ignore_errors=True)
-    os.chmod(node_path, 0o755)
-
-    logger.info("Node.js EJS runtime ready: %s", node_path)
-    return node_path
-
 
 def time_to_seconds(time_str):
     """
@@ -109,12 +54,8 @@ def download_media(url, is_audio=False):
 
     cookie_file = YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None
 
-    try:
-        node_path = _ensure_node()
-        logger.info("Using Node.js for yt-dlp EJS: %s", node_path)
-    except Exception as e:
-        logger.error("Could not install/find Node.js: %s", e, exc_info=True)
-        return None
+    # yt-dlp is embedded directly through its Python API.
+    logger.info("Using Python yt-dlp API for trim download")
 
     base_opts = {
         "outtmpl": output_path,
@@ -124,9 +65,6 @@ def download_media(url, is_audio=False):
         "socket_timeout": 20,
         "retries": 5,
         "fragment_retries": 5,
-        "remote_components": ["ejs:github"],
-        # Explicitly use Node.js so yt-dlp does not select the failing Deno runtime.
-        "js_runtimes": {"node": {"path": node_path}},
     }
 
     if is_audio:
