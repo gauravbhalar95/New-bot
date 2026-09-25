@@ -72,6 +72,8 @@ def time_to_seconds(time_str):
 
 
 def download_media(url, is_audio=False):
+    # Keep the Deno EJS subprocess within a small V8 heap on low-memory hosts.
+    os.environ.setdefault("DENO_V8_FLAGS", "--max-old-space-size=96")
     """
     Downloads video or audio using yt-dlp.
 
@@ -120,7 +122,8 @@ def download_media(url, is_audio=False):
             "merge_output_format": "mp4",
         })
 
-    client_attempts = [None, ["android_vr"], ["web_embedded"]]
+    # Avoid cookie-incompatible clients and repeated memory-heavy challenge runs.
+    client_attempts = [None, ["web_embedded"]]
     last_error = None
 
     for player_clients in client_attempts:
@@ -141,6 +144,7 @@ def download_media(url, is_audio=False):
 
             if is_audio:
                 file_path = file_path.rsplit(".", 1)[0] + ".mp3"
+                return file_path if os.path.exists(file_path) else None
 
             else:
                 mp4_path = file_path.rsplit(".", 1)[0] + ".mp4"
