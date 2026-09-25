@@ -80,7 +80,7 @@ def download_media(url, is_audio=False):
         # Step 1: Python yt-dlp downloads the best video + audio.
         # yt-dlp uses FFmpeg internally to merge them into one MP4.
         base_opts.update({
-            "format": "bestvideo*+bestaudio/best",
+            "format": "bestvideo+bestaudio/best",
             "merge_output_format": "mp4",
         })
 
@@ -183,7 +183,7 @@ def trim_video(input_path, start_time, end_time):
         "-i", input_path,
         "-t", str(duration),
         "-map", "0:v:0",
-        "-map", "0:a?",
+        "-map", "0:a:0",
         "-c:v", "libx264",
         "-c:a", "aac",
         "-preset", "fast",
