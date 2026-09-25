@@ -5,6 +5,7 @@ import re
 import time
 import asyncio
 import subprocess
+from html import escape
 from datetime import datetime, timezone
 
 from telebot import types
@@ -364,7 +365,7 @@ async def process_download(
                 await send_message(
                     message.chat.id,
                     f"❌ Download failed after {MAX_DOWNLOAD_RETRIES} attempts.\n"
-                    f"{last_error or ''}",
+                    f"{escape(str(last_error or ''))}",
                 )
                 return
 
@@ -430,7 +431,7 @@ async def process_download(
                         logger.error("Error sending file: %s", send_error, exc_info=True)
                         await send_message(
                             message.chat.id,
-                            f"❌ Error sending file: {send_error}",
+                            f"❌ Error sending file: {escape(str(send_error))}",
                         )
                     finally:
                         try:
@@ -444,7 +445,7 @@ async def process_download(
         raise
     except Exception as e:
         logger.error("Processing error: %s", e, exc_info=True)
-        await send_message(message.chat.id, f"❌ An error occurred: {e}")
+        await send_message(message.chat.id, f"❌ An error occurred: {escape(str(e))}")
     finally:
         if progress_task:
             progress_task.cancel()
@@ -647,8 +648,8 @@ async def handle_message(message):
             )
             await send_message(
                 message.chat.id,
-                f"🎬 <b>{info['title']}</b>\n"
-                f"👤 {info['uploader']}\n"
+                f"🎬 <b>{escape(str(info['title']))}</b>\n"
+                f"👤 {escape(str(info['uploader']))}\n"
                 f"⏱ {info['duration']}\n"
                 f"📐 {quality}\n\n"
                 f"📥 Added to download queue.",
