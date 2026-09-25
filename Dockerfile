@@ -16,6 +16,8 @@ RUN apt-get update && \
         ffmpeg \
         git \
         curl \
+        nodejs \
+        npm \
         chromium \
         ca-certificates \
     && apt-get clean \
@@ -47,7 +49,6 @@ RUN mkdir -p /app/cookies
 
 # -------------------------------
 # Ensure Instagram cookies are present
-# (Fixes cookies not deploying issue)
 # -------------------------------
 COPY utils/instagram_cookies.py /app/utils/instagram_cookies.py
 
