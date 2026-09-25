@@ -41,7 +41,7 @@ def _ensure_deno():
     return deno_path
 
 
-def process_youtube(url):
+def process_youtube(url, quality=None):
     """Download a YouTube video with format/client fallbacks."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -59,6 +59,12 @@ def process_youtube(url):
 
     last_error = None
 
+    if quality:
+        quality = str(quality).lower().replace("p", "")
+        if quality not in {"144", "240", "360", "480", "720", "1080", "1440", "2160"}:
+            logger.warning("Invalid YouTube quality %s; using best", quality)
+            quality = None
+
     try:
         deno_path = _ensure_deno()
         logger.info(f"Using Deno for yt-dlp EJS: {deno_path}")
@@ -69,7 +75,7 @@ def process_youtube(url):
     for attempt, player_clients in enumerate(client_attempts, start=1):
         ydl_opts = {
             # More tolerant than the old hard-coded "bv+ba/b".
-            "format": "best",
+            "format": (\n                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"\n                if quality else\n                "bestvideo*+bestaudio/best"\n            ),
             "outtmpl": output_template,
             "cookiefile": (
                 YOUTUBE_FILE
