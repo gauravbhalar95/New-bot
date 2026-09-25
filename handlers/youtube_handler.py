@@ -9,11 +9,59 @@ from utils.logger import setup_logging
 logger = setup_logging(logging.DEBUG)
 
 
+def get_youtube_cookie_file():
+    """Return a usable YouTube Netscape cookie file, if configured."""
+    if not os.path.isfile(YOUTUBE_FILE):
+        logger.warning(
+            "⚠️ YouTube cookies are not configured. "
+            "Set the Koyeb secret YOUTUBE_COOKIES_B64."
+        )
+        return None
+
+    try:
+        size = os.path.getsize(YOUTUBE_FILE)
+        if size < 20:
+            logger.warning("⚠️ YouTube cookie file is empty or too small.")
+            return None
+
+        with open(YOUTUBE_FILE, "rb") as cookie_fp:
+            sample = cookie_fp.read(4096)
+
+        # yt-dlp expects a Netscape/Mozilla cookies.txt file.
+        text = sample.decode("utf-8", errors="ignore")
+        has_cookie_header = (
+            "# Netscape HTTP Cookie File" in text
+            or "# HTTP Cookie File" in text
+        )
+        has_cookie_rows = any(
+            len(line.split("\t")) >= 7
+            for line in text.splitlines()
+            if line and not line.startswith("#")
+        )
+
+        if not (has_cookie_header or has_cookie_rows):
+            logger.warning(
+                "⚠️ YouTube cookie file is not in Netscape cookies.txt format."
+            )
+            return None
+
+        logger.info(
+            "✅ YouTube cookie file loaded: %.1f KB",
+            size / 1024,
+        )
+        return YOUTUBE_FILE
+
+    except OSError as exc:
+        logger.warning("⚠️ Could not read YouTube cookie file: %s", exc)
+        return None
+
+
 def process_youtube(url, quality=None):
     """Download a YouTube video with format/client fallbacks."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_template = f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
+    cookie_file = get_youtube_cookie_file()
 
     # Keep Python as the application runtime. Node.js is used only by yt-dlp
     # for YouTube's EJS JavaScript challenge solving.
@@ -39,7 +87,7 @@ def process_youtube(url, quality=None):
                 else "bestvideo*+bestaudio/best"
             ),
             "outtmpl": output_template,
-            "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+            "cookiefile": cookie_file,
             "socket_timeout": 20,
             "retries": 5,
             "fragment_retries": 5,
@@ -144,6 +192,12 @@ def process_youtube(url, quality=None):
 
     logger.error(f"❌ All YouTube download attempts failed: {last_error}")
 
+    if last_error and "Sign in to confirm" in str(last_error):
+        last_error = (
+            "YouTube requires authentication. Configure a fresh "
+            "YOUTUBE_COOKIES_B64 secret in Koyeb and redeploy."
+        )
+
     return (
         None,
         0,
@@ -154,11 +208,12 @@ def process_youtube(url, quality=None):
 def extract_audio_ffmpeg(url):
     """Download and extract audio from a YouTube video synchronously."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    cookie_file = get_youtube_cookie_file()
 
     audio_opts = {
         "format": "bestaudio/best",
         "outtmpl": f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s",
-        "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
+        "cookiefile": cookie_file,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
