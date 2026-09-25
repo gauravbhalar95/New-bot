@@ -50,10 +50,17 @@ YOUTUBE_FILE = str(BASE_DIR / "youtube_cookies.txt")
 YOUTUBE_COOKIES_B64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
 if YOUTUBE_COOKIES_B64:
     try:
-        cookie_bytes = base64.b64decode(YOUTUBE_COOKIES_B64, validate=True)
-        if cookie_bytes:
-            with open(YOUTUBE_FILE, "wb") as cookie_fp:
-                cookie_fp.write(cookie_bytes)
+        # Environment variables are often copied with line breaks/spaces.
+        # Remove whitespace before strict base64 decoding.
+        normalized_cookie_b64 = "".join(YOUTUBE_COOKIES_B64.split())
+        cookie_bytes = base64.b64decode(normalized_cookie_b64, validate=True)
+
+        if not cookie_bytes:
+            raise ValueError("decoded cookie data is empty")
+
+        with open(YOUTUBE_FILE, "wb") as cookie_fp:
+            cookie_fp.write(cookie_bytes)
+
     except Exception as exc:
         raise RuntimeError(f"Invalid YOUTUBE_COOKIES_B64: {exc}") from exc
 INSTAGRAM_FILE = str(BASE_DIR / "cookies" / "instagram_cookies.txt")
