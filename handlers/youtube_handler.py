@@ -75,7 +75,12 @@ def process_youtube(url, quality=None):
     for attempt, player_clients in enumerate(client_attempts, start=1):
         ydl_opts = {
             # More tolerant than the old hard-coded "bv+ba/b".
-            "format": (\n                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"\n                if quality else\n                "bestvideo*+bestaudio/best"\n            ),
+            "format": (
+                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
+                if quality
+                else
+                "bestvideo*+bestaudio/best"
+            ),
             "outtmpl": output_template,
             "cookiefile": (
                 YOUTUBE_FILE
