@@ -100,7 +100,7 @@ async def run_blocking(function, *args):
 
 
 def split_large_file(file_path):
-    """Split a large media file into Telegram-safe chunks."""
+    """Split a large video into Telegram-safe MP4 parts."""
     file_size = os.path.getsize(file_path)
 
     if file_size <= MAX_UPLOAD_PART_SIZE:
@@ -108,7 +108,7 @@ def split_large_file(file_path):
 
     directory = os.path.dirname(file_path) or "."
     base, ext = os.path.splitext(file_path)
-    target_size = int(MAX_UPLOAD_PART_SIZE * SPLIT_TARGET_RATIO)
+    target_size = int(MAX_UPLOAD_PART_SIZE * 0.80)
 
     probe = subprocess.run(
         [
@@ -121,34 +121,51 @@ def split_large_file(file_path):
         text=True,
         timeout=60,
     )
+
     if probe.returncode != 0 or not probe.stdout.strip():
-        raise RuntimeError("Cannot determine media duration for file splitting")
+        raise RuntimeError(
+            f"ffprobe failed: {probe.stderr.strip()[-1000:] or 'unknown error'}"
+        )
 
     try:
-        duration = float(probe.stdout.strip())
+        duration = float(probe.stdout.strip().splitlines()[0])
     except ValueError as exc:
-        raise RuntimeError("Invalid media duration returned by ffprobe") from exc
+        raise RuntimeError(f"Invalid video duration: {probe.stdout!r}") from exc
 
     if duration <= 0:
-        raise RuntimeError("Cannot determine media duration for file splitting")
+        raise RuntimeError("Video duration is zero or unavailable")
 
-    seconds = max(5, int(duration * target_size / file_size))
+    # First try stream-copy splitting. This is fast and preserves quality.
+    seconds = max(3, int(duration * target_size / file_size))
 
-    for attempt in range(1, 7):
-        pattern = f"{base}.part%03d{ext}"
-
+    def cleanup_parts():
+        prefix = os.path.basename(base) + ".part"
         for name in os.listdir(directory):
-            if name.startswith(os.path.basename(base) + ".part"):
+            if name.startswith(prefix):
                 try:
                     os.remove(os.path.join(directory, name))
                 except OSError:
                     pass
 
+    def collect_parts():
+        prefix = os.path.basename(base) + ".part"
+        return sorted(
+            os.path.join(directory, name)
+            for name in os.listdir(directory)
+            if name.startswith(prefix)
+            and os.path.isfile(os.path.join(directory, name))
+        )
+
+    for attempt in range(1, 7):
+        cleanup_parts()
+        pattern = f"{base}.part%03d.mp4"
+
         process = subprocess.run(
             [
                 "ffmpeg", "-hide_banner", "-loglevel", "error",
                 "-y", "-i", file_path,
-                "-map", "0", "-c", "copy",
+                "-map", "0:v:0", "-map", "0:a?",
+                "-c", "copy",
                 "-f", "segment",
                 "-segment_time", str(seconds),
                 "-reset_timestamps", "1",
@@ -160,38 +177,87 @@ def split_large_file(file_path):
             timeout=900,
         )
 
-        if process.returncode != 0:
-            logger.warning(
-                "Video split attempt %s failed: %s",
-                attempt, process.stderr[-2000:],
-            )
-            seconds = max(3, seconds // 2)
-            continue
+        parts = collect_parts()
 
-        parts = sorted(
-            os.path.join(directory, name)
-            for name in os.listdir(directory)
-            if name.startswith(os.path.basename(base) + ".part")
-            and os.path.isfile(os.path.join(directory, name))
+        if process.returncode == 0 and parts:
+            sizes = [os.path.getsize(p) for p in parts]
+            if all(size <= MAX_UPLOAD_PART_SIZE for size in sizes):
+                logger.info(
+                    "Split %s into %d parts; largest %.2f MB",
+                    file_path,
+                    len(parts),
+                    max(sizes) / 1024 / 1024,
+                )
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+                return parts
+
+        logger.warning(
+            f"Stream-copy split attempt {attempt} failed "
+            f"(code={process.returncode}, seconds={seconds}): "
+            f"{process.stderr.strip()[-1500:]}"
         )
 
-        if parts and all(os.path.getsize(part) <= MAX_UPLOAD_PART_SIZE for part in parts):
-            logger.info(
-                "Split %s into %s parts; largest part %.2f MB",
-                file_path,
-                len(parts),
-                max(os.path.getsize(part) for part in parts) / 1024 / 1024,
-            )
-            try:
-                os.remove(file_path)
-            except OSError:
-                pass
-            return parts
+        cleanup_parts()
+        seconds = max(3, seconds // 2)
 
+    # Fallback: re-encode each segment. This handles videos whose keyframes,
+    # timestamps, or container layout prevent reliable stream-copy splitting.
+    logger.warning(f"Using re-encode fallback for large file: {file_path}")
+    seconds = max(3, int(duration * target_size / file_size))
+
+    for attempt in range(1, 7):
+        cleanup_parts()
+        pattern = f"{base}.part%03d.mp4"
+
+        process = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-y", "-i", file_path,
+                "-map", "0:v:0", "-map", "0:a?",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                "-c:a", "aac", "-b:a", "128k",
+                "-f", "segment",
+                "-segment_time", str(seconds),
+                "-reset_timestamps", "1",
+                "-movflags", "+faststart",
+                "-segment_format", "mp4",
+                pattern,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+
+        parts = collect_parts()
+
+        if process.returncode == 0 and parts:
+            sizes = [os.path.getsize(p) for p in parts]
+            if all(size <= MAX_UPLOAD_PART_SIZE for size in sizes):
+                logger.info(
+                    "Re-encoded split produced %d parts; largest %.2f MB",
+                    len(parts),
+                    max(sizes) / 1024 / 1024,
+                )
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+                return parts
+
+        logger.warning(
+            f"Re-encode split attempt {attempt} failed "
+            f"(code={process.returncode}, seconds={seconds}): "
+            f"{process.stderr.strip()[-1500:]}"
+        )
+        cleanup_parts()
         seconds = max(3, seconds // 2)
 
     raise RuntimeError(
-        f"Unable to split file below {MAX_UPLOAD_PART_SIZE / 1024 / 1024:.0f} MB"
+        f"Unable to split video below "
+        f"{MAX_UPLOAD_PART_SIZE / 1024 / 1024:.0f} MB after all attempts"
     )
 
 
@@ -426,7 +492,7 @@ async def process_download(
                     try:
                         parts = await run_blocking(split_large_file, original_path)
                     except Exception as split_error:
-                        logger.error("File split failed: %s", split_error, exc_info=True)
+                        logger.error(f"File split failed: {split_error}", exc_info=True)
                         await send_message(
                             message.chat.id,
                             f"❌ File is too large and could not be split: {split_error}",
