@@ -40,6 +40,11 @@ active_downloads = set()
 active_tasks = {}
 cancelled_downloads = set()
 
+# Short-lived inline-button requests.
+INLINE_REQUEST_TTL = 600
+inline_requests = {}
+trim_requests = {}
+
 # Short-lived storage for YouTube quality-picker requests.
 # Telegram callback_data is limited to 64 bytes, so never put the full URL
 # directly into callback_data.
@@ -659,6 +664,74 @@ async def handle_cancel(message):
         await send_message(message.chat.id, "⚠️ Download ID not found or already finished.")
 
 
+def cleanup_inline_requests():
+    cutoff = time.time() - INLINE_REQUEST_TTL
+    for store in (inline_requests, trim_requests):
+        for token in [k for k, v in store.items() if v.get("created_at", 0) < cutoff]:
+            store.pop(token, None)
+
+
+def build_media_action_keyboard(url, chat_id, user_id):
+    cleanup_inline_requests()
+    token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")
+    inline_requests[token] = {"url": url, "chat_id": chat_id, "user_id": user_id, "created_at": time.time()}
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(types.InlineKeyboardButton("🎥 Video", callback_data=f"act:video:{token}"), types.InlineKeyboardButton("🎵 Audio", callback_data=f"act:audio:{token}"))
+    markup.add(types.InlineKeyboardButton("✂️ Trim Video", callback_data=f"act:trimv:{token}"), types.InlineKeyboardButton("✂️ Trim Audio", callback_data=f"act:trima:{token}"))
+    return markup
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("act:"))
+async def handle_media_action_callback(call):
+    try:
+        _, action, token = call.data.split(":", 2)
+        request = inline_requests.pop(token, None)
+        if not request or request["chat_id"] != call.message.chat.id or request["user_id"] != call.from_user.id:
+            await bot.answer_callback_query(call.id, "This menu expired or belongs to another user.", show_alert=True)
+            return
+        url = request["url"]
+        if action in ("trimv", "trima"):
+            trim_token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")
+            trim_requests[trim_token] = {"url": url, "chat_id": call.message.chat.id, "user_id": call.from_user.id, "is_video_trim": action == "trimv", "created_at": time.time()}
+            kind = "Video" if action == "trimv" else "Audio"
+            await bot.answer_callback_query(call.id, f"{kind} trim selected")
+            await bot.edit_message_text(f"✂️ <b>{kind} trimming</b>\n\nSend start and end time in one message:\n<code>00:30 01:45</code>\n\nOr:\n<code>00:00:30 00:01:45</code>", call.message.chat.id, call.message.message_id)
+            return
+        await bot.answer_callback_query(call.id, "Selected")
+        if action == "audio":
+            await bot.edit_message_text("🎵 Added to audio queue.", call.message.chat.id, call.message.message_id)
+            await download_queue.put((call.message, url, True, False, False, None, None, None))
+        elif detect_platform(url) == "YouTube":
+            await bot.edit_message_text("🎬 <b>Choose YouTube video quality:</b>", call.message.chat.id, call.message.message_id, reply_markup=build_youtube_quality_keyboard(url, call.message.chat.id, call.from_user.id))
+        else:
+            await bot.edit_message_text("🎥 Added to video queue.", call.message.chat.id, call.message.message_id)
+            await download_queue.put((call.message, url, False, False, False, None, None, None))
+    except Exception as e:
+        logger.error("Media action callback error: %s", e, exc_info=True)
+        await bot.answer_callback_query(call.id, "Could not process selection.", show_alert=True)
+
+
+@bot.message_handler(func=lambda message: any(r["chat_id"] == message.chat.id and r["user_id"] == message.from_user.id for r in trim_requests.values()), content_types=["text"])
+async def handle_trim_time_input(message):
+    cleanup_inline_requests()
+    matches = [(token, r) for token, r in trim_requests.items() if r["chat_id"] == message.chat.id and r["user_id"] == message.from_user.id]
+    if not matches:
+        return
+    token, request = matches[-1]
+    match = re.fullmatch(r"\s*(\d{1,2}(?::\d{1,2}){0,2})\s+(\d{1,2}(?::\d{1,2}){0,2})\s*", message.text or "")
+    if not match:
+        await send_message(message.chat.id, "⚠️ Invalid time format. Send <code>00:30 01:45</code>.")
+        return
+    start_time, end_time = match.groups()
+    to_seconds = lambda value: sum(int(part) * (60 ** i) for i, part in enumerate(reversed(value.split(":"))))
+    if to_seconds(start_time) >= to_seconds(end_time):
+        await send_message(message.chat.id, "⚠️ End time must be greater than start time.")
+        return
+    trim_requests.pop(token, None)
+    await download_queue.put((message, request["url"], False, request["is_video_trim"], not request["is_video_trim"], start_time, end_time, None))
+    await send_message(message.chat.id, "✂️ Added to the trimming queue. Processing will start shortly.")
+
+
 def cleanup_youtube_quality_requests():
     cutoff = time.time() - YOUTUBE_REQUEST_TTL
     expired = [
@@ -885,20 +958,10 @@ async def handle_message(message):
         await send_message(message.chat.id, "⚠️ Please send a valid media URL.")
         return
 
-    # Show the quality picker for a single YouTube URL instead of
-    # immediately starting a download.
-    if len(urls) == 1 and detect_platform(urls[0]) == "YouTube":
+    # Show inline actions for every supported single URL.
+    if len(urls) == 1 and detect_platform(urls[0]):
         url = urls[0]
-        await bot.send_message(
-            message.chat.id,
-            "🎬 <b>Choose YouTube video quality:</b>\n\n"
-            "Select the quality you want to download.",
-            reply_markup=build_youtube_quality_keyboard(
-                url,
-                message.chat.id,
-                message.from_user.id,
-            ),
-        )
+        await bot.send_message(message.chat.id, "🎬 <b>What do you want to do?</b>", reply_markup=build_media_action_keyboard(url, message.chat.id, message.from_user.id))
         return
 
     # Feature 14: multiple URLs in one message.
