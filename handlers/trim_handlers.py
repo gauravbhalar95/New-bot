@@ -39,7 +39,7 @@ def time_to_seconds(time_str):
         return None
 
 
-def download_media(url, is_audio=False):
+def download_media(url, is_audio=False, quality=None):
     """
     Downloads video or audio using yt-dlp.
 
@@ -53,6 +53,12 @@ def download_media(url, is_audio=False):
     )
 
     cookie_file = YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None
+
+    if quality:
+        quality = str(quality).lower().replace("p", "")
+        if quality not in {"144", "240", "360", "480", "720", "1080", "1440", "2160"}:
+            logger.warning("Invalid YouTube quality %s; using best", quality)
+            quality = None
 
     # yt-dlp is embedded directly through its Python API.
     logger.info("Using Python yt-dlp API for trim download")
@@ -80,7 +86,7 @@ def download_media(url, is_audio=False):
         # Step 1: Python yt-dlp downloads the best video + audio.
         # yt-dlp uses FFmpeg internally to merge them into one MP4.
         base_opts.update({
-            "format": "bestvideo+bestaudio/best",
+            "format": (\n                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"\n                if quality else\n                "bestvideo*+bestaudio/best"\n            ),
             "merge_output_format": "mp4",
         })
 
@@ -443,7 +449,7 @@ def trim_audio_alternative(input_path, start_time, end_time):
         return None, None
 
 
-def process_video_trim(url, start_time, end_time):
+def process_video_trim(url, start_time, end_time, quality=None):
     """
     Downloads video and trims it.
     """
@@ -483,7 +489,8 @@ def process_video_trim(url, start_time, end_time):
 
         video_path = download_media(
             url,
-            is_audio=False
+            is_audio=False,
+            quality=quality
         )
 
         if not video_path:
