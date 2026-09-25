@@ -6,7 +6,6 @@ from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.logger import setup_logging
 
 
-# Initialize logger
 logger = setup_logging(logging.DEBUG)
 
 
@@ -14,15 +13,12 @@ def process_youtube(url, quality=None):
     """Download a YouTube video with format/client fallbacks."""
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-    output_template = (
-        f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
-    )
+    output_template = f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
 
-    # YouTube is currently rolling out PO-token/SABR enforcement.
-    # Try a normal/default extraction first, then Safari/embedded clients.
+    # Keep Python as the application runtime. Node.js is used only by yt-dlp
+    # for YouTube's EJS JavaScript challenge solving.
     client_attempts = [
         None,
-        ["android_vr"],
         ["web_embedded"],
     ]
 
@@ -34,23 +30,16 @@ def process_youtube(url, quality=None):
             logger.warning("Invalid YouTube quality %s; using best", quality)
             quality = None
 
-
-
     for attempt, player_clients in enumerate(client_attempts, start=1):
         ydl_opts = {
-            # More tolerant than the old hard-coded "bv+ba/b".
             "format": (
-                f"bestvideo[height<={quality}]+bestaudio/best[height<={quality}]/best"
+                f"bestvideo[height<={quality}]+bestaudio/"
+                f"best[height<={quality}]/best"
                 if quality
-                else
-                "bestvideo*+bestaudio/best"
+                else "bestvideo*+bestaudio/best"
             ),
             "outtmpl": output_template,
-            "cookiefile": (
-                YOUTUBE_FILE
-                if os.path.exists(YOUTUBE_FILE)
-                else None
-            ),
+            "cookiefile": YOUTUBE_FILE if os.path.exists(YOUTUBE_FILE) else None,
             "socket_timeout": 20,
             "retries": 5,
             "fragment_retries": 5,
@@ -59,21 +48,21 @@ def process_youtube(url, quality=None):
             "merge_output_format": "mp4",
             "noplaylist": True,
             "ignoreerrors": False,
-            # Do not launch Deno on low-memory Koyeb instances.
-            "js_runtimes": {},
+            "js_runtimes": {
+                "node": "/usr/bin/node",
+            },
         }
 
         if player_clients:
             ydl_opts["extractor_args"] = {
                 "youtube": {
-                    "player_client": player_clients
+                    "player_client": player_clients,
                 }
             }
 
         try:
             logger.info(
-                f"▶️ YouTube attempt {attempt}/"
-                f"{len(client_attempts)}"
+                f"▶️ YouTube attempt {attempt}/{len(client_attempts)}"
                 + (
                     f" using clients: {','.join(player_clients)}"
                     if player_clients
@@ -89,21 +78,8 @@ def process_youtube(url, quality=None):
                         "No video information returned"
                     )
 
-                if (
-                    "entries" in info_dict
-                    and info_dict.get("entries") is not None
-                    and not info_dict["entries"]
-                ):
-                    raise yt_dlp.utils.DownloadError(
-                        "Video unavailable or restricted"
-                    )
-
-                # Prefer the actual final filepath reported by yt-dlp.
                 candidates = []
-
-                requested_downloads = (
-                    info_dict.get("requested_downloads") or []
-                )
+                requested_downloads = info_dict.get("requested_downloads") or []
 
                 for item in requested_downloads:
                     path = item.get("filepath")
@@ -143,20 +119,16 @@ def process_youtube(url, quality=None):
 
                 return file_path, file_size, None
 
-        except (
-            yt_dlp.utils.ExtractorError,
-            yt_dlp.utils.DownloadError,
-        ) as e:
+        except (yt_dlp.utils.ExtractorError, yt_dlp.utils.DownloadError) as e:
             last_error = e
             logger.warning(
-                "⚠️ YouTube attempt %s failed: %r", attempt, e,
+                f"⚠️ YouTube attempt {attempt} failed: {e}",
                 exc_info=True,
             )
 
             if attempt < len(client_attempts):
                 logger.info("🔄 Retrying YouTube with fallback client...")
                 continue
-
             break
 
         except Exception as e:
@@ -168,7 +140,6 @@ def process_youtube(url, quality=None):
 
             if attempt < len(client_attempts):
                 continue
-
             break
 
     logger.error(f"❌ All YouTube download attempts failed: {last_error}")
@@ -196,6 +167,9 @@ def extract_audio_ffmpeg(url):
         "logger": logger,
         "verbose": True,
         "noplaylist": True,
+        "js_runtimes": {
+            "node": "/usr/bin/node",
+        },
     }
 
     try:
@@ -203,14 +177,12 @@ def extract_audio_ffmpeg(url):
             info_dict = ydl.extract_info(url, download=True)
 
             if not info_dict:
-                logger.error(
-                    "❌ No info_dict returned. Audio download failed."
-                )
+                logger.error("❌ No info_dict returned. Audio download failed.")
                 return None, 0
 
-            audio_filename = ydl.prepare_filename(info_dict)
-
-            audio_filename = os.path.splitext(audio_filename)[0] + ".mp3"
+            audio_filename = os.path.splitext(
+                ydl.prepare_filename(info_dict)
+            )[0] + ".mp3"
 
             file_size = (
                 os.path.getsize(audio_filename)
@@ -229,8 +201,5 @@ def extract_audio_ffmpeg(url):
         return None, 0
 
     except Exception as e:
-        logger.error(
-            f"⚠️ Error extracting audio: {e}",
-            exc_info=True
-        )
+        logger.error(f"⚠️ Error extracting audio: {e}", exc_info=True)
         return None, 0
