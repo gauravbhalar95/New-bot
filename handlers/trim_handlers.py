@@ -107,9 +107,9 @@ def download_media(url, is_audio=False):
             if is_audio:
                 file_path = file_path.rsplit(".", 1)[0] + ".mp3"
                 if os.path.exists(file_path):
-                logger.info("Trim input video ready for FFmpeg: %s", file_path)
-                return file_path
-            return None
+                    logger.info("yt-dlp audio download complete: %s", file_path)
+                    return file_path
+                return None
 
             else:
                 mp4_path = file_path.rsplit(".", 1)[0] + ".mp4"
