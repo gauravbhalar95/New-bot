@@ -563,21 +563,59 @@ async def handle_cancel(message):
         await send_message(message.chat.id, "⚠️ Download ID not found or already finished.")
 
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("ytq:"))
+async def handle_youtube_quality_callback(call):
+    try:
+        parts = call.data.split(":", 2)
+        if len(parts) != 3:
+            await bot.answer_callback_query(call.id, "Invalid selection.")
+            return
+
+        _, quality, url = parts
+        if quality not in {"best", "2160", "1440", "1080", "720", "480", "360", "240", "144"}:
+            await bot.answer_callback_query(call.id, "Invalid quality.")
+            return
+
+        await bot.answer_callback_query(call.id, f"Selected {quality if quality == 'best' else quality + 'p'}")
+        await bot.edit_message_text(
+            f"🎬 <b>YouTube</b>\nQuality selected: <b>{escape(quality if quality == 'best' else quality + 'p')}</b>\n\n📥 Added to download queue.",
+            call.message.chat.id,
+            call.message.message_id,
+        )
+        await download_queue.put(
+            (call.message, url, False, False, False, None, None, quality)
+        )
+    except Exception as e:
+        logger.error("YouTube quality callback error: %s", e, exc_info=True)
+        await bot.answer_callback_query(call.id, "Could not start download.")
+
+
 @bot.message_handler(commands=["video"])
 async def handle_video_request(message):
     parts = message.text.split()
-    if len(parts) < 2:
-        await send_message(message.chat.id, "⚠️ Use: /video <YouTube URL> [quality]\\nQuality: best, 2160p, 1440p, 1080p, 720p, 480p, 360p, 240p, 144p")
-        return
     url = next((p for p in parts[1:] if p.startswith(("http://", "https://"))), None)
-    quality = next((p.lower() for p in parts[1:] if re.fullmatch(r"(best|\\d{3,4}p)", p.lower())), "best")
     if not url or not re.search(r"(youtube\\.com|youtu\\.be)", url, re.IGNORECASE):
         await send_message(message.chat.id, "⚠️ Please provide a valid YouTube URL.")
         return
-    if quality != "best":
-        quality = quality[:-1]
-    await download_queue.put((message, url, False, False, False, None, None, quality))
-    await send_message(message.chat.id, f"🎬 YouTube download added — quality: <b>{escape(quality)}</b>")
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    buttons = [
+        ("⚡ Best", "best"),
+        ("1080p", "1080"),
+        ("720p", "720"),
+        ("480p", "480"),
+        ("360p", "360"),
+        ("240p", "240"),
+        ("144p", "144"),
+    ]
+    for label, quality in buttons:
+        markup.add(types.InlineKeyboardButton(label, callback_data=f"ytq:{quality}:{url}"))
+
+    await bot.send_message(
+        message.chat.id,
+        "🎬 <b>Choose YouTube video quality:</b>\n\nSelect the quality you want to download.",
+        reply_markup=markup,
+    )
 
 
 @bot.message_handler(commands=["audio"])
