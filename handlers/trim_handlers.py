@@ -84,8 +84,15 @@ def download_media(url, is_audio=False):
             "merge_output_format": "mp4",
         })
 
-    # Node.js is the primary EJS runtime. Keep one fallback client only.
-    client_attempts = [None, ["web_embedded"]]
+    # Try clients that can expose downloadable formats without relying
+    # exclusively on the failing web_embedded JS challenge path.
+    # Each attempt is isolated so one client failure does not stop the others.
+    client_attempts = [
+        ["tv_simply"],
+        ["web_safari"],
+        ["web_embedded"],
+        None,
+    ]
     last_error = None
 
     for player_clients in client_attempts:
