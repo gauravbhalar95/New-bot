@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Union
 import yt_dlp
 from instagrapi import Client
 
-from config import DOWNLOAD_DIR, COOKIES_FILE
+from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
 from utils.logger import setup_logging
 
 
@@ -419,6 +419,133 @@ def process_instagram(
     except Exception as e:
         logger.exception("⚠️ Unexpected Instagram error: %s", e)
         return None, 0, str(e)
+
+
+
+
+def _instagram_login() -> Client:
+    """Create an authenticated Instagram client for story/profile requests."""
+    if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
+        raise RuntimeError(
+            "Instagram login is not configured. Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD."
+        )
+
+    client = Client()
+    client.delay_range = [1, 2]
+    client.read_timeout = 30
+    client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+    return client
+
+
+def _instagram_username_from_input(value: str) -> str:
+    """Extract a clean Instagram username from a username/profile/story input."""
+    value = value.strip().strip("/")
+    if value.startswith("@"):
+        value = value[1:]
+
+    if "instagram.com" in value.lower():
+        parsed = urlparse(value)
+        parts = [part for part in parsed.path.split("/") if part]
+        if not parts:
+            raise ValueError("Instagram username was not found in the URL.")
+
+        # /stories/<username>/... or /story/<username>/...
+        if parts[0].lower() in {"stories", "story"} and len(parts) >= 2:
+            value = parts[1]
+        else:
+            value = parts[0]
+
+    value = value.split("?")[0].split("#")[0].strip("@/")
+    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", value):
+        raise ValueError("Invalid Instagram username.")
+    return value
+
+
+def download_instagram_stories(value: str) -> list[str]:
+    """Download all currently available stories for an Instagram user."""
+    username = _instagram_username_from_input(value)
+    client = _instagram_login()
+
+    user_id = client.user_id_from_username(username)
+    stories = client.user_stories(user_id)
+
+    if not stories:
+        raise RuntimeError(f"No active stories found for @{username}.")
+
+    output_dir = Path(DOWNLOAD_DIR) / "story"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    downloaded = []
+
+    for index, story in enumerate(stories, start=1):
+        try:
+            path = client.story_download(
+                story.pk,
+                folder=str(output_dir),
+            )
+            if path and Path(path).is_file():
+                downloaded.append(str(path))
+                logger.info(
+                    "Instagram story %s/%s downloaded for @%s: %s",
+                    index, len(stories), username, path,
+                )
+        except Exception as story_error:
+            logger.warning(
+                "Failed to download story %s for @%s: %s",
+                getattr(story, "pk", "?"),
+                username,
+                story_error,
+            )
+
+    if not downloaded:
+        raise RuntimeError(f"Instagram stories for @{username} could not be downloaded.")
+
+    return downloaded
+
+
+def download_instagram_dp(value: str) -> str:
+    """Download the highest-resolution Instagram profile picture available."""
+    username = _instagram_username_from_input(value)
+    client = _instagram_login()
+    user = client.user_info_by_username(username)
+
+    image_url = getattr(user, "profile_pic_url_hd", None) or getattr(
+        user, "profile_pic_url", None
+    )
+    if not image_url:
+        raise RuntimeError(f"No profile picture URL found for @{username}.")
+
+    output_dir = Path(DOWNLOAD_DIR) / "dp"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"{username}_dp.jpg"
+
+    response = requests.get(
+        str(image_url),
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.instagram.com/",
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    extension = ".jpg"
+    if "png" in content_type:
+        extension = ".png"
+    elif "webp" in content_type:
+        extension = ".webp"
+    output = output.with_suffix(extension)
+
+    output.write_bytes(response.content)
+    if not output.is_file() or output.stat().st_size == 0:
+        raise RuntimeError("Downloaded profile picture is empty.")
+
+    logger.info(
+        "Instagram HD DP downloaded for @%s: %.2f MB",
+        username,
+        output.stat().st_size / (1024 ** 2),
+    )
+    return str(output)
 
 
 def cleanup_video(video_path: str) -> None:
