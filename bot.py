@@ -14,7 +14,7 @@ from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import process_instagram
+from handlers.instagram_handler import (\n    process_instagram,\n    download_instagram_stories,\n    download_instagram_dp,\n)
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
@@ -639,6 +639,109 @@ async def send_welcome(message):
         "• /trimAudio <URL> <Start> <End>"
     )
     await bot.send_message(message.chat.id, welcome_text)
+
+
+
+
+async def _send_instagram_files(message, paths, caption_prefix):
+    sent = 0
+    for path in paths:
+        try:
+            await bot.send_photo(
+                message.chat.id,
+                types.InputFile(path),
+                caption=caption_prefix if sent == 0 else None,
+            )
+            sent += 1
+        except Exception as send_error:
+            logger.warning("Instagram image send failed for %s: %s", path, send_error)
+            try:
+                await bot.send_document(
+                    message.chat.id,
+                    types.InputFile(path),
+                    caption=caption_prefix if sent == 0 else None,
+                )
+                sent += 1
+            except Exception:
+                logger.exception("Could not send Instagram file: %s", path)
+        finally:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                pass
+    return sent
+
+
+@bot.message_handler(commands=["story"])
+async def handle_instagram_story(message):
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        await send_message(
+            message.chat.id,
+            "⚠️ Use: <code>/story username</code> or <code>/story https://instagram.com/username/</code>",
+        )
+        return
+
+    target = parts[1].strip()
+    status = await send_message(message.chat.id, "📥 Fetching Instagram stories...")
+    try:
+        paths = await run_blocking(download_instagram_stories, target)
+        sent = await _send_instagram_files(
+            message,
+            paths,
+            "📸 Instagram Story",
+        )
+        if sent:
+            await send_message(message.chat.id, f"✅ Sent {sent} story item(s).")
+        else:
+            await send_message(message.chat.id, "❌ No story media could be sent.")
+    except Exception as e:
+        logger.error("Instagram story command error: %s", e, exc_info=True)
+        await send_message(message.chat.id, f"❌ Story download failed: {escape(str(e))}")
+    finally:
+        if status:
+            try:
+                await bot.delete_message(message.chat.id, status.message_id)
+            except Exception:
+                pass
+
+
+@bot.message_handler(commands=["dp"])
+async def handle_instagram_dp(message):
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2:
+        await send_message(
+            message.chat.id,
+            "⚠️ Use: <code>/dp username</code> or <code>/dp https://instagram.com/username/</code>",
+        )
+        return
+
+    target = parts[1].strip()
+    status = await send_message(message.chat.id, "🖼️ Fetching HD Instagram profile picture...")
+    path = None
+    try:
+        path = await run_blocking(download_instagram_dp, target)
+        await bot.send_photo(
+            message.chat.id,
+            types.InputFile(path),
+            caption="🖼️ Instagram HD profile picture",
+        )
+    except Exception as e:
+        logger.error("Instagram DP command error: %s", e, exc_info=True)
+        await send_message(message.chat.id, f"❌ DP download failed: {escape(str(e))}")
+    finally:
+        if status:
+            try:
+                await bot.delete_message(message.chat.id, status.message_id)
+            except Exception:
+                pass
+        if path:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                pass
 
 
 @bot.message_handler(commands=["cancel"])
