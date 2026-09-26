@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Union
 import yt_dlp
 from instagrapi import Client
 
-from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD
+from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID
 from utils.logger import setup_logging
 
 
@@ -424,18 +424,41 @@ def process_instagram(
 
 
 def _instagram_login() -> Client:
-    """Create an authenticated Instagram client for story/profile requests."""
-    if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
-        raise RuntimeError(
-            "Instagram login is not configured. Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD."
-        )
+    """Create an authenticated Instagram client for story/profile requests.
 
+    Prefer a session ID because password login may trigger Instagram 2FA/challenges
+    on cloud IPs. The session ID must be supplied as a Koyeb secret.
+    """
     client = Client()
     client.delay_range = [1, 2]
     client.read_timeout = 30
-    client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-    return client
 
+    if INSTAGRAM_SESSIONID:
+        try:
+            client.login_by_sessionid(INSTAGRAM_SESSIONID)
+            logger.info("Instagram authenticated using session ID.")
+            return client
+        except Exception as session_error:
+            logger.warning(
+                "Instagram session ID authentication failed: %s",
+                session_error,
+            )
+
+    if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
+        raise RuntimeError(
+            "Instagram authentication is not configured. Set INSTAGRAM_SESSIONID "
+            "or INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD."
+        )
+
+    try:
+        client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+        logger.info("Instagram authenticated using username/password.")
+        return client
+    except Exception as login_error:
+        raise RuntimeError(
+            "Instagram login failed. Instagram requested 2-step verification or "
+            "blocked this cloud login. Set a fresh INSTAGRAM_SESSIONID Koyeb secret."
+        ) from login_error
 
 def _instagram_username_from_input(value: str) -> str:
     """Extract a clean Instagram username from a username/profile/story input."""
