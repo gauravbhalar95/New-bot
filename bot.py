@@ -14,7 +14,11 @@ from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import (\n    process_instagram,\n    download_instagram_stories,\n    download_instagram_dp,\n)
+from handlers.instagram_handler import (
+    process_instagram,
+    download_instagram_stories,
+    download_instagram_dp,
+)
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
