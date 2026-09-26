@@ -634,6 +634,8 @@ async def send_welcome(message):
         "Commands:\n"
         "• Send one or multiple URLs\n"
         "• /audio <URL> - Extract audio\n"
+        "• /story <username> - Download active Instagram stories\n"
+        "• /dp <username> - Download Instagram HD profile picture\n"
         "• /cancel <ID> - Cancel a running download\n"
         "• /trim <URL> <Start> <End>\n"
         "• /trimAudio <URL> <Start> <End>"
