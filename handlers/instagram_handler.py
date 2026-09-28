@@ -62,25 +62,82 @@ def download_progress_hook(d: dict) -> None:
 
 
 def _download_image_instagrapi(url: str) -> list[Path]:
-    """Download Instagram photo/carousel media using instagrapi."""
+    """Download Instagram photo/carousel media using an authenticated client."""
     try:
-        client = Client()
-        client.delay_range = [1, 2]
-        client.read_timeout = 30
+        client = _instagram_login()
         media_pk = client.media_pk_from_url(url)
         media = client.media_info(media_pk)
         media_type = getattr(media, "media_type", None)
-        logger.info("Instagram image handler: media_pk=%s media_type=%s", media_pk, media_type)
+
+        logger.info(
+            "Instagram image handler: media_pk=%s media_type=%s",
+            media_pk,
+            media_type,
+        )
+
         if media_type == 1:
-            path = client.photo_download(media_pk, folder=DOWNLOAD_DIR, overwrite=True)
+            path = client.photo_download(
+                media_pk,
+                folder=DOWNLOAD_DIR,
+                overwrite=True,
+            )
             return [Path(path)] if path and Path(path).is_file() else []
+
         if media_type == 8:
-            paths = client.album_download(media_pk, folder=DOWNLOAD_DIR, overwrite=True)
-            return [Path(path) for path in paths if path and Path(path).is_file()]
+            # Download the carousel through instagrapi, then keep only image files.
+            paths = client.album_download(
+                media_pk,
+                folder=DOWNLOAD_DIR,
+                overwrite=True,
+            )
+            image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+            return [
+                Path(path)
+                for path in paths
+                if path
+                and Path(path).is_file()
+                and Path(path).suffix.lower() in image_extensions
+            ]
+
         return []
     except Exception as e:
         logger.warning("instagrapi image handler failed for %s: %s", url, e)
         return []
+
+
+def process_instagram_images(url: str) -> list[str]:
+    """Download image media from an Instagram post or carousel.
+
+    Videos in a mixed carousel are skipped. If authenticated instagrapi cannot
+    fetch the images, fall back to the existing cookie/HTML image extractor.
+    """
+    url = url.split("#")[0]
+    cookie_path = Path(COOKIES_FILE)
+
+    image_paths = _download_image_instagrapi(url)
+
+    if not image_paths:
+        try:
+            image_paths = _download_image_fallback(url, cookie_path)
+        except Exception as fallback_error:
+            logger.warning(
+                "Instagram image fallback failed for %s: %s",
+                url,
+                fallback_error,
+            )
+
+    if not image_paths:
+        raise RuntimeError(
+            "No Instagram images were found. The post may contain only video, "
+            "be private, or require a valid Instagram session/cookie."
+        )
+
+    logger.info(
+        "Instagram image download ready: %s image(s), %.2f MB total",
+        len(image_paths),
+        sum(path.stat().st_size for path in image_paths) / (1024 ** 2),
+    )
+    return [str(path) for path in image_paths]
 
 def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     """Download Instagram post images when the post has no video."""
