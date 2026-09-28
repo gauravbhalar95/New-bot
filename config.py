@@ -35,6 +35,18 @@ DEFAULT_ADMIN = ADMIN_IDS[0]
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "")
 INSTAGRAM_SESSIONID = os.getenv("INSTAGRAM_SESSIONID", "").strip()
+# Automatic Instagram session maintenance. The default refresh interval is
+# deliberately conservative to reduce unnecessary login/challenge requests.
+INSTAGRAM_AUTO_LOGIN = os.getenv("INSTAGRAM_AUTO_LOGIN", "true").strip().lower() not in {
+    "0", "false", "no", "off"
+}
+try:
+    INSTAGRAM_COOKIE_REFRESH_HOURS = max(
+        1,
+        int(os.getenv("INSTAGRAM_COOKIE_REFRESH_HOURS", "168"))
+    )
+except ValueError:
+    INSTAGRAM_COOKIE_REFRESH_HOURS = 168
 MEGA_EMAIL = os.getenv("MEGA_EMAIL", "")
 MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "")
 
