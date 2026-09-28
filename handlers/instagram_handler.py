@@ -15,6 +15,7 @@ import yt_dlp
 from instagrapi import Client
 
 from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID
+from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
 from utils.logger import setup_logging
 
 
@@ -489,54 +490,48 @@ def process_instagram(
 
 
 
-def _instagram_login() -> Client:
-    """Create or reuse an authenticated Instagram client.
+def refresh_instagram_session(force: bool = False) -> Client:
+    """Login to Instagram and persist the refreshed session/cookies.
 
-    A session ID is preferred for cloud deployments. When INSTAGRAM_SESSIONID
-    is configured, a rejected session is reported immediately instead of
-    falling back to password login (which can trigger repeated 400/2FA flows).
+    Order:
+      1. INSTAGRAM_SESSIONID environment secret.
+      2. Saved sessionid from cookies/instagram_cookies.txt.
+      3. Username/password login when no session is available.
+
+    A password challenge/2FA cannot be bypassed automatically. In that case
+    the current valid session should be supplied through INSTAGRAM_SESSIONID.
     """
     global _INSTAGRAM_CLIENT
-
-    if _INSTAGRAM_CLIENT is not None:
-        return _INSTAGRAM_CLIENT
 
     client = Client()
     client.delay_range = [1, 2]
     client.read_timeout = 30
 
-    # Prefer the host secret. If it is not configured, also try the
-    # sessionid stored in the existing Netscape Instagram cookie file.
-    session_id = INSTAGRAM_SESSIONID
-    if not session_id:
-        try:
-            import http.cookiejar
-            cookie_path = Path(COOKIES_FILE)
-            if cookie_path.is_file():
-                jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
-                jar.load(ignore_discard=True, ignore_expires=True)
-                session_cookie = next(
-                    (cookie.value for cookie in jar if cookie.name == "sessionid"),
-                    "",
-                )
-                if session_cookie:
-                    session_id = session_cookie.strip()
-                    logger.info("Instagram session ID loaded from cookie file.")
-        except Exception as cookie_error:
-            logger.debug("Could not load Instagram session ID from cookie file: {}", cookie_error)
+    session_id = INSTAGRAM_SESSIONID or get_saved_instagram_sessionid()
 
     if session_id:
         try:
             client.login_by_sessionid(session_id)
+            if save_instagram_client_state(client):
+                logger.info("Instagram session authenticated and cookies refreshed.")
+            else:
+                logger.warning(
+                    "Instagram session authenticated, but cookie persistence failed."
+                )
             _INSTAGRAM_CLIENT = client
-            logger.info("Instagram authenticated using session ID.")
             return client
         except Exception as session_error:
-            raise RuntimeError(
-                "Instagram session ID was rejected by Instagram. "
-                "Refresh the Instagram cookies/session and redeploy. "
-                "Password login is not used when a session ID is available."
-            ) from session_error
+            logger.warning(
+                "Saved Instagram session is no longer valid: %s",
+                session_error,
+            )
+            if INSTAGRAM_SESSIONID and not force:
+                # A host-provided session is authoritative. Do not immediately
+                # start password login and trigger another Instagram challenge.
+                raise RuntimeError(
+                    "INSTAGRAM_SESSIONID was rejected by Instagram. "
+                    "Update the Koyeb secret with a fresh session ID."
+                ) from session_error
 
     if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
         raise RuntimeError(
@@ -546,15 +541,33 @@ def _instagram_login() -> Client:
 
     try:
         client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-        _INSTAGRAM_CLIENT = client
-        logger.info("Instagram authenticated using username/password.")
-        return client
     except Exception as login_error:
         raise RuntimeError(
-            "Instagram password login failed. Instagram may have requested "
-            "2-step verification or blocked this cloud login. "
-            "Set a fresh INSTAGRAM_SESSIONID Koyeb secret."
+            "Instagram automatic login failed. Instagram may require 2-step "
+            "verification/challenge. A fresh INSTAGRAM_SESSIONID is recommended."
         ) from login_error
+
+    if save_instagram_client_state(client):
+        logger.info(
+            "Instagram automatic login succeeded; cookies/session state refreshed."
+        )
+    else:
+        logger.warning(
+            "Instagram automatic login succeeded, but cookie persistence failed."
+        )
+
+    _INSTAGRAM_CLIENT = client
+    return client
+
+
+def _instagram_login() -> Client:
+    """Return the cached Instagram client, creating it automatically if needed."""
+    global _INSTAGRAM_CLIENT
+
+    if _INSTAGRAM_CLIENT is not None:
+        return _INSTAGRAM_CLIENT
+
+    return refresh_instagram_session()
 
 def _instagram_username_from_input(value: str) -> str:
     """Extract a clean Instagram username from a username/profile/story input."""
