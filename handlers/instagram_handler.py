@@ -522,7 +522,7 @@ def refresh_instagram_session(force: bool = False) -> Client:
             return client
         except Exception as session_error:
             logger.warning(
-                "Saved Instagram session is no longer valid: %s",
+                "Saved Instagram session is no longer valid: {}",
                 session_error,
             )
             if INSTAGRAM_SESSIONID and not force:
