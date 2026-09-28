@@ -505,17 +505,37 @@ def _instagram_login() -> Client:
     client.delay_range = [1, 2]
     client.read_timeout = 30
 
-    if INSTAGRAM_SESSIONID:
+    # Prefer the host secret. If it is not configured, also try the
+    # sessionid stored in the existing Netscape Instagram cookie file.
+    session_id = INSTAGRAM_SESSIONID
+    if not session_id:
         try:
-            client.login_by_sessionid(INSTAGRAM_SESSIONID)
+            import http.cookiejar
+            cookie_path = Path(COOKIES_FILE)
+            if cookie_path.is_file():
+                jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
+                jar.load(ignore_discard=True, ignore_expires=True)
+                session_cookie = next(
+                    (cookie.value for cookie in jar if cookie.name == "sessionid"),
+                    "",
+                )
+                if session_cookie:
+                    session_id = session_cookie.strip()
+                    logger.info("Instagram session ID loaded from cookie file.")
+        except Exception as cookie_error:
+            logger.debug("Could not load Instagram session ID from cookie file: {}", cookie_error)
+
+    if session_id:
+        try:
+            client.login_by_sessionid(session_id)
             _INSTAGRAM_CLIENT = client
             logger.info("Instagram authenticated using session ID.")
             return client
         except Exception as session_error:
             raise RuntimeError(
-                "INSTAGRAM_SESSIONID was rejected by Instagram. "
-                "Create a fresh session ID and update the Koyeb secret. "
-                "Password login is intentionally disabled when a session ID is configured."
+                "Instagram session ID was rejected by Instagram. "
+                "Refresh the Instagram cookies/session and redeploy. "
+                "Password login is not used when a session ID is available."
             ) from session_error
 
     if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
