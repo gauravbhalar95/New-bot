@@ -25,36 +25,38 @@ def rename_file(old_path, new_path):
         logging.error(f"Failed to rename {old_path} ➔ {new_path}: {e}")
 
 def rename_files_in_directory(directory):
-    """Rename all files in the specified directory sequentially."""
+    """Sanitize existing filenames without replacing them with generic names.
+
+    The original filename/title is preserved. This function only changes a name
+    when it contains filesystem-invalid characters or is otherwise unsafe.
+    """
     if not os.path.exists(directory):
         logging.warning(f"Directory not found: {directory}")
         return {}
 
     renamed_files = {}
-    files = sorted([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+    files = sorted(
+        f for f in os.listdir(directory)
+        if os.path.isfile(os.path.join(directory, f))
+    )
 
     if not files:
         logging.info(f"No files found in directory: {directory}")
         return renamed_files
 
-    for index, filename in enumerate(files, start=1):
+    for filename in files:
         old_path = os.path.join(directory, filename)
-        _, ext = os.path.splitext(filename)
 
-        if not ext:
-            ext = get_file_extension(old_path)
-            if not ext:
-                ext = ".unknown"
-
-        new_filename = f"file{index}{ext}"
-        new_filename = sanitize_filename(new_filename)  # Sanitize filename
+        # Keep the original basename and extension; sanitize only invalid
+        # filesystem characters. Never rename files to file1/file2/etc.
+        new_filename = sanitize_filename(filename)
         new_path = os.path.join(directory, new_filename)
 
         if old_path != new_path:
             rename_file(old_path, new_path)
             renamed_files[filename] = new_filename
         else:
-            logging.info(f"Skipping (already renamed): {old_path}")
+            logging.info(f"Keeping original filename: {old_path}")
 
     return renamed_files
 
