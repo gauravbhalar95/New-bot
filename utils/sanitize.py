@@ -18,8 +18,12 @@ def sanitize_filename(filename: str, max_length: int = 250) -> str:
     Returns:
         str: Sanitized and trimmed filename.
     """
+    # Preserve Unicode characters from the original title/filename.
+    # Only replace characters that are invalid in filesystem names.
     clean_name = re.sub(r'[\\/*?:"<>|]', '_', filename).strip()
-    clean_name = re.sub(r'[^\x00-\x7F]+', '', clean_name)
+    clean_name = clean_name.rstrip(". ")
+    if not clean_name:
+        clean_name = "download"
     base, ext = os.path.splitext(clean_name)
     if len(base) > max_length - len(ext):
         base = base[:max_length - len(ext)]
