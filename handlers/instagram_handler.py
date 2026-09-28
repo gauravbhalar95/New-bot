@@ -83,6 +83,25 @@ def _rename_instagram_media_files(paths, username: str, identifier: str) -> list
     return renamed
 
 
+def _get_instagram_media_identity(url: str) -> tuple[str, str]:
+    """Fetch the Instagram username and public media identifier for naming."""
+    fallback_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
+    username = "instagram"
+    identifier = fallback_id
+    try:
+        client = _instagram_login()
+        media_pk = client.media_pk_from_url(url)
+        media = client.media_info(media_pk)
+        username = (
+            getattr(getattr(media, "user", None), "username", None)
+            or username
+        )
+        identifier = getattr(media, "code", None) or str(media_pk) or identifier
+    except Exception as metadata_error:
+        logger.debug("Instagram media identity lookup failed: {}", metadata_error)
+    return username, identifier
+
+
 def is_valid_url(url: str) -> bool:
     try:
         result = urlparse(url)
@@ -268,16 +287,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
         logger.warning("Instagram image fallback found no image URL for {}", url)
         return []
 
-    post_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
-    username = "instagram"
-    try:
-        client = _instagram_login()
-        media_pk = client.media_pk_from_url(url)
-        media = client.media_info(media_pk)
-        username = getattr(getattr(media, "user", None), "username", None) or username
-        post_id = getattr(media, "code", None) or post_id
-    except Exception as metadata_error:
-        logger.debug("Could not read Instagram filename metadata: {}", metadata_error)
+    username, post_id = _get_instagram_media_identity(url)
     downloaded = []
 
     for index, image_url in enumerate(unique_urls, start=1):
@@ -498,8 +508,16 @@ def process_instagram(
             return [str(p) for p in video_paths], int(total_size), None
 
         video_path = video_paths[0]
+        username, media_id = _get_instagram_media_identity(url)
+        renamed_video = _rename_instagram_media_files(
+            [video_path], username, media_id
+        )
+        if renamed_video:
+            video_path = renamed_video[0]
+
         logger.info(
-            "✅ Final Instagram video ready: %s (%.2f MB)",
+            "✅ Final Instagram video ready for @{}: {} (%.2f MB)",
+            username,
             video_path,
             video_path.stat().st_size / (1024 ** 2),
         )
@@ -687,7 +705,12 @@ def download_instagram_stories(value: str) -> list[str]:
                 folder=str(output_dir),
             )
             if path and Path(path).is_file():
-                downloaded.append(str(path))
+                story_path = Path(path)
+                story_id = getattr(story, "pk", None) or index
+                renamed_story = _rename_instagram_media_files(
+                    [story_path], username, f"story_{story_id}"
+                )
+                downloaded.append(str(renamed_story[0] if renamed_story else story_path))
                 logger.info(
                     "Instagram story %s/%s downloaded for @%s: %s",
                     index, len(stories), username, path,
