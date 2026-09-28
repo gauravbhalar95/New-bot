@@ -88,7 +88,7 @@ def check_memory_usage():
         import psutil
         memory_usage = psutil.Process(os.getpid()).memory_info().rss
         logger.debug(
-            "[%s] Current memory usage: %.2f MB",
+            "[{}] Current memory usage: {:.2f} MB",
             get_current_utc(),
             memory_usage / 1024 / 1024,
         )
@@ -469,7 +469,7 @@ async def process_download(
                 except Exception as e:
                     last_error = str(e)
                     logger.warning(
-                        "Download attempt %s/%s failed: %s",
+                        "Download attempt {}/{} failed: {}",
                         attempt, MAX_DOWNLOAD_RETRIES, e,
                         exc_info=True,
                     )
@@ -493,9 +493,20 @@ async def process_download(
                 )
                 return
 
+            # Handlers may return:
+            #   - a single file path
+            #   - a list of file paths (Instagram image/carousel)
+            #   - (path_or_paths, size, error) tuples
             if isinstance(result, tuple):
                 first = result[0] if result else None
-                file_paths = first if isinstance(first, list) else ([first] if first else [])
+                if isinstance(first, (list, tuple)):
+                    file_paths = list(first)
+                elif first:
+                    file_paths = [first]
+                else:
+                    file_paths = []
+            elif isinstance(result, (list, tuple)):
+                file_paths = list(result)
             else:
                 file_paths = [result]
 
@@ -568,7 +579,7 @@ async def process_download(
         logger.info("Download task cancelled: %s", download_id)
         raise
     except Exception as e:
-        logger.error("Processing error: %s", e, exc_info=True)
+        logger.error("Processing error: {}", e, exc_info=True)
         await send_message(message.chat.id, f"❌ An error occurred: {escape(str(e))}")
     finally:
         if progress_task:
@@ -665,7 +676,7 @@ async def start_background_tasks():
     ]
 
     worker_count = min(3, os.cpu_count() or 1)
-    logger.info("Starting %s async workers...", worker_count)
+    logger.info("Starting {} async workers...", worker_count)
 
     for index in range(worker_count):
         tasks.append(
