@@ -28,6 +28,10 @@ logger.add(
 
 SUPPORTED_DOMAINS = ["instagram.com"]
 
+# Reuse one authenticated client per worker process. This avoids repeated
+# Instagram login attempts for a single download/retry cycle.
+_INSTAGRAM_CLIENT: Optional[Client] = None
+
 Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
 
@@ -101,7 +105,7 @@ def _download_image_instagrapi(url: str) -> list[Path]:
 
         return []
     except Exception as e:
-        logger.warning("instagrapi image handler failed for %s: %s", url, e)
+        logger.warning("instagrapi image handler failed for {}: {}", url, e)
         return []
 
 
@@ -159,7 +163,12 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
         jar.load(ignore_discard=True, ignore_expires=True)
         cookies = {cookie.name: cookie.value for cookie in jar}
     except Exception as cookie_error:
-        logger.debug("Instagram image fallback cookie load failed: %s", cookie_error)
+        logger.debug("Instagram image fallback cookie load failed: {}", cookie_error)
+
+    # If the host only has INSTAGRAM_SESSIONID configured, use it directly
+    # for the web request as well. Do not require a password login.
+    if INSTAGRAM_SESSIONID:
+        cookies["sessionid"] = INSTAGRAM_SESSIONID
 
     response = requests.get(
         url,
@@ -203,7 +212,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
             unique_urls.append(image_url)
 
     if not unique_urls:
-        logger.warning("Instagram image fallback found no image URL for %s", url)
+        logger.warning("Instagram image fallback found no image URL for {}", url)
         return []
 
     post_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
@@ -239,7 +248,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
 
         except Exception as image_error:
             logger.warning(
-                "Instagram image fallback failed for %s: %s",
+                "Instagram image fallback failed for {}: {}",
                 image_url,
                 image_error,
             )
@@ -481,11 +490,17 @@ def process_instagram(
 
 
 def _instagram_login() -> Client:
-    """Create an authenticated Instagram client for story/profile requests.
+    """Create or reuse an authenticated Instagram client.
 
-    Prefer a session ID because password login may trigger Instagram 2FA/challenges
-    on cloud IPs. The session ID must be supplied as a Koyeb secret.
+    A session ID is preferred for cloud deployments. When INSTAGRAM_SESSIONID
+    is configured, a rejected session is reported immediately instead of
+    falling back to password login (which can trigger repeated 400/2FA flows).
     """
+    global _INSTAGRAM_CLIENT
+
+    if _INSTAGRAM_CLIENT is not None:
+        return _INSTAGRAM_CLIENT
+
     client = Client()
     client.delay_range = [1, 2]
     client.read_timeout = 30
@@ -493,13 +508,15 @@ def _instagram_login() -> Client:
     if INSTAGRAM_SESSIONID:
         try:
             client.login_by_sessionid(INSTAGRAM_SESSIONID)
+            _INSTAGRAM_CLIENT = client
             logger.info("Instagram authenticated using session ID.")
             return client
         except Exception as session_error:
-            logger.warning(
-                "Instagram session ID authentication failed: %s",
-                session_error,
-            )
+            raise RuntimeError(
+                "INSTAGRAM_SESSIONID was rejected by Instagram. "
+                "Create a fresh session ID and update the Koyeb secret. "
+                "Password login is intentionally disabled when a session ID is configured."
+            ) from session_error
 
     if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
         raise RuntimeError(
@@ -509,12 +526,14 @@ def _instagram_login() -> Client:
 
     try:
         client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
+        _INSTAGRAM_CLIENT = client
         logger.info("Instagram authenticated using username/password.")
         return client
     except Exception as login_error:
         raise RuntimeError(
-            "Instagram login failed. Instagram requested 2-step verification or "
-            "blocked this cloud login. Set a fresh INSTAGRAM_SESSIONID Koyeb secret."
+            "Instagram password login failed. Instagram may have requested "
+            "2-step verification or blocked this cloud login. "
+            "Set a fresh INSTAGRAM_SESSIONID Koyeb secret."
         ) from login_error
 
 def _instagram_username_from_input(value: str) -> str:
