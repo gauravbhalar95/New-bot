@@ -491,15 +491,16 @@ def process_instagram(
 
 
 def refresh_instagram_session(force: bool = False) -> Client:
-    """Login to Instagram and persist the refreshed session/cookies.
+    """Automatically authenticate Instagram and refresh the local session.
 
-    Order:
-      1. INSTAGRAM_SESSIONID environment secret.
-      2. Saved sessionid from cookies/instagram_cookies.txt.
-      3. Username/password login when no session is available.
+    Authentication order:
+      1. Saved local session cookie.
+      2. INSTAGRAM_SESSIONID environment secret.
+      3. Username/password automatic login.
 
-    A password challenge/2FA cannot be bypassed automatically. In that case
-    the current valid session should be supplied through INSTAGRAM_SESSIONID.
+    If a session expires, the function automatically falls back to password
+    login and persists the newly issued cookies/session. A 2FA/challenge
+    cannot be bypassed and is reported without crashing the bot.
     """
     global _INSTAGRAM_CLIENT
 
@@ -507,36 +508,46 @@ def refresh_instagram_session(force: bool = False) -> Client:
     client.delay_range = [1, 2]
     client.read_timeout = 30
 
-    session_id = INSTAGRAM_SESSIONID or get_saved_instagram_sessionid()
+    # Prefer a locally refreshed session over a potentially stale deployment
+    # secret. This is important after an automatic cookie refresh.
+    saved_session = get_saved_instagram_sessionid()
+    configured_session = INSTAGRAM_SESSIONID
 
-    if session_id:
+    session_candidates = []
+    if saved_session:
+        session_candidates.append(("saved cookie", saved_session))
+    if configured_session and configured_session != saved_session:
+        session_candidates.append(("Koyeb secret", configured_session))
+
+    for source, session_id in session_candidates:
         try:
             client.login_by_sessionid(session_id)
             if save_instagram_client_state(client):
-                logger.info("Instagram session authenticated and cookies refreshed.")
+                logger.info(
+                    "Instagram authenticated using %s; cookies refreshed.",
+                    source,
+                )
             else:
                 logger.warning(
-                    "Instagram session authenticated, but cookie persistence failed."
+                    "Instagram authenticated using %s, but cookie persistence failed.",
+                    source,
                 )
             _INSTAGRAM_CLIENT = client
             return client
         except Exception as session_error:
             logger.warning(
-                "Saved Instagram session is no longer valid: {}",
+                "Instagram {} session is invalid; trying automatic login: {}",
+                source,
                 session_error,
             )
-            if INSTAGRAM_SESSIONID and not force:
-                # A host-provided session is authoritative. Do not immediately
-                # start password login and trigger another Instagram challenge.
-                raise RuntimeError(
-                    "INSTAGRAM_SESSIONID was rejected by Instagram. "
-                    "Update the Koyeb secret with a fresh session ID."
-                ) from session_error
 
+    # No usable session remains. Automatically use username/password if
+    # configured. This also lets a stale INSTAGRAM_SESSIONID recover.
     if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
         raise RuntimeError(
-            "Instagram authentication is not configured. Set INSTAGRAM_SESSIONID "
-            "or INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD."
+            "Instagram session expired and automatic login credentials are not "
+            "configured. Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD, or "
+            "provide a fresh INSTAGRAM_SESSIONID."
         )
 
     try:
@@ -544,12 +555,13 @@ def refresh_instagram_session(force: bool = False) -> Client:
     except Exception as login_error:
         raise RuntimeError(
             "Instagram automatic login failed. Instagram may require 2-step "
-            "verification/challenge. A fresh INSTAGRAM_SESSIONID is recommended."
+            "verification/challenge. Complete the login on a trusted device "
+            "and provide a fresh INSTAGRAM_SESSIONID."
         ) from login_error
 
     if save_instagram_client_state(client):
         logger.info(
-            "Instagram automatic login succeeded; cookies/session state refreshed."
+            "Instagram automatic login succeeded; new cookies/session saved."
         )
     else:
         logger.warning(
@@ -558,7 +570,6 @@ def refresh_instagram_session(force: bool = False) -> Client:
 
     _INSTAGRAM_CLIENT = client
     return client
-
 
 def _instagram_login() -> Client:
     """Return the cached Instagram client, creating it automatically if needed."""
