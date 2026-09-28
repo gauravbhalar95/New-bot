@@ -16,6 +16,7 @@ from config import API_TOKEN, TELEGRAM_FILE_LIMIT
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import (
     process_instagram,
+    process_instagram_images,
     download_instagram_stories,
     download_instagram_dp,
 )
@@ -364,6 +365,7 @@ async def process_download(
     start_time=None,
     end_time=None,
     quality=None,
+    is_image=False,
 ):
     download_id = f"{message.chat.id}_{time.time_ns()}"
     progress_message = None
@@ -381,7 +383,9 @@ async def process_download(
         active_tasks[download_id] = asyncio.current_task()
 
         async with download_semaphore:
-            if is_audio:
+            if is_image:
+                request_type = "Image Download"
+            elif is_audio:
                 request_type = "Audio Download"
             elif is_video_trim:
                 request_type = "Video Trimming"
@@ -430,7 +434,15 @@ async def process_download(
                     return
 
                 try:
-                    if is_video_trim:
+                    if is_image:
+                        if platform != "Instagram":
+                            last_error = "Image download is currently supported for Instagram links only."
+                            result = None
+                        else:
+                            result = await run_blocking(
+                                process_instagram_images, url
+                            )
+                    elif is_video_trim:
                         result = await run_blocking(
                             process_video_trim, url, start_time, end_time, quality
                         )
@@ -784,9 +796,32 @@ def build_media_action_keyboard(url, chat_id, user_id):
     cleanup_inline_requests()
     token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")
     inline_requests[token] = {"url": url, "chat_id": chat_id, "user_id": user_id, "created_at": time.time()}
+
     markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(types.InlineKeyboardButton("🎥 Video", callback_data=f"act:video:{token}"), types.InlineKeyboardButton("🎵 Audio", callback_data=f"act:audio:{token}"))
-    markup.add(types.InlineKeyboardButton("✂️ Trim Video", callback_data=f"act:trimv:{token}"), types.InlineKeyboardButton("✂️ Trim Audio", callback_data=f"act:trima:{token}"))
+    markup.add(
+        types.InlineKeyboardButton("🎥 Video", callback_data=f"act:video:{token}"),
+        types.InlineKeyboardButton("🎵 Audio", callback_data=f"act:audio:{token}"),
+    )
+
+    # Image downloads are currently implemented for Instagram posts/carousels.
+    if detect_platform(url) == "Instagram":
+        markup.add(
+            types.InlineKeyboardButton(
+                "🖼️ Image",
+                callback_data=f"act:image:{token}",
+            )
+        )
+
+    markup.add(
+        types.InlineKeyboardButton(
+            "✂️ Trim Video",
+            callback_data=f"act:trimv:{token}",
+        ),
+        types.InlineKeyboardButton(
+            "✂️ Trim Audio",
+            callback_data=f"act:trima:{token}",
+        ),
+    )
     return markup
 
 
@@ -807,7 +842,23 @@ async def handle_media_action_callback(call):
             await bot.edit_message_text(f"✂️ <b>{kind} trimming</b>\n\nSend start and end time in one message:\n<code>00:30 01:45</code>\n\nOr:\n<code>00:00:30 00:01:45</code>", call.message.chat.id, call.message.message_id)
             return
         await bot.answer_callback_query(call.id, "Selected")
-        if action == "audio":
+        if action == "image":
+            if detect_platform(url) != "Instagram":
+                await bot.edit_message_text(
+                    "⚠️ Image download is currently supported for Instagram links only.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                )
+                return
+            await bot.edit_message_text(
+                "🖼️ Added to image queue.",
+                call.message.chat.id,
+                call.message.message_id,
+            )
+            await download_queue.put(
+                (call.message, url, False, False, False, None, None, None, True)
+            )
+        elif action == "audio":
             await bot.edit_message_text("🎵 Added to audio queue.", call.message.chat.id, call.message.message_id)
             await download_queue.put((call.message, url, True, False, False, None, None, None))
         elif detect_platform(url) == "YouTube":
