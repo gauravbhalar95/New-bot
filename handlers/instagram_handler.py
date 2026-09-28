@@ -17,6 +17,7 @@ from instagrapi import Client
 from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID
 from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
 from utils.logger import setup_logging
+from utils.sanitize import sanitize_filename
 
 
 logger = setup_logging(logging.DEBUG)
@@ -34,6 +35,52 @@ SUPPORTED_DOMAINS = ["instagram.com"]
 _INSTAGRAM_CLIENT: Optional[Client] = None
 
 Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
+
+
+def _rename_instagram_media_files(paths, username: str, identifier: str) -> list[Path]:
+    """Give downloaded Instagram media stable, meaningful filenames.
+
+    Instagram does not expose the uploader's local/original filename, so use
+    the public username plus post shortcode/media ID instead. Existing file
+    extensions are preserved and carousel items receive _1, _2, ... suffixes.
+    """
+    clean_username = sanitize_filename(str(username).strip().lstrip("@"), 80)
+    clean_identifier = sanitize_filename(str(identifier).strip(), 100)
+    if not clean_identifier:
+        clean_identifier = "post"
+
+    renamed = []
+    used = set()
+    for index, path_value in enumerate(paths, start=1):
+        path = Path(path_value)
+        if not path.is_file():
+            continue
+
+        suffix = path.suffix.lower() or ".jpg"
+        stem = f"{clean_username} - {clean_identifier}"
+        if len(paths) > 1:
+            stem += f"_{index}"
+
+        target = path.with_name(sanitize_filename(stem + suffix, 240))
+        counter = 2
+        while target.exists() and target.resolve() != path.resolve():
+            target = path.with_name(
+                sanitize_filename(f"{stem}_{counter}{suffix}", 240)
+            )
+            counter += 1
+
+        try:
+            if target.resolve() != path.resolve():
+                path.replace(target)
+            target = target
+            if str(target) not in used:
+                renamed.append(target)
+                used.add(str(target))
+        except OSError as rename_error:
+            logger.warning("Could not rename Instagram media {}: {}", path, rename_error)
+            renamed.append(path)
+
+    return renamed
 
 
 def is_valid_url(url: str) -> bool:
@@ -73,6 +120,9 @@ def _download_image_instagrapi(url: str) -> list[Path]:
         media_pk = client.media_pk_from_url(url)
         media = client.media_info(media_pk)
         media_type = getattr(media, "media_type", None)
+        media_user = getattr(getattr(media, "user", None), "username", None)
+        username = media_user or "instagram"
+        identifier = getattr(media, "code", None) or str(media_pk)
 
         logger.info(
             "Instagram image handler: media_pk=%s media_type=%s",
@@ -86,7 +136,8 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 folder=DOWNLOAD_DIR,
                 overwrite=True,
             )
-            return [Path(path)] if path and Path(path).is_file() else []
+            paths = [Path(path)] if path and Path(path).is_file() else []
+            return _rename_instagram_media_files(paths, username, identifier)
 
         if media_type == 8:
             # Download the carousel through instagrapi, then keep only image files.
@@ -96,13 +147,14 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 overwrite=True,
             )
             image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-            return [
+            image_paths = [
                 Path(path)
                 for path in paths
                 if path
                 and Path(path).is_file()
                 and Path(path).suffix.lower() in image_extensions
             ]
+            return _rename_instagram_media_files(image_paths, username, identifier)
 
         return []
     except Exception as e:
@@ -217,6 +269,15 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
         return []
 
     post_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
+    username = "instagram"
+    try:
+        client = _instagram_login()
+        media_pk = client.media_pk_from_url(url)
+        media = client.media_info(media_pk)
+        username = getattr(getattr(media, "user", None), "username", None) or username
+        post_id = getattr(media, "code", None) or post_id
+    except Exception as metadata_error:
+        logger.debug("Could not read Instagram filename metadata: {}", metadata_error)
     downloaded = []
 
     for index, image_url in enumerate(unique_urls, start=1):
@@ -254,7 +315,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
                 image_error,
             )
 
-    return downloaded
+    return _rename_instagram_media_files(downloaded, username, post_id)
 
 
 def _get_ffmpeg_path() -> Optional[str]:
