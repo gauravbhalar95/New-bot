@@ -636,7 +636,7 @@ async def instagram_cookie_refresh_task():
         try:
             await asyncio.to_thread(refresh_instagram_session)
             logger.info(
-                "Instagram automatic session refresh completed; next refresh in %s hours.",
+                "Instagram automatic session refresh completed; next refresh in {} hours.",
                 INSTAGRAM_COOKIE_REFRESH_HOURS,
             )
         except asyncio.CancelledError:
@@ -644,7 +644,7 @@ async def instagram_cookie_refresh_task():
         except Exception as error:
             # Do not restart the whole bot if Instagram requires a challenge.
             logger.warning(
-                "Instagram automatic session refresh failed: %s",
+                "Instagram automatic session refresh failed: {}",
                 error,
             )
 
