@@ -12,13 +12,14 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import (
     process_instagram,
     process_instagram_images,
     download_instagram_stories,
     download_instagram_dp,
+    refresh_instagram_session,
 )
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
@@ -623,9 +624,45 @@ async def cleanup_files():
             await asyncio.sleep(60)
 
 
+async def instagram_cookie_refresh_task():
+    """Keep the Instagram session/cookie store fresh without blocking the bot."""
+    if not INSTAGRAM_AUTO_LOGIN:
+        logger.info("Instagram automatic login/refresh is disabled.")
+        return
+
+    interval = INSTAGRAM_COOKIE_REFRESH_HOURS * 60 * 60
+
+    while True:
+        try:
+            await asyncio.to_thread(refresh_instagram_session)
+            logger.info(
+                "Instagram automatic session refresh completed; next refresh in %s hours.",
+                INSTAGRAM_COOKIE_REFRESH_HOURS,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            # Do not restart the whole bot if Instagram requires a challenge.
+            logger.warning(
+                "Instagram automatic session refresh failed: %s",
+                error,
+            )
+
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            raise
+
+
 async def start_background_tasks():
     logger.info("Starting async background tasks...")
-    tasks = [asyncio.create_task(cleanup_files(), name="cleanup")]
+    tasks = [
+        asyncio.create_task(cleanup_files(), name="cleanup"),
+        asyncio.create_task(
+            instagram_cookie_refresh_task(),
+            name="instagram-cookie-refresh",
+        ),
+    ]
 
     worker_count = min(3, os.cpu_count() or 1)
     logger.info("Starting %s async workers...", worker_count)
