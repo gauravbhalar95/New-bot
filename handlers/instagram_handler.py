@@ -133,52 +133,88 @@ def download_progress_hook(d: dict) -> None:
 
 
 def _download_image_instagrapi(url: str) -> list[Path]:
-    """Download Instagram photo/carousel media using an authenticated client."""
-    try:
-        client = _instagram_login()
-        media_pk = client.media_pk_from_url(url)
-        media = client.media_info(media_pk)
-        media_type = getattr(media, "media_type", None)
-        media_user = getattr(getattr(media, "user", None), "username", None)
-        username = media_user or "instagram"
-        identifier = getattr(media, "code", None) or str(media_pk)
+    """Download Instagram photo/carousel media with one session-recovery retry."""
+    global _INSTAGRAM_CLIENT
 
-        logger.info(
-            "Instagram image handler: media_pk=%s media_type=%s",
-            media_pk,
-            media_type,
-        )
+    last_error = None
+    for attempt in range(1, 3):
+        try:
+            client = _instagram_login()
+            media_pk = client.media_pk_from_url(url)
+            media = client.media_info(media_pk)
+            media_type = getattr(media, "media_type", None)
+            media_user = getattr(getattr(media, "user", None), "username", None)
+            username = media_user or "instagram"
+            identifier = getattr(media, "code", None) or str(media_pk)
 
-        if media_type == 1:
-            path = client.photo_download(
+            logger.info(
+                "Instagram image handler: media_pk=%s media_type=%s",
                 media_pk,
-                folder=DOWNLOAD_DIR,
-                overwrite=True,
+                media_type,
             )
-            paths = [Path(path)] if path and Path(path).is_file() else []
-            return _rename_instagram_media_files(paths, username, identifier)
 
-        if media_type == 8:
-            # Download the carousel through instagrapi, then keep only image files.
-            paths = client.album_download(
-                media_pk,
-                folder=DOWNLOAD_DIR,
-                overwrite=True,
+            if media_type == 1:
+                path = client.photo_download(
+                    media_pk,
+                    folder=DOWNLOAD_DIR,
+                    overwrite=True,
+                )
+                paths = [Path(path)] if path and Path(path).is_file() else []
+                return _rename_instagram_media_files(paths, username, identifier)
+
+            if media_type == 8:
+                paths = client.album_download(
+                    media_pk,
+                    folder=DOWNLOAD_DIR,
+                    overwrite=True,
+                )
+                image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+                image_paths = [
+                    Path(path)
+                    for path in paths
+                    if path
+                    and Path(path).is_file()
+                    and Path(path).suffix.lower() in image_extensions
+                ]
+                return _rename_instagram_media_files(image_paths, username, identifier)
+
+            return []
+        except Exception as e:
+            last_error = e
+            error_text = str(e).lower()
+            recoverable = any(
+                marker in error_text
+                for marker in (
+                    "401", "403", "forbidden", "unauthorized",
+                    "exceeded 30 redirects", "login_required",
+                    "checkpoint_required", "challenge_required",
+                )
             )
-            image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-            image_paths = [
-                Path(path)
-                for path in paths
-                if path
-                and Path(path).is_file()
-                and Path(path).suffix.lower() in image_extensions
-            ]
-            return _rename_instagram_media_files(image_paths, username, identifier)
+            logger.warning(
+                "instagrapi image handler attempt %s/2 failed for {}: {}",
+                attempt,
+                url,
+                e,
+            )
+            if attempt == 1 and recoverable:
+                # The cached client can remain alive even after Instagram has
+                # invalidated its session. Force a fresh password login instead
+                # of reusing the same stale session/cookie.
+                try:
+                    _INSTAGRAM_CLIENT = None
+                    _instagram_login(force=True)
+                    logger.info("Instagram image session refreshed; retrying once.")
+                    continue
+                except Exception as refresh_error:
+                    last_error = refresh_error
+                    logger.warning(
+                        "Instagram image session refresh failed: {}",
+                        refresh_error,
+                    )
+            break
 
-        return []
-    except Exception as e:
-        logger.warning("instagrapi image handler failed for {}: {}", url, e)
-        return []
+    logger.warning("instagrapi image handler failed for {}: {}", url, last_error)
+    return []
 
 
 def process_instagram_images(url: str) -> list[str]:
@@ -237,9 +273,10 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     except Exception as cookie_error:
         logger.debug("Instagram image fallback cookie load failed: {}", cookie_error)
 
-    # If the host only has INSTAGRAM_SESSIONID configured, use it directly
-    # for the web request as well. Do not require a password login.
-    if INSTAGRAM_SESSIONID:
+    # Use the persisted/refreshed session cookie first. Do not overwrite it
+    # with a possibly stale Koyeb INSTAGRAM_SESSIONID secret. The secret is
+    # only a bootstrap fallback when no sessionid was persisted yet.
+    if "sessionid" not in cookies and INSTAGRAM_SESSIONID:
         cookies["sessionid"] = INSTAGRAM_SESSIONID
 
     response = requests.get(
@@ -587,16 +624,17 @@ def refresh_instagram_session(force: bool = False) -> Client:
     client.delay_range = [1, 2]
     client.read_timeout = 30
 
-    # Prefer a locally refreshed session over a potentially stale deployment
-    # secret. This is important after an automatic cookie refresh.
+    # A forced refresh intentionally skips all saved/session secrets. This
+    # prevents repeatedly restoring the same invalid Instagram session.
     saved_session = get_saved_instagram_sessionid()
     configured_session = INSTAGRAM_SESSIONID
 
     session_candidates = []
-    if saved_session:
-        session_candidates.append(("saved cookie", saved_session))
-    if configured_session and configured_session != saved_session:
-        session_candidates.append(("Koyeb secret", configured_session))
+    if not force:
+        if saved_session:
+            session_candidates.append(("saved cookie", saved_session))
+        if configured_session and configured_session != saved_session:
+            session_candidates.append(("Koyeb secret", configured_session))
 
     for source, session_id in session_candidates:
         try:
@@ -650,14 +688,17 @@ def refresh_instagram_session(force: bool = False) -> Client:
     _INSTAGRAM_CLIENT = client
     return client
 
-def _instagram_login() -> Client:
-    """Return the cached Instagram client, creating it automatically if needed."""
+def _instagram_login(force: bool = False) -> Client:
+    """Return the cached Instagram client, optionally forcing a fresh login."""
     global _INSTAGRAM_CLIENT
+
+    if force:
+        _INSTAGRAM_CLIENT = None
 
     if _INSTAGRAM_CLIENT is not None:
         return _INSTAGRAM_CLIENT
 
-    return refresh_instagram_session()
+    return refresh_instagram_session(force=force)
 
 def _instagram_username_from_input(value: str) -> str:
     """Extract a clean Instagram username from a username/profile/story input."""
