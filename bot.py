@@ -429,7 +429,13 @@ async def process_download(
             result = None
             last_error = None
 
-            for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
+            # Instagram image extraction already has its own authenticated/fallback
+            # handling. Re-running the entire extractor after a 401/403 or redirect
+            # failure only repeats the same noisy Instagram requests. Keep image
+            # downloads to one controlled attempt; normal media keeps the usual retries.
+            max_attempts = 1 if is_image else MAX_DOWNLOAD_RETRIES
+
+            for attempt in range(1, max_attempts + 1):
                 if download_id in cancelled_downloads:
                     await send_message(message.chat.id, "🛑 Download cancelled.")
                     return
@@ -477,7 +483,7 @@ async def process_download(
                 if attempt < MAX_DOWNLOAD_RETRIES:
                     await send_message(
                         message.chat.id,
-                        f"🔄 Download failed. Retrying ({attempt + 1}/{MAX_DOWNLOAD_RETRIES})...",
+                        f"🔄 Download failed. Retrying ({attempt + 1}/{max_attempts})...",
                     )
                     await asyncio.sleep(2 * attempt)
 
@@ -488,7 +494,7 @@ async def process_download(
             if not result:
                 await send_message(
                     message.chat.id,
-                    f"❌ Download failed after {MAX_DOWNLOAD_RETRIES} attempts.\n"
+                    f"❌ Download failed after {max_attempts} attempt(s).\n"
                     f"{escape(str(last_error or ''))}",
                 )
                 return
