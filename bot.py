@@ -121,7 +121,7 @@ def detect_media_type(url):
 
     if platform == "Instagram":
         path_match = re.search(
-            r"instagram\\.com/([^/?#]+)",
+            r"instagram\.com/([^/?#]+)",
             url,
             re.IGNORECASE,
         )
@@ -139,7 +139,7 @@ def detect_media_type(url):
         return "instagram"
 
     if platform == "YouTube":
-        if re.search(r"(youtube\\.com/shorts/)", url, re.IGNORECASE):
+        if re.search(r"(youtube\.com/shorts/)", url, re.IGNORECASE):
             return "short"
         return "video"
 
