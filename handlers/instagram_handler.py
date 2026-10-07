@@ -18,6 +18,7 @@ from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PAS
 from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
 from utils.logger import setup_logging
 from utils.sanitize import sanitize_filename
+from utils.instaloader_downloader import download_instagram_post as download_with_instaloader
 
 
 logger = setup_logging(logging.DEBUG)
@@ -227,6 +228,14 @@ def process_instagram_images(url: str) -> list[str]:
     cookie_path = Path(COOKIES_FILE)
 
     image_paths = _download_image_instagrapi(url)
+
+    # Instaloader fallback for posts/reels/carousels when instagrapi fails.
+    if not image_paths:
+        try:
+            image_paths = download_with_instaloader(url)
+            logger.info("Instaloader image fallback succeeded for %s", url)
+        except Exception as instaloader_error:
+            logger.warning("Instaloader image fallback failed for %s: %s", url, instaloader_error)
 
     if not image_paths:
         try:
@@ -470,10 +479,7 @@ def process_instagram(
 
     cookie_path = Path(COOKIES_FILE)
 
-    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        logger.error("❌ Instagram cookies file is missing or empty!")
-        return None, 0, "Instagram cookies file is missing or empty"
-
+    # Public posts do not require the Netscape cookie file; let Instaloader try them.
     outtmpl = str(
         Path(DOWNLOAD_DIR) / "%(uploader)s - %(title)s.%(ext)s"
     )
@@ -527,6 +533,17 @@ def process_instagram(
                 video_paths = [candidates[0]]
 
         if not video_paths:
+            # Final fallback: Instaloader downloads the post itself, including sidecars.
+            try:
+                insta_paths = download_with_instaloader(url)
+                if insta_paths:
+                    total_size = sum(p.stat().st_size for p in insta_paths)
+                    if len(insta_paths) == 1:
+                        return str(insta_paths[0]), int(total_size), None
+                    return [str(p) for p in insta_paths], int(total_size), None
+            except Exception as instaloader_error:
+                logger.warning("Instaloader media fallback failed for %s: %s", url, instaloader_error)
+
             logger.error("❌ Instagram download completed but no media file was found.")
             return (
                 None,
