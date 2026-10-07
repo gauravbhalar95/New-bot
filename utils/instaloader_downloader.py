@@ -5,7 +5,6 @@ supports public posts without credentials and can optionally reuse the
 INSTAGRAM_SESSIONID environment variable for authenticated posts.
 """
 
-import os
 import re
 import shutil
 import tempfile
@@ -58,6 +57,8 @@ def _configure_loader() -> instaloader.Instaloader:
             domain="instagram.com",
             path="/",
         )
+        # Instaloader uses context.username as its logged-in flag.
+        loader.context.username = INSTAGRAM_USERNAME or "session"
 
     return loader
 
