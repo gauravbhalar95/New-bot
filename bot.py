@@ -113,6 +113,55 @@ def detect_platform(url):
     return None
 
 
+def detect_media_type(url):
+    """Identify the likely media type from the URL without downloading it."""
+    platform = detect_platform(url)
+    if not platform:
+        return "unknown"
+
+    if platform == "Instagram":
+        path_match = re.search(
+            r"instagram\\.com/([^/?#]+)",
+            url,
+            re.IGNORECASE,
+        )
+        if path_match:
+            kind = path_match.group(1).lower()
+            if kind == "reel":
+                return "reel"
+            if kind in {"reels", "tv", "videos"}:
+                return "video"
+            if kind in {"p", "post"}:
+                # Instagram /p/ can contain either an image, carousel, or video.
+                return "image_or_video"
+            if kind in {"stories", "story"}:
+                return "story"
+        return "instagram"
+
+    if platform == "YouTube":
+        if re.search(r"(youtube\\.com/shorts/)", url, re.IGNORECASE):
+            return "short"
+        return "video"
+
+    if platform in {"Facebook", "Twitter/X", "Threads", "Adult"}:
+        return "video"
+
+    return "video"
+
+
+def media_type_label(url):
+    labels = {
+        "reel": "🎞️ Instagram Reel",
+        "short": "⚡ YouTube Short",
+        "video": "🎥 Video",
+        "image_or_video": "🖼️/🎥 Instagram Post (auto-detect)",
+        "story": "📸 Instagram Story",
+        "instagram": "📱 Instagram Media",
+        "unknown": "❓ Unknown Media",
+    }
+    return labels.get(detect_media_type(url), "❓ Unknown Media")
+
+
 async def run_blocking(function, *args):
     return await asyncio.to_thread(function, *args)
 
@@ -849,16 +898,26 @@ def cleanup_inline_requests():
 def build_media_action_keyboard(url, chat_id, user_id):
     cleanup_inline_requests()
     token = secrets.token_urlsafe(8).replace("-", "").replace("_", "")
-    inline_requests[token] = {"url": url, "chat_id": chat_id, "user_id": user_id, "created_at": time.time()}
+    inline_requests[token] = {
+        "url": url,
+        "chat_id": chat_id,
+        "user_id": user_id,
+        "created_at": time.time(),
+    }
 
+    media_type = detect_media_type(url)
     markup = types.InlineKeyboardMarkup(row_width=2)
+
+    # Keep both actions available, but the detected type is shown separately
+    # so the bot never incorrectly assumes an Instagram /p/ post is an image.
     markup.add(
         types.InlineKeyboardButton("🎥 Video", callback_data=f"act:video:{token}"),
         types.InlineKeyboardButton("🎵 Audio", callback_data=f"act:audio:{token}"),
     )
 
-    # Image downloads are currently implemented for Instagram posts/carousels.
-    if detect_platform(url) == "Instagram":
+    if detect_platform(url) == "Instagram" and media_type in {
+        "image_or_video", "image", "instagram"
+    }:
         markup.add(
             types.InlineKeyboardButton(
                 "🖼️ Image",
@@ -1175,7 +1234,17 @@ async def handle_message(message):
     # Show inline actions for every supported single URL.
     if len(urls) == 1 and detect_platform(urls[0]):
         url = urls[0]
-        await bot.send_message(message.chat.id, "🎬 <b>What do you want to do?</b>", reply_markup=build_media_action_keyboard(url, message.chat.id, message.from_user.id))
+        detected = media_type_label(url)
+        await bot.send_message(
+            message.chat.id,
+            f"🔎 <b>Detected:</b> {escape(detected)}\\n\\n"
+            f"🎬 <b>What do you want to do?</b>",
+            reply_markup=build_media_action_keyboard(
+                url,
+                message.chat.id,
+                message.from_user.id,
+            ),
+        )
         return
 
     # Feature 14: multiple URLs in one message.
