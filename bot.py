@@ -1231,23 +1231,26 @@ async def handle_message(message):
         await send_message(message.chat.id, "⚠️ Please send a valid media URL.")
         return
 
-    # Show inline actions for every supported single URL.
-    if len(urls) == 1 and detect_platform(urls[0]):
-        url = urls[0]
-        detected = media_type_label(url)
-        await bot.send_message(
+    # Automatic mode: no inline buttons/options are required.
+    # Detect the platform/media type and immediately put every URL into the
+    # normal download queue. Telegram inline keyboards are only needed for
+    # optional actions; normal downloads should require no user interaction.
+    for url in urls:
+        detected = media_type_label(url) if detect_platform(url) else "Media"
+        await send_message(
             message.chat.id,
-            f"🔎 <b>Detected:</b> {escape(detected)}\\n\\n"
-            f"🎬 <b>What do you want to do?</b>",
-            reply_markup=build_media_action_keyboard(
-                url,
-                message.chat.id,
-                message.from_user.id,
-            ),
+            f"🔎 <b>Detected:</b> {escape(detected)}\\n"
+            f"📥 <b>Downloading automatically...</b>",
         )
+        await download_queue.put(
+            (message, url, False, False, False, None, None, None)
+        )
+
+    # Multiple URLs are handled independently by the workers.
+    if len(urls) > 1:
         return
 
-    # Feature 14: multiple URLs in one message.
+    # Feature 13: media information preview before download.
     for url in urls:
         await download_queue.put(
             (message, url, False, False, False, None, None, None)
