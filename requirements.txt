@@ -19,3 +19,4 @@ gunicorn>=23.0.0
 ffmpeg-python>=0.2.0
 opencv-python-headless
 instagrapi>=3.0.13
+instaloader>=4.15.2
