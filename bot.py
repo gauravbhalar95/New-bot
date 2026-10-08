@@ -511,7 +511,9 @@ async def process_download(
                     return
 
                 try:
-                    if is_image:
+                    if platform == "Instagram" and detect_media_type(url) == "story":
+                        result = await run_blocking(download_instagram_story_url, url)
+                    elif is_image:
                         if platform != "Instagram":
                             last_error = "Image download is currently supported for Instagram links only."
                             result = None
