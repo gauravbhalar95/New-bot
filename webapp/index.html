@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Insta Fetch</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:#0b0f14;color:#f5f7fa;min-height:100vh; }
+    .app{max-width:520px;margin:auto;padding:20px 18px 32px}
+    .brand{display:flex;align-items:center;gap:12px;margin:8px 0 28px}
+    .logo{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;
+      background:linear-gradient(135deg,#feda75,#d62976,#4f5bd5);font-size:24px}
+    h1{font-size:25px;margin:0}.muted{color:#9aa4b2;font-size:14px}
+    .card{background:#151b23;border:1px solid #27303b;border-radius:20px;padding:20px}
+    .status{display:flex;gap:12px;align-items:center;margin:4px 0 18px}
+    .avatar{width:52px;height:52px;border-radius:50%;background:#242c36;display:grid;place-items:center;font-size:22px}
+    button{width:100%;border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700;cursor:pointer}
+    .primary{background:linear-gradient(90deg,#f58529,#dd2a7b,#8134af);color:#fff}
+    .secondary{background:#252d37;color:#fff;margin-top:10px}
+    .note{margin-top:18px;line-height:1.5;font-size:13px;color:#9aa4b2}
+    .error{color:#ff7b7b;margin-top:12px;font-size:14px}.ok{color:#73e6a4}.hidden{display:none}
+  </style>
+</head>
+<body>
+<main class="app">
+  <div class="brand"><div class="logo">◎</div><div><h1>Insta Fetch</h1><div class="muted">Instagram authentication</div></div></div>
+  <section class="card">
+    <div id="signedOut">
+      <div class="status"><div class="avatar">IG</div><div><strong>Connect Instagram</strong><div class="muted">Secure Meta authorization</div></div></div>
+      <button class="primary" id="login">Continue with Instagram</button>
+      <div class="note">You will be redirected to Instagram to approve access. Your password is entered only on Instagram, not in this Mini App. This official API flow is for Instagram professional (Business/Creator) accounts.</div>
+    </div>
+    <div id="signedIn" class="hidden">
+      <div class="status"><div class="avatar">✓</div><div><strong id="username">Connected</strong><div class="muted ok">Instagram authorized</div></div></div>
+      <button class="secondary" id="logout">Disconnect Instagram</button>
+      <div class="note">The authorization token stays on the server and is not placed in the page URL.</div>
+    </div>
+    <div id="error" class="error hidden"></div>
+  </section>
+</main>
+<script>
+const tg=window.Telegram?.WebApp;tg?.ready();tg?.expand();
+function initData(){return tg?.initData||""}
+async function api(path,options={}){
+  const headers={"Content-Type":"application/json",...(options.headers||{})};
+  headers["X-Telegram-Init-Data"]=initData();
+  const response=await fetch(path,{...options,headers});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||"Request failed");
+  return data;
+}
+function showError(message){const el=document.getElementById("error");el.textContent=message;el.classList.remove("hidden")}
+async function loadStatus(){
+  try{
+    const data=await api("/api/instagram/status");
+    document.getElementById("signedOut").classList.toggle("hidden",data.connected);
+    document.getElementById("signedIn").classList.toggle("hidden",!data.connected);
+    if(data.connected)document.getElementById("username").textContent="@"+(data.username||"Instagram");
+  }catch(e){showError(e.message)}
+}
+document.getElementById("login").onclick=async()=>{
+  try{const data=await api("/api/instagram/login");window.location.href=data.url}catch(e){showError(e.message)}
+};
+document.getElementById("logout").onclick=async()=>{
+  try{await api("/api/instagram/logout",{method:"POST"});await loadStatus()}catch(e){showError(e.message)}
+};
+loadStatus();
+</script>
+</body>
+</html>
