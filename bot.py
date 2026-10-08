@@ -103,6 +103,21 @@ def check_memory_usage():
         return True
 
 
+
+
+def build_instagram_auth_keyboard():
+    if not MINIAPP_URL:
+        return None
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton(
+            "🔐 Open Instagram Mini App",
+            web_app=types.WebAppInfo(url=MINIAPP_URL),
+        )
+    )
+    return markup
+
+
 async def send_message(chat_id, text):
     try:
         return await bot.send_message(chat_id, text)
@@ -535,9 +550,10 @@ async def process_download(
                         and not instagram_auth_notified
                     ):
                         browser_opened = open_instagram_login_page()
-                        await send_message(
+                        await bot.send_message(
                             message.chat.id,
                             build_instagram_auth_message(browser_opened),
+                            reply_markup=build_instagram_auth_keyboard(),
                         )
                         instagram_auth_notified = True
                     logger.warning(
@@ -564,9 +580,10 @@ async def process_download(
                     and not instagram_auth_notified
                 ):
                     browser_opened = open_instagram_login_page()
-                    await send_message(
+                    await bot.send_message(
                         message.chat.id,
                         build_instagram_auth_message(browser_opened),
+                        reply_markup=build_instagram_auth_keyboard(),
                     )
                     instagram_auth_notified = True
                 await send_message(
