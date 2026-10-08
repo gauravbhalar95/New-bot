@@ -22,6 +22,23 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
 PORT = int(os.getenv("PORT", "8080"))
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
+# Official Instagram Business Login / Instagram API with Instagram Login.
+# These values must be configured as deployment secrets, never committed.
+INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID", "").strip()
+INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET", "").strip()
+INSTAGRAM_OAUTH_SCOPES = os.getenv(
+    "INSTAGRAM_OAUTH_SCOPES",
+    "instagram_business_basic",
+).strip()
+INSTAGRAM_REDIRECT_URI = os.getenv(
+    "INSTAGRAM_REDIRECT_URI",
+    f"{WEBHOOK_URL.rsplit('/', 1)[0]}/instagram/callback" if "/" in WEBHOOK_URL else "",
+).strip()
+MINIAPP_URL = os.getenv(
+    "MINIAPP_URL",
+    f"{WEBHOOK_URL.rsplit('/', 1)[0]}/miniapp" if "/" in WEBHOOK_URL else "",
+).strip()
+
 if not API_TOKEN:
     raise RuntimeError("BOT_TOKEN environment variable is required")
 if not WEBHOOK_URL:
