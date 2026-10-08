@@ -22,7 +22,7 @@ def validate_init_data(
     if not received_hash:
         raise ValueError("Telegram initData hash is missing.")
 
-    data_check_string = "\\n".join(
+    data_check_string = "\n".join(
         f"{key}={value}" for key, value in sorted(data.items())
     )
 
