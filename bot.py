@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import (
     process_instagram,
@@ -787,9 +787,38 @@ async def send_welcome(message):
         "• /trim <URL> <Start> <End>\n"
         "• /trimAudio <URL> <Start> <End>"
     )
-    await bot.send_message(message.chat.id, welcome_text)
+    markup = None
+    if MINIAPP_URL:
+        markup = types.InlineKeyboardMarkup()
+        markup.add(
+            types.InlineKeyboardButton(
+                "🔐 Connect Instagram",
+                web_app=types.WebAppInfo(url=MINIAPP_URL),
+            )
+        )
+    await bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 
+@bot.message_handler(commands=["instagram"])
+async def handle_instagram_auth_app(message):
+    if not MINIAPP_URL:
+        await send_message(message.chat.id, "⚠️ Instagram Mini App is not configured.")
+        return
+
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton(
+            "🔐 Connect Instagram",
+            web_app=types.WebAppInfo(url=MINIAPP_URL),
+        )
+    )
+    await bot.send_message(
+        message.chat.id,
+        "🔐 <b>Instagram authentication</b>\\n\\n"
+        "Open the Mini App and authorize Instagram there. "
+        "Your Instagram password is entered only on Instagram.",
+        reply_markup=markup,
+    )
 
 
 async def _send_instagram_files(message, paths, caption_prefix):
