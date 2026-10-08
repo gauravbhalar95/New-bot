@@ -9,7 +9,6 @@ instead provides the login URL to the Telegram user.
 import os
 import time
 import webbrowser
-from urllib.parse import quote
 
 INSTAGRAM_LOGIN_URL = "https://www.instagram.com/accounts/login/"
 _INSTAGRAM_AUTH_OPENED_AT = 0.0
@@ -21,11 +20,7 @@ def get_instagram_login_url() -> str:
 
 
 def open_instagram_login_page(force: bool = False) -> bool:
-    """Open Instagram login in the local browser, when a browser exists.
-
-    Returns True when webbrowser accepted the request. A cloud/server process
-    may return False because it has no graphical browser.
-    """
+    """Open Instagram login in the local browser, when a browser exists."""
     global _INSTAGRAM_AUTH_OPENED_AT
 
     now = time.monotonic()
@@ -34,7 +29,6 @@ def open_instagram_login_page(force: bool = False) -> bool:
 
     _INSTAGRAM_AUTH_OPENED_AT = now
 
-    # Disabled by default on hosted/headless environments.
     enabled = os.getenv("OPEN_INSTAGRAM_BROWSER", "true").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
         return False
@@ -76,7 +70,7 @@ def build_instagram_auth_message(browser_opened: bool = False) -> str:
     return (
         "🔐 <b>Instagram authorization required</b>\n\n"
         f"{browser_line}"
-        f"🔗 <a href="{url}">Open Instagram Login</a>\n\n"
+        f'🔗 <a href="{url}">Open Instagram Login</a>\n\n'
         "After completing the security check, send the Instagram link again. "
         "The bot will retry with the refreshed authentication.\n\n"
         "⚠️ Never send your Instagram password or session cookie to the bot."
