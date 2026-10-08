@@ -54,7 +54,7 @@ INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "")
 INSTAGRAM_SESSIONID = os.getenv("INSTAGRAM_SESSIONID", "").strip()
 # Automatic Instagram session maintenance. The default refresh interval is
 # deliberately conservative to reduce unnecessary login/challenge requests.
-INSTAGRAM_AUTO_LOGIN = os.getenv("INSTAGRAM_AUTO_LOGIN", "true").strip().lower() not in {
+INSTAGRAM_AUTO_LOGIN = os.getenv("INSTAGRAM_AUTO_LOGIN", "false").strip().lower() not in {
     "0", "false", "no", "off"
 }
 try:
