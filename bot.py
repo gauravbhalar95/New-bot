@@ -27,6 +27,11 @@ from handlers.common_handler import process_adult
 from handlers.x_handler import download_twitter_media
 from handlers.trim_handlers import process_video_trim, process_audio_trim
 from utils.logger import setup_logging
+from utils.instagram_auth_recovery import (
+    build_instagram_auth_message,
+    is_instagram_auth_error,
+    open_instagram_login_page,
+)
 
 MAX_MEMORY_USAGE = 500 * 1024 * 1024
 MAX_CONCURRENT_DOWNLOADS = 2
@@ -477,6 +482,7 @@ async def process_download(
 
             result = None
             last_error = None
+            instagram_auth_notified = False
 
             # Instagram image extraction already has its own authenticated/fallback
             # handling. Re-running the entire extractor after a 401/403 or redirect
@@ -523,6 +529,17 @@ async def process_download(
                     last_error = "No media returned"
                 except Exception as e:
                     last_error = str(e)
+                    if (
+                        platform == "Instagram"
+                        and is_instagram_auth_error(e)
+                        and not instagram_auth_notified
+                    ):
+                        browser_opened = open_instagram_login_page()
+                        await send_message(
+                            message.chat.id,
+                            build_instagram_auth_message(browser_opened),
+                        )
+                        instagram_auth_notified = True
                     logger.warning(
                         "Download attempt {}/{} failed: {}",
                         attempt, MAX_DOWNLOAD_RETRIES, e,
@@ -541,6 +558,17 @@ async def process_download(
                 return
 
             if not result:
+                if (
+                    platform == "Instagram"
+                    and is_instagram_auth_error(last_error)
+                    and not instagram_auth_notified
+                ):
+                    browser_opened = open_instagram_login_page()
+                    await send_message(
+                        message.chat.id,
+                        build_instagram_auth_message(browser_opened),
+                    )
+                    instagram_auth_notified = True
                 await send_message(
                     message.chat.id,
                     f"❌ Download failed after {max_attempts} attempt(s).\n"
