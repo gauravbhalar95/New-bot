@@ -22,8 +22,7 @@ def validate_init_data(
     if not received_hash:
         raise ValueError("Telegram initData hash is missing.")
 
-    data_check_string = "
-".join(
+    data_check_string = "\\n".join(
         f"{key}={value}" for key, value in sorted(data.items())
     )
 
@@ -32,6 +31,7 @@ def validate_init_data(
         bot_token.encode("utf-8"),
         hashlib.sha256,
     ).digest()
+
     expected_hash = hmac.new(
         secret_key,
         data_check_string.encode("utf-8"),
