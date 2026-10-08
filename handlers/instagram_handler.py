@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Union
 import yt_dlp
 from instagrapi import Client
 
-from config import DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID
+from config import (DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID, INSTAGRAM_AUTO_LOGIN)
 from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
 from utils.logger import setup_logging
 from utils.sanitize import sanitize_filename
