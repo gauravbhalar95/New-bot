@@ -831,7 +831,7 @@ async def handle_instagram_auth_app(message):
     )
     await bot.send_message(
         message.chat.id,
-        "🔐 <b>Instagram authentication</b>\\n\\n"
+        "🔐 <b>Instagram authentication</b>\n\n"
         "Open the Mini App and authorize Instagram there. "
         "Your Instagram password is entered only on Instagram.",
         reply_markup=markup,
