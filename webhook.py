@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import traceback
+from pathlib import Path
 
 from quart import Quart, jsonify, request
 import telebot
@@ -8,7 +10,14 @@ import telebot
 # and can fail before Quart starts serving requests.
 try:
     from bot import bot, start_background_tasks
-    from config import WEBHOOK_SECRET, PORT
+    from config import API_TOKEN, WEBHOOK_SECRET, PORT, MINIAPP_URL
+    from utils.instagram_oauth import (
+        create_authorization_url,
+        disconnect,
+        finish_authorization,
+        get_account,
+    )
+    from utils.telegram_webapp_auth import validate_init_data
 except Exception:
     logging.basicConfig(level=logging.INFO)
     logging.exception("FATAL: application import/startup failed")
@@ -24,6 +33,12 @@ logger = logging.getLogger(__name__)
 app = Quart(__name__)
 
 WEBHOOK_ENDPOINT = "/telegram-webhook"
+
+
+def _miniapp_user_id() -> int:
+    raw_init_data = request.headers.get("X-Telegram-Init-Data", "")
+    user = validate_init_data(raw_init_data, API_TOKEN)
+    return int(user["id"])
 
 
 @app.before_serving
@@ -47,6 +62,81 @@ async def home():
 @app.get("/health")
 async def health():
     return jsonify({"status": "healthy"}), 200
+
+
+@app.get("/miniapp")
+async def miniapp():
+    html_path = Path(__file__).resolve().parent / "webapp" / "index.html"
+    return html_path.read_text(encoding="utf-8"), 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.get("/api/instagram/login")
+async def instagram_login():
+    try:
+        user_id = _miniapp_user_id()
+        return jsonify({"url": create_authorization_url(user_id)})
+    except Exception as exc:
+        logger.warning("Instagram Mini App login initialization failed: %s", exc)
+        return jsonify({"error": str(exc)}), 400
+
+
+@app.get("/instagram/callback")
+async def instagram_callback():
+    error = request.args.get("error")
+    if error:
+        return (
+            f"<script>location.replace({MINIAPP_URL!r} + '?auth_error=' + encodeURIComponent({error!r}))</script>",
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code or not state:
+        return "Instagram authorization response is incomplete.", 400
+
+    try:
+        await asyncio.to_thread(finish_authorization, state, code)
+        return (
+            f"<script>location.replace({MINIAPP_URL!r} + '?instagram=connected')</script>",
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+    except Exception as exc:
+        logger.warning("Instagram OAuth callback failed: %s", exc, exc_info=True)
+        return (
+            f"<script>location.replace({MINIAPP_URL!r} + '?auth_error=' + encodeURIComponent({str(exc)!r}))</script>",
+            200,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+
+
+@app.get("/api/instagram/status")
+async def instagram_status():
+    try:
+        user_id = _miniapp_user_id()
+        account = get_account(user_id)
+        if not account:
+            return jsonify({"connected": False})
+        return jsonify({
+            "connected": True,
+            "username": account.get("username"),
+            "user_id": account.get("user_id"),
+            "expires_at": account.get("expires_at"),
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 401
+
+
+@app.post("/api/instagram/logout")
+async def instagram_logout():
+    try:
+        user_id = _miniapp_user_id()
+        disconnect(user_id)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 401
+
 
 
 @app.post("/webhook")
