@@ -590,6 +590,34 @@ def process_instagram(
         # explicitly reports that the post has no video.
         error_text = str(e).lower()
         if "no video formats found" in error_text or "there is no video" in error_text:
+            # yt-dlp is video/audio focused and can enumerate Instagram
+            # carousel photos as playlist entries with no video formats.
+            # Try Instaloader first because it supports both photos and videos
+            # in a single post/sidecar.
+            try:
+                insta_paths = download_with_instaloader(url)
+                if insta_paths:
+                    total_size = sum(p.stat().st_size for p in insta_paths)
+                    logger.info(
+                        "✅ Instaloader Instagram fallback ready: %s file(s), %.2f MB total",
+                        len(insta_paths),
+                        total_size / (1024 ** 2),
+                    )
+                    return (
+                        [str(p) for p in insta_paths]
+                        if len(insta_paths) > 1 else str(insta_paths[0]),
+                        int(total_size),
+                        None,
+                    )
+            except Exception as instaloader_error:
+                logger.warning(
+                    "Instaloader Instagram fallback failed: %s",
+                    instaloader_error,
+                    exc_info=True,
+                )
+
+            # If Instaloader cannot access the post, keep the existing
+            # authenticated instagrapi and HTML fallbacks.
             try:
                 image_paths = _download_image_instagrapi(url)
                 if not image_paths:
