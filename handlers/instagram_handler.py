@@ -8,7 +8,7 @@ import requests
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from typing import Optional, Tuple, Union
 
 import yt_dlp
@@ -767,6 +767,44 @@ def _instagram_username_from_input(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", value):
         raise ValueError("Invalid Instagram username.")
     return value
+
+
+def download_instagram_story_url(url: str) -> list[str]:
+    """Automatically download a specific Instagram story/highlight media URL."""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    story_media_id = query.get("story_media_id", [None])[0]
+
+    story_pk = None
+    if story_media_id:
+        story_pk = story_media_id.split("_", 1)[0]
+    else:
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 3 and parts[0].lower() in {"stories", "story"}:
+            story_pk = parts[2]
+
+    if story_pk and str(story_pk).isdigit():
+        client = _instagram_login()
+        output_dir = Path(DOWNLOAD_DIR) / "story"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = client.story_download(int(story_pk), folder=str(output_dir))
+        if path and Path(path).is_file():
+            username = "instagram"
+            try:
+                story = client.story_info(int(story_pk))
+                username = getattr(getattr(story, "user", None), "username", None) or username
+            except Exception:
+                pass
+            renamed = _rename_instagram_media_files(
+                [Path(path)], username, f"story_{story_pk}"
+            )
+            return [str(renamed[0] if renamed else Path(path))]
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) >= 2 and parts[0].lower() in {"stories", "story"}:
+        return download_instagram_stories(parts[1])
+
+    raise RuntimeError("Instagram story URL does not contain a usable story ID.")
 
 
 def download_instagram_stories(value: str) -> list[str]:
