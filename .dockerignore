@@ -1,0 +1,26 @@
+# Never copy secrets into the Docker image.
+.env
+.env.*
+!.env.example
+
+# Authentication cookies and session exports
+cookies/
+*.cookies
+*.cookie
+cookies.txt
+facebook.txt
+x.txt
+youtube_cookies.txt
+ig.txt
+
+# Runtime/generated data
+.git/
+.github/
+downloads/
+TEMP_DIR/
+logs/
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/
