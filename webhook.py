@@ -10,7 +10,7 @@ import telebot
 # and can fail before Quart starts serving requests.
 try:
     from bot import bot, start_background_tasks
-    from config import API_TOKEN, WEBHOOK_SECRET, PORT, MINIAPP_URL
+    from config import API_TOKEN, WEBHOOK_URL, WEBHOOK_SECRET, PORT, MINIAPP_URL
     from utils.instagram_oauth import (
         create_authorization_url,
         disconnect,
@@ -41,8 +41,40 @@ def _miniapp_user_id() -> int:
     return int(user["id"])
 
 
+def resolve_telegram_webhook_url() -> str:
+    """Accept either a public base URL or a full Telegram webhook URL."""
+    if WEBHOOK_URL.endswith(("/webhook", "/telegram-webhook")):
+        return WEBHOOK_URL
+    return f"{WEBHOOK_URL}/telegram-webhook"
+
+
 @app.before_serving
 async def startup():
+    logger.info("Configuring Telegram webhook...")
+    telegram_webhook_url = resolve_telegram_webhook_url()
+
+    if not telegram_webhook_url.startswith("https://"):
+        raise RuntimeError("WEBHOOK_URL must use a public HTTPS URL")
+
+    # Register the webhook here: without set_webhook(), Telegram will not send
+    # incoming messages to this Quart application.
+    webhook_set = await bot.set_webhook(
+        url=telegram_webhook_url,
+        secret_token=WEBHOOK_SECRET,
+        allowed_updates=["message", "callback_query"],
+        drop_pending_updates=False,
+    )
+    if not webhook_set:
+        raise RuntimeError("Telegram rejected setWebhook; check BOT_TOKEN and WEBHOOK_URL")
+
+    webhook_info = await bot.get_webhook_info()
+    logger.info(
+        "Telegram webhook active: url=%s pending_updates=%s last_error=%s",
+        webhook_info.url,
+        webhook_info.pending_update_count,
+        webhook_info.last_error_message,
+    )
+
     logger.info("Starting async background tasks...")
     app.background_tasks = await start_background_tasks()
 
