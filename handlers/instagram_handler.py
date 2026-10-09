@@ -154,8 +154,25 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 media_type,
             )
 
+            media_extensions = {
+                ".jpg", ".jpeg", ".png", ".webp",
+                ".mp4", ".mov", ".m4v", ".webm",
+            }
+
+            # A /p/ URL can be a photo, a video, or a mixed carousel.
+            # Download the actual media type instead of treating every /p/
+            # post as an image-only post.
             if media_type == 1:
                 path = client.photo_download(
+                    media_pk,
+                    folder=DOWNLOAD_DIR,
+                    overwrite=True,
+                )
+                paths = [Path(path)] if path and Path(path).is_file() else []
+                return _rename_instagram_media_files(paths, username, identifier)
+
+            if media_type == 2:
+                path = client.video_download(
                     media_pk,
                     folder=DOWNLOAD_DIR,
                     overwrite=True,
@@ -169,15 +186,15 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                     folder=DOWNLOAD_DIR,
                     overwrite=True,
                 )
-                image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
-                image_paths = [
+                media_paths = [
                     Path(path)
                     for path in paths
                     if path
                     and Path(path).is_file()
-                    and Path(path).suffix.lower() in image_extensions
+                    and Path(path).suffix.lower() in media_extensions
+                    and Path(path).stat().st_size > 0
                 ]
-                return _rename_instagram_media_files(image_paths, username, identifier)
+                return _rename_instagram_media_files(media_paths, username, identifier)
 
             return []
         except Exception as e:
@@ -586,16 +603,42 @@ def process_instagram(
     except yt_dlp.utils.DownloadError as e:
         logger.error("❌ Instagram download error: %s", e, exc_info=True)
 
-        # /p/ posts can contain only images. Fall back when yt-dlp
-        # explicitly reports that the post has no video.
+        # yt-dlp sometimes fails on carousel entries with "No video formats
+        # found" even when the parent post contains photos or mixed media.
+        # First use the authenticated Instagram API client, which understands
+        # photo/video/carousel media types; then try Instaloader; finally use
+        # the HTML image-only fallback.
         error_text = str(e).lower()
-        if "no video formats found" in error_text or "there is no video" in error_text:
-            # yt-dlp is video/audio focused and can enumerate Instagram
-            # carousel photos as playlist entries with no video formats.
-            # Try Instaloader first because it supports both photos and videos
-            # in a single post/sidecar.
+        if (
+            "no video formats found" in error_text
+            or "there is no video" in error_text
+            or "requested format is not available" in error_text
+        ):
+            try:
+                media_paths = _download_image_instagrapi(url)
+                if media_paths:
+                    total_size = sum(p.stat().st_size for p in media_paths if p.is_file())
+                    logger.info(
+                        "✅ Authenticated Instagram media fallback ready: %s file(s), %.2f MB total",
+                        len(media_paths),
+                        total_size / (1024 ** 2),
+                    )
+                    return (
+                        [str(p) for p in media_paths]
+                        if len(media_paths) > 1 else str(media_paths[0]),
+                        int(total_size),
+                        None,
+                    )
+            except Exception as api_error:
+                logger.warning(
+                    "Authenticated Instagram media fallback failed: %s",
+                    api_error,
+                    exc_info=True,
+                )
+
             try:
                 insta_paths = download_with_instaloader(url)
+                insta_paths = [Path(p) for p in (insta_paths or []) if Path(p).is_file()]
                 if insta_paths:
                     total_size = sum(p.stat().st_size for p in insta_paths)
                     logger.info(
@@ -616,16 +659,14 @@ def process_instagram(
                     exc_info=True,
                 )
 
-            # If Instaloader cannot access the post, keep the existing
-            # authenticated instagrapi and HTML fallbacks.
+            # HTML metadata is only an image fallback; do not mistake it for
+            # a complete mixed carousel downloader.
             try:
-                image_paths = _download_image_instagrapi(url)
-                if not image_paths:
-                    image_paths = _download_image_fallback(url, cookie_path)
+                image_paths = _download_image_fallback(url, cookie_path)
                 if image_paths:
                     total_size = sum(p.stat().st_size for p in image_paths)
                     logger.info(
-                        "✅ Instagram image fallback ready: %s file(s), %.2f MB total",
+                        "✅ Instagram HTML image fallback ready: %s file(s), %.2f MB total",
                         len(image_paths),
                         total_size / (1024 ** 2),
                     )
