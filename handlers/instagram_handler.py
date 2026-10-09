@@ -166,7 +166,6 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 path = client.photo_download(
                     media_pk,
                     folder=DOWNLOAD_DIR,
-                    overwrite=True,
                 )
                 paths = [Path(path)] if path and Path(path).is_file() else []
                 return _rename_instagram_media_files(paths, username, identifier)
@@ -175,7 +174,6 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 path = client.video_download(
                     media_pk,
                     folder=DOWNLOAD_DIR,
-                    overwrite=True,
                 )
                 paths = [Path(path)] if path and Path(path).is_file() else []
                 return _rename_instagram_media_files(paths, username, identifier)
@@ -184,7 +182,6 @@ def _download_image_instagrapi(url: str) -> list[Path]:
                 paths = client.album_download(
                     media_pk,
                     folder=DOWNLOAD_DIR,
-                    overwrite=True,
                 )
                 media_paths = [
                     Path(path)
