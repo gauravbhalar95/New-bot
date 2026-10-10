@@ -1301,16 +1301,18 @@ async def handle_audio_trim_request(message):
     content_types=["text"],
 )
 async def handle_message(message):
-    urls = re.findall(r"https?://[^\s]+", message.text)
+    urls = re.findall(r"https?://[^\\s]+", message.text or "")
+
+    # Deduplicate URLs within one Telegram message while preserving order.
+    urls = list(dict.fromkeys(url.rstrip(".,!?)]}") for url in urls))
 
     if not urls:
         await send_message(message.chat.id, "⚠️ Please send a valid media URL.")
         return
 
-    # Automatic mode: no inline buttons/options are required.
-    # Detect the platform/media type and immediately put every URL into the
-    # normal download queue. Telegram inline keyboards are only needed for
-    # optional actions; normal downloads should require no user interaction.
+    # Enqueue each URL exactly once. Previously this handler queued each URL
+    # here and then queued it again in a second loop, causing duplicate jobs
+    # and duplicate Telegram media sends.
     for url in urls:
         detected = media_type_label(url) if detect_platform(url) else "Media"
         await send_message(
@@ -1322,18 +1324,7 @@ async def handle_message(message):
             (message, url, False, False, False, None, None, None)
         )
 
-    # Multiple URLs are handled independently by the workers.
-    if len(urls) > 1:
-        return
-
-    # Feature 13: media information preview before download.
-    for url in urls:
-        await download_queue.put(
-            (message, url, False, False, False, None, None, None)
-        )
-
     if len(urls) == 1:
-        # Feature 13: media information preview before download.
         info = await get_media_info(urls[0])
         if info:
             quality = (
@@ -1343,19 +1334,9 @@ async def handle_message(message):
             )
             await send_message(
                 message.chat.id,
-                f"🎬 <b>{escape(str(info['title']))}</b>\n"
-                f"👤 {escape(str(info['uploader']))}\n"
-                f"⏱ {info['duration']}\n"
-                f"📐 {quality}\n\n"
+                f"🎬 <b>{escape(str(info['title']))}</b>\\n"
+                f"👤 {escape(str(info['uploader']))}\\n"
+                f"⏱ {info['duration']}\\n"
+                f"📐 {quality}\\n\\n"
                 f"📥 Added to download queue.",
             )
-        else:
-            await send_message(
-                message.chat.id,
-                "🎬 Added to download queue!",
-            )
-    else:
-        await send_message(
-            message.chat.id,
-            f"🎬 Added {len(urls)} URLs to the download queue!",
-        )
