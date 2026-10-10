@@ -1245,7 +1245,7 @@ TRIM_TIME_PATTERN = r"(?:\d{1,2}:)?(?:\d{1,2}:)?\d{1,2}(?::\d{2})?"
 async def handle_video_trim_request(message):
     try:
         match = re.search(
-            rf"(https?://[^\\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            rf"(https?://[^\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
             message.text or "",
             re.IGNORECASE,
         )
@@ -1271,7 +1271,7 @@ async def handle_video_trim_request(message):
 async def handle_audio_trim_request(message):
     try:
         match = re.search(
-            rf"(https?://[^\\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            rf"(https?://[^\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
             message.text or "",
             re.IGNORECASE,
         )
@@ -1301,7 +1301,7 @@ async def handle_audio_trim_request(message):
     content_types=["text"],
 )
 async def handle_message(message):
-    urls = re.findall(r"https?://[^\\s]+", message.text or "")
+    urls = re.findall(r"https?://[^\s]+", message.text or "")
 
     # Deduplicate URLs within one Telegram message while preserving order.
     urls = list(dict.fromkeys(url.rstrip(".,!?)]}") for url in urls))
@@ -1317,7 +1317,7 @@ async def handle_message(message):
         detected = media_type_label(url) if detect_platform(url) else "Media"
         await send_message(
             message.chat.id,
-            f"🔎 <b>Detected:</b> {escape(detected)}\\n"
+            f"🔎 <b>Detected:</b> {escape(detected)}\n"
             f"📥 <b>Downloading automatically...</b>",
         )
         await download_queue.put(
@@ -1334,9 +1334,9 @@ async def handle_message(message):
             )
             await send_message(
                 message.chat.id,
-                f"🎬 <b>{escape(str(info['title']))}</b>\\n"
-                f"👤 {escape(str(info['uploader']))}\\n"
-                f"⏱ {info['duration']}\\n"
-                f"📐 {quality}\\n\\n"
+                f"🎬 <b>{escape(str(info['title']))}</b>\n"
+                f"👤 {escape(str(info['uploader']))}\n"
+                f"⏱ {info['duration']}\n"
+                f"📐 {quality}\n\n"
                 f"📥 Added to download queue.",
             )
