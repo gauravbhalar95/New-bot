@@ -14,7 +14,7 @@ from typing import Optional, Tuple, Union
 import yt_dlp
 from instagrapi import Client
 
-from config import (DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID, INSTAGRAM_AUTO_LOGIN)
+from config import (DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID, INSTAGRAM_CSRFTOKEN, INSTAGRAM_AUTO_LOGIN)
 from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
 from utils.logger import setup_logging
 from utils.sanitize import sanitize_filename
@@ -247,8 +247,7 @@ def process_instagram_images(url: str) -> list[str]:
     if not image_paths:
         try:
             image_paths = download_with_instaloader(url)
-            logger.info("Instaloader image fallback succeeded for %s", url)
-        except Exception as instaloader_error:
+            logger.info("Instaloader image fallback succeeded for %s", url)        except Exception as instaloader_error:
             logger.warning("Instaloader image fallback failed for %s: %s", url, instaloader_error)
 
     if not image_paths:
@@ -301,14 +300,38 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     # only a bootstrap fallback when no sessionid was persisted yet.
     if "sessionid" not in cookies and INSTAGRAM_SESSIONID:
         cookies["sessionid"] = INSTAGRAM_SESSIONID
+    if "csrftoken" not in cookies and INSTAGRAM_CSRFTOKEN:
+        cookies["csrftoken"] = INSTAGRAM_CSRFTOKEN
+
+    # Instagram's CSRF header must match the csrftoken cookie from the same
+    # session. Never generate a random token or mix tokens from different sessions.
+    csrf_token = cookies.get("csrftoken")
+    if csrf_token:
+        headers["X-CSRFToken"] = csrf_token
+    headers["X-Requested-With"] = "XMLHttpRequest"
 
     response = requests.get(
         url,
         headers=headers,
         cookies=cookies,
         timeout=25,
+        allow_redirects=True,
     )
     response.raise_for_status()
+
+    final_url = response.url.lower()
+    response_text = response.text.lower()
+    if (
+        "/challenge/" in final_url
+        or "rd_challenge" in final_url
+        or "/accounts/login" in final_url
+        or "challenge_required" in response_text
+        or "checkpoint_required" in response_text
+    ):
+        raise RuntimeError(
+            "Instagram rd_challenge/login checkpoint detected. "
+            "Complete verification on a trusted device and refresh the session cookies."
+        )
 
     page_html = html.unescape(response.text).replace("\\/", "/")
     image_urls = []
@@ -497,7 +520,6 @@ def process_instagram(
     outtmpl = str(
         Path(DOWNLOAD_DIR) / "%(uploader)s - %(title)s.%(ext)s"
     )
-
     ydl_opts = {
         # Download both streams when Instagram exposes separate video/audio.
         # FFmpeg only muxes them; it does not re-encode the video here.
@@ -747,8 +769,7 @@ def refresh_instagram_session(force: bool = False) -> Client:
         raise RuntimeError(
             "Instagram session expired and automatic login credentials are not "
             "configured. Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD, or "
-            "provide a fresh INSTAGRAM_SESSIONID."
-        )
+            "provide a fresh INSTAGRAM_SESSIONID."        )
 
     try:
         client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
