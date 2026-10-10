@@ -52,6 +52,8 @@ DEFAULT_ADMIN = ADMIN_IDS[0]
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "")
 INSTAGRAM_SESSIONID = os.getenv("INSTAGRAM_SESSIONID", "").strip()
+# Optional CSRF cookie from the same authenticated Instagram session.
+INSTAGRAM_CSRFTOKEN = os.getenv("INSTAGRAM_CSRFTOKEN", "").strip()
 # Automatic Instagram session maintenance. The default refresh interval is
 # deliberately conservative to reduce unnecessary login/challenge requests.
 INSTAGRAM_AUTO_LOGIN = os.getenv("INSTAGRAM_AUTO_LOGIN", "false").strip().lower() not in {
