@@ -1,4 +1,4 @@
-""""Instagram login/challenge recovery helpers.
+"""Instagram login/challenge recovery helpers.
 
 These helpers detect expired sessions, CSRF failures, and Instagram security
 challenges. They never collect passwords or attempt to bypass verification.
@@ -84,22 +84,22 @@ def build_instagram_auth_message(browser_opened: bool = False) -> str:
     login_url = get_instagram_login_url()
     challenge_url = get_instagram_challenge_url()
     browser_line = (
-        "🌐 Instagram login page was opened on the bot device.\\n"
+        "🌐 Instagram login page was opened on the bot device.\n"
         if browser_opened
         else
         "🌐 Open Instagram on your trusted phone/PC and complete any login, "
-        "2FA, or security-check prompt.\\n"
+        "2FA, or security-check prompt.\n"
     )
     return (
-        "🔐 <b>Instagram authorization/checkpoint required</b>\\n\\n"
+        "🔐 <b>Instagram authorization/checkpoint required</b>\n\n"
         f"{browser_line}"
-        f'🔗 <a href="{login_url}">Open Instagram Login</a>\\n'
-        f'🛡️ <a href="{challenge_url}">Open Instagram Challenge</a>\\n\\n'
+        f'🔗 <a href="{login_url}">Open Instagram Login</a>\n'
+        f'🛡️ <a href="{challenge_url}">Open Instagram Challenge</a>\n\n'
         "After completing verification, create/export a fresh session cookie "
         "from your own trusted browser and update the server's "
         "INSTAGRAM_SESSIONID secret (or the configured cookie file), then "
         "restart the service and retry. A cloud server cannot read cookies "
-        "from your phone browser automatically.\\n\\n"
+        "from your phone browser automatically.\n\n"
         "CSRF tokens must match the authenticated session. The downloader "
         "should use the csrftoken from the same cookie jar; adding a random "
         "token or retrying a blocked challenge will not fix authentication. "
