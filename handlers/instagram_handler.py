@@ -247,8 +247,13 @@ def process_instagram_images(url: str) -> list[str]:
     if not image_paths:
         try:
             image_paths = download_with_instaloader(url)
-            logger.info("Instaloader image fallback succeeded for %s", url)        except Exception as instaloader_error:
-            logger.warning("Instaloader image fallback failed for %s: %s", url, instaloader_error)
+            logger.info("Instaloader image fallback succeeded for %s", url)
+        except Exception as instaloader_error:
+            logger.warning(
+                "Instaloader image fallback failed for %s: %s",
+                url,
+                instaloader_error,
+            )
 
     if not image_paths:
         try:
