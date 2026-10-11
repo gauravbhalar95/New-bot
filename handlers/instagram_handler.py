@@ -233,50 +233,38 @@ def _download_image_instagrapi(url: str) -> list[Path]:
 
 
 def process_instagram_images(url: str) -> list[str]:
-    """Download image media from an Instagram post or carousel.
+    """Download public Instagram post/carousel images without login.
 
-    Videos in a mixed carousel are skipped. If authenticated instagrapi cannot
-    fetch the images, fall back to the existing cookie/HTML image extractor.
+    Try one method at a time. Stop immediately when a method returns media;
+    later fallbacks run only when the previous method fails.
     """
     url = url.split("#")[0]
-    cookie_path = Path(COOKIES_FILE)
+    image_paths: list[Path] = []
 
-    image_paths = _download_image_instagrapi(url)
+    # 1) Instaloader public-post attempt (no session/cookies).
+    try:
+        image_paths = [Path(p) for p in download_with_instaloader(url)]
+        image_paths = [p for p in image_paths if p.is_file() and p.stat().st_size > 0]
+        if image_paths:
+            logger.info("Public Instaloader fallback succeeded: %s image(s)", len(image_paths))
+            return [str(p) for p in image_paths]
+    except Exception as e:
+        logger.warning("Public Instaloader image attempt failed for %s: %s", url, e)
 
-    # Instaloader fallback for posts/reels/carousels when instagrapi fails.
-    if not image_paths:
-        try:
-            image_paths = download_with_instaloader(url)
-            logger.info("Instaloader image fallback succeeded for %s", url)
-        except Exception as instaloader_error:
-            logger.warning(
-                "Instaloader image fallback failed for %s: %s",
-                url,
-                instaloader_error,
-            )
+    # 2) Public HTML metadata fallback. Do not pass session cookies.
+    try:
+        image_paths = _download_image_fallback(url, Path(COOKIES_FILE))
+        image_paths = [Path(p) for p in image_paths if Path(p).is_file() and Path(p).stat().st_size > 0]
+        if image_paths:
+            logger.info("Public HTML image fallback succeeded: %s image(s)", len(image_paths))
+            return [str(p) for p in image_paths]
+    except Exception as e:
+        logger.warning("Public HTML image fallback failed for %s: %s", url, e)
 
-    if not image_paths:
-        try:
-            image_paths = _download_image_fallback(url, cookie_path)
-        except Exception as fallback_error:
-            logger.warning(
-                "Instagram image fallback failed for %s: %s",
-                url,
-                fallback_error,
-            )
-
-    if not image_paths:
-        raise RuntimeError(
-            "No Instagram images were found. The post may contain only video, "
-            "be private, or require a valid Instagram session/cookie."
-        )
-
-    logger.info(
-        "Instagram image download ready: %s image(s), %.2f MB total",
-        len(image_paths),
-        sum(path.stat().st_size for path in image_paths) / (1024 ** 2),
+    raise RuntimeError(
+        "Could not download public Instagram images without login. "
+        "The post may be private or Instagram may require access/verification."
     )
-    return [str(path) for path in image_paths]
 
 def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
     """Download Instagram post images when the post has no video."""
@@ -291,24 +279,7 @@ def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
         "Referer": "https://www.instagram.com/",
     }
 
-    cookies = {}
-    try:
-        import http.cookiejar
-        jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
-        jar.load(ignore_discard=True, ignore_expires=True)
-        cookies = {cookie.name: cookie.value for cookie in jar}
-    except Exception as cookie_error:
-        logger.debug("Instagram image fallback cookie load failed: {}", cookie_error)
-
-    # Use the persisted/refreshed session cookie first. Do not overwrite it
-    # with a possibly stale Koyeb INSTAGRAM_SESSIONID secret. The secret is
-    # only a bootstrap fallback when no sessionid was persisted yet.
-    if "sessionid" not in cookies and INSTAGRAM_SESSIONID:
-        cookies["sessionid"] = INSTAGRAM_SESSIONID
-    if "csrftoken" not in cookies and INSTAGRAM_CSRFTOKEN:
-        cookies["csrftoken"] = INSTAGRAM_CSRFTOKEN
-
-    # Instagram's CSRF header must match the csrftoken cookie from the same
+    # Public-only request: deliberately do not load or send session cookies.\n    cookies = {}\n\n    # Instagram's CSRF header must match the csrftoken cookie from the same
     # session. Never generate a random token or mix tokens from different sessions.
     csrf_token = cookies.get("csrftoken")
     if csrf_token:
@@ -535,7 +506,6 @@ def process_instagram(
         "retries": 5,
         "fragment_retries": 5,
         "progress_hooks": [download_progress_hook],
-        "cookiefile": str(cookie_path),
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64; "
