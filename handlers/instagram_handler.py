@@ -762,6 +762,34 @@ def refresh_instagram_session(force: bool = False) -> Client:
             _INSTAGRAM_CLIENT = client
             return client
         except Exception as session_error:
+            error_text = str(session_error).lower()
+            verification_required = any(
+                marker in error_text
+                for marker in (
+                    "challenge_required",
+                    "checkpoint_required",
+                    "two_factor_required",
+                    "email_verification",
+                    "verify your email",
+                    "confirm your email",
+                    "login_required",
+                )
+            )
+            if verification_required:
+                # Do not repeatedly submit credentials when Instagram is asking
+                # for a human verification step. Complete it in the official app,
+                # then provide a fresh session cookie through deployment secrets.
+                logger.warning(
+                    "Instagram session needs verification; automatic login stopped."
+                )
+                raise RuntimeError(
+                    "Instagram requires login/email verification. Open Instagram "
+                    "on a trusted device, complete the requested verification, "
+                    "then update INSTAGRAM_SESSIONID in Koyeb Secrets and restart "
+                    "the service. Automatic retries are stopped to avoid repeated "
+                    "security challenges."
+                ) from session_error
+
             logger.warning(
                 "Instagram {} session is invalid; trying automatic login: {}",
                 source,
@@ -779,11 +807,33 @@ def refresh_instagram_session(force: bool = False) -> Client:
     try:
         client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
     except Exception as login_error:
-        raise RuntimeError(
-            "Instagram automatic login failed. Instagram may require 2-step "
-            "verification/challenge. Complete the login on a trusted device "
-            "and provide a fresh INSTAGRAM_SESSIONID."
-        ) from login_error
+        error_text = str(login_error).lower()
+        verification_required = any(
+            marker in error_text
+            for marker in (
+                "challenge_required",
+                "checkpoint_required",
+                "two_factor_required",
+                "email_verification",
+                "verify your email",
+                "confirm your email",
+                "login_required",
+            )
+        )
+        if verification_required:
+            message = (
+                "Instagram requires email/login verification. Complete the "
+                "verification in the official Instagram app or website, then "
+                "update INSTAGRAM_SESSIONID in Koyeb Secrets and restart the "
+                "service. The bot will not attempt to bypass verification."
+            )
+        else:
+            message = (
+                "Instagram automatic login failed. Check the credentials, or "
+                "complete any security verification in the official Instagram "
+                "app and then provide a fresh INSTAGRAM_SESSIONID."
+            )
+        raise RuntimeError(message) from login_error
 
     if save_instagram_client_state(client):
         logger.info(
