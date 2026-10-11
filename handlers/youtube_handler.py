@@ -13,8 +13,8 @@ def get_youtube_cookie_file():
     """Return a usable YouTube Netscape cookie file, if configured."""
     if not os.path.isfile(YOUTUBE_FILE):
         logger.warning(
-            "⚠️ YouTube cookies are not configured. "
-            "Set the Koyeb secret YOUTUBE_COOKIES_B64."
+            "⚠️ YouTube cookie file not found at %s. "
+            "Provide youtube_cookies.txt in the app root (/app)." % YOUTUBE_FILE
         )
         return None
 
@@ -194,8 +194,8 @@ def process_youtube(url, quality=None):
 
     if last_error and "Sign in to confirm" in str(last_error):
         last_error = (
-            "YouTube requires authentication. Configure a fresh "
-            "YOUTUBE_COOKIES_B64 secret in Koyeb and redeploy."
+            "YouTube requires authentication. Check that the separate "
+            "youtube_cookies.txt file is present and contains fresh Netscape-format cookies."
         )
 
     return (
