@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import traceback
-from pathlib import Path\nfrom html import escape as html_escape\nfrom utils.browser_downloads import get_download
+from pathlib import Path
+from html import escape as html_escape
+from utils.browser_downloads import get_download
 
 from quart import Quart, jsonify, request, send_file, abort
 import telebot
@@ -116,7 +118,7 @@ async def browser_download_file(token):
     item = get_download(token)
     if not item:
         return "This download link has expired or the file is no longer available.", 404
-    response = await send_file(item["path"], as_attachment=True, download_name=item["name"])
+    response = await send_file(item["path"], as_attachment=True, attachment_filename=item["name"])
     response.headers["Cache-Control"] = "no-store"
     return response
 
