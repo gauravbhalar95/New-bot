@@ -16,12 +16,14 @@ RUN apt-get update && \
         ffmpeg \
         git \
         curl \
-        nodejs \
-        npm \
-        chromium \
         ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+        gnupg \
+        chromium \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    node --version && npm --version && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
 # Copy & install Python dependencies
