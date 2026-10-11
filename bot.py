@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL
+from config import API_TOKEN, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL
+from utils.browser_downloads import register_download, is_registered_path
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import (
     process_instagram,
@@ -348,6 +349,29 @@ def split_large_file(file_path):
     )
 
 
+def make_browser_download_url(file_path):
+    token = register_download(file_path)
+    base_url = WEBHOOK_URL.rstrip("/")
+    for suffix in ("/webhook", "/telegram-webhook"):
+        if base_url.endswith(suffix):
+            base_url = base_url[:-len(suffix)]
+            break
+    return f"{base_url}/download/{token}"
+
+
+async def send_browser_download_link(chat_id, file_path):
+    url = make_browser_download_url(file_path)
+    name = escape(os.path.basename(file_path))
+    size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    await send_message(
+        chat_id,
+        f"📦 <b>File is too large to send in Telegram.</b>\n"
+        f"📄 {name}\n"
+        f"📏 {size_mb:.2f} MB\n\n"
+        f"🌐 <a href=\"{escape(url, quote=True)}\">Open download page in Chrome</a>\n"
+        f"⏳ This link expires in 24 hours.",
+    )
+
 async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None, source_url=None):
     if cancel_key in cancelled_downloads:
         return False
@@ -627,6 +651,15 @@ async def process_download(
 
                 actual_size = os.path.getsize(original_path)
 
+                # Oversized files get a temporary browser download link.
+                if actual_size > TELEGRAM_FILE_LIMIT:
+                    try:
+                        await send_browser_download_link(message.chat.id, original_path)
+                    except Exception as link_error:
+                        logger.error("Could not create browser download link: %s", link_error, exc_info=True)
+                        await send_message(message.chat.id, "❌ File is too large and browser download link could not be created.")
+                    continue
+
                 if (
                     actual_size > MAX_UPLOAD_PART_SIZE
                     and not (is_audio or is_audio_trim)
@@ -666,13 +699,17 @@ async def process_download(
                         logger.info("Successfully sent: %s", file_path)
                     except Exception as send_error:
                         logger.error("Error sending file: %s", send_error, exc_info=True)
-                        await send_message(
-                            message.chat.id,
-                            f"❌ Error sending file: {escape(str(send_error))}",
-                        )
-                    finally:
                         try:
                             if os.path.exists(file_path):
+                                await send_browser_download_link(message.chat.id, file_path)
+                            else:
+                                await send_message(message.chat.id, f"❌ Telegram upload failed and original file is unavailable: {escape(str(send_error))}")
+                        except Exception as link_error:
+                            logger.error("Browser download fallback failed: %s", link_error, exc_info=True)
+                            await send_message(message.chat.id, f"❌ File send failed: {escape(str(send_error))}")
+                    finally:
+                        try:
+                            if os.path.exists(file_path) and not is_registered_path(file_path):
                                 os.remove(file_path)
                         except Exception as cleanup_error:
                             logger.error("Cleanup error for %s: %s", file_path, cleanup_error)
@@ -722,6 +759,7 @@ async def cleanup_files():
                         if (
                             os.path.isfile(filepath)
                             and now - os.path.getctime(filepath) > 3600
+                            and not is_registered_path(filepath)
                         ):
                             os.remove(filepath)
                             logger.info("Removed old file: %s", filepath)
