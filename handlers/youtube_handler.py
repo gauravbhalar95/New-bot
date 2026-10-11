@@ -97,7 +97,7 @@ def process_youtube(url, quality=None):
             "noplaylist": True,
             "ignoreerrors": False,
             "js_runtimes": {
-                "node": "/usr/bin/node",
+                "node": {"path": "/usr/bin/node"},
             },
         }
 
@@ -223,7 +223,7 @@ def extract_audio_ffmpeg(url):
         "verbose": True,
         "noplaylist": True,
         "js_runtimes": {
-            "node": "/usr/bin/node",
+            "node": {"path": "/usr/bin/node"},
         },
     }
 
