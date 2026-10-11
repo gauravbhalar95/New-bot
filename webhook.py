@@ -116,7 +116,7 @@ async def browser_download_file(token):
     item = get_download(token)
     if not item:
         return "This download link has expired or the file is no longer available.", 404
-    response = await send_file(item["path"], as_attachment=True, attachment_filename=item["name"])
+    response = await send_file(item["path"], as_attachment=True, download_name=item["name"])
     response.headers["Cache-Control"] = "no-store"
     return response
 
