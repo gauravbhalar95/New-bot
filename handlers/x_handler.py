@@ -17,6 +17,20 @@ from utils.thumb_generator import generate_thumbnail
 
 logger = setup_logging(logging.DEBUG)
 
+# Optional proxy/VPN gateway for X only. Configure X_PROXY in Koyeb Secrets.
+# Example: socks5h://user:password@proxy-host:1080 or http://proxy-host:8080
+X_PROXY = os.getenv("X_PROXY") or os.getenv("VPN_PROXY_URL")
+
+
+def _open_x_url(request, timeout=30):
+    """Open an X request through the configured proxy when one is provided."""
+    if X_PROXY:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": X_PROXY, "https": X_PROXY})
+        )
+        return opener.open(request, timeout=timeout)
+    return urllib.request.urlopen(request, timeout=timeout)
+
 
 def _tweet_id(url):
     match = re.search(r"(?:status|statuses)/(\d+)", url)
@@ -52,7 +66,7 @@ def _download_tweet_images(url):
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with _open_x_url(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
         logger.warning("X image metadata fallback failed: %s", exc)
@@ -94,7 +108,7 @@ def _download_tweet_images(url):
             },
         )
         try:
-            with urllib.request.urlopen(image_request, timeout=30) as response:
+            with _open_x_url(image_request, timeout=30) as response:
                 data = response.read()
                 content_type = response.headers.get("Content-Type", "").lower()
             if not data or not content_type.startswith("image/"):
@@ -159,6 +173,11 @@ def download_twitter_media(url):
     }
     if X_FILE and os.path.isfile(X_FILE):
         ydl_opts["cookiefile"] = X_FILE
+    if X_PROXY:
+        ydl_opts["proxy"] = X_PROXY
+        logger.info("X download proxy is configured; routing X requests through proxy.")
+    else:
+        logger.info("No X proxy configured; using the server default network route.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
