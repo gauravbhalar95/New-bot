@@ -349,6 +349,30 @@ def split_large_file(file_path):
     )
 
 
+def compress_video_for_telegram(file_path):
+    """Try a size-reducing H.264/AAC transcode; return the smaller file or original."""
+    extension = os.path.splitext(file_path)[1].lower()
+    if extension not in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
+        return file_path
+    compressed_path = os.path.splitext(file_path)[0] + "_compressed.mp4"
+    command = ["ffmpeg", "-y", "-i", file_path, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", compressed_path]
+    try:
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
+        if os.path.isfile(compressed_path) and os.path.getsize(compressed_path) < os.path.getsize(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+            return compressed_path
+    except Exception as exc:
+        logger.warning("Video compression attempt failed for %s: %s", file_path, exc)
+    try:
+        if os.path.exists(compressed_path):
+            os.remove(compressed_path)
+    except OSError:
+        pass
+    return file_path
+
 def make_browser_download_url(file_path):
     token = register_download(file_path)
     base_url = WEBHOOK_URL.rstrip("/")
@@ -651,6 +675,14 @@ async def process_download(
 
                 actual_size = os.path.getsize(original_path)
 
+                # First try a smaller H.264/AAC version for large video files.
+                if actual_size > MAX_UPLOAD_PART_SIZE and not (is_audio or is_audio_trim):
+                    try:
+                        original_path = await run_blocking(compress_video_for_telegram, original_path)
+                        actual_size = os.path.getsize(original_path)
+                    except Exception as compress_error:
+                        logger.warning("Video compression attempt failed: %s", compress_error, exc_info=True)
+
                 # Oversized files get a temporary browser download link.
                 if actual_size > TELEGRAM_FILE_LIMIT:
                     try:
@@ -668,10 +700,14 @@ async def process_download(
                         parts = await run_blocking(split_large_file, original_path)
                     except Exception as split_error:
                         logger.error(f"File split failed: {split_error}", exc_info=True)
-                        await send_message(
-                            message.chat.id,
-                            f"❌ File is too large and could not be split: {split_error}",
-                        )
+                        try:
+                            if os.path.exists(original_path):
+                                await send_browser_download_link(message.chat.id, original_path)
+                            else:
+                                await send_message(message.chat.id, f"❌ File is too large and could not be split: {escape(str(split_error))}")
+                        except Exception as link_error:
+                            logger.error("Fallback link creation failed: %s", link_error, exc_info=True)
+                            await send_message(message.chat.id, f"❌ File is too large and could not be split: {escape(str(split_error))}")
                         continue
                 else:
                     parts = [original_path]
