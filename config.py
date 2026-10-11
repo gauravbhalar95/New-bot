@@ -1,5 +1,4 @@
 import os
-import base64
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -76,25 +75,10 @@ for directory in (DOWNLOAD_DIR, TEMP_DIR, DOWNLOAD_DIR3):
     os.makedirs(directory, exist_ok=True)
 
 X_FILE = str(BASE_DIR / "x.txt")
-# YouTube cookies must be supplied through a host secret, never committed to Git.
-# Set YOUTUBE_COOKIES_B64 to a base64-encoded Netscape/Mozilla cookies.txt file.
+# YouTube uses its own separate Netscape-format cookie file.
+# Provide youtube_cookies.txt at the project root (/app/youtube_cookies.txt)
+# through the deployment file/secret mechanism; do not use Instagram cookies.
 YOUTUBE_FILE = str(BASE_DIR / "youtube_cookies.txt")
-YOUTUBE_COOKIES_B64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
-if YOUTUBE_COOKIES_B64:
-    try:
-        # Environment variables are often copied with line breaks/spaces.
-        # Remove whitespace before strict base64 decoding.
-        normalized_cookie_b64 = "".join(YOUTUBE_COOKIES_B64.split())
-        cookie_bytes = base64.b64decode(normalized_cookie_b64, validate=True)
-
-        if not cookie_bytes:
-            raise ValueError("decoded cookie data is empty")
-
-        with open(YOUTUBE_FILE, "wb") as cookie_fp:
-            cookie_fp.write(cookie_bytes)
-
-    except Exception as exc:
-        raise RuntimeError(f"Invalid YOUTUBE_COOKIES_B64: {exc}") from exc
 INSTAGRAM_FILE = str(BASE_DIR / "cookies" / "instagram_cookies.txt")
 COOKIES_FILE = INSTAGRAM_FILE
 FACEBOOK_FILE = str(BASE_DIR / "facebook.txt")
