@@ -27,6 +27,16 @@ def register_download(file_path):
     return token
 
 
+def is_registered_path(file_path):
+    resolved = str(Path(file_path).resolve())
+    now = time.time()
+    with _lock:
+        expired = [key for key, item in _items.items() if item["expires"] <= now]
+        for key in expired:
+            _items.pop(key, None)
+        return any(item["path"] == resolved for item in _items.values())
+
+
 def get_download(token):
     with _lock:
         item = _items.get(token)
