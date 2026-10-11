@@ -1,9 +1,9 @@
 import asyncio
 import logging
 import traceback
-from pathlib import Path
+from pathlib import Path\nfrom html import escape as html_escape\nfrom utils.browser_downloads import get_download
 
-from quart import Quart, jsonify, request
+from quart import Quart, jsonify, request, send_file, abort
 import telebot
 
 # Keep startup errors visible in Koyeb logs. Importing bot loads all handlers
@@ -89,6 +89,36 @@ async def shutdown():
 @app.get("/")
 async def home():
     return "Telegram bot is running", 200
+
+
+@app.get("/download/<token>")
+async def browser_download_page(token):
+    item = get_download(token)
+    if not item:
+        return "This download link has expired or the file is no longer available.", 404
+    name = html_escape(item["name"])
+    size_mb = item["size"] / (1024 * 1024)
+    download_url = f"/download/{token}/file"
+    html = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Download {name}</title>
+<style>body{{font-family:system-ui,sans-serif;max-width:560px;margin:12vh auto;padding:24px;color:#172033;background:#f5f7fb}}
+main{{background:white;padding:28px;border-radius:18px;box-shadow:0 8px 30px #0001}}h1{{font-size:1.4rem;overflow-wrap:anywhere}}
+a{{display:block;text-align:center;background:#1769e0;color:white;text-decoration:none;padding:14px;border-radius:10px;font-weight:700;margin-top:24px}}
+small{{color:#596579}}</style></head><body><main><h1>Download your file</h1><p>{name}</p>
+<p><strong>{size_mb:.2f} MB</strong></p><small>This secure link expires after 24 hours.</small>
+<a href="{download_url}">⬇ Download file</a></main></body></html>"""
+    return html, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+
+
+@app.get("/download/<token>/file")
+async def browser_download_file(token):
+    item = get_download(token)
+    if not item:
+        return "This download link has expired or the file is no longer available.", 404
+    response = await send_file(item["path"], as_attachment=True, attachment_filename=item["name"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/health")
