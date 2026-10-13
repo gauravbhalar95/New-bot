@@ -45,7 +45,16 @@ if not WEBHOOK_URL:
 if not WEBHOOK_SECRET:
     raise RuntimeError("WEBHOOK_SECRET environment variable is required")
 
-ADMIN_IDS = [1302277958]
+# Configure one or more Telegram numeric user IDs in Koyeb as ADMIN_IDS.
+# Example: ADMIN_IDS=123456789,987654321
+_admin_ids_raw = os.getenv("ADMIN_IDS", "1302277958")
+ADMIN_IDS = []
+for _admin_id in _admin_ids_raw.split(","):
+    _admin_id = _admin_id.strip()
+    if _admin_id.isdigit():
+        ADMIN_IDS.append(int(_admin_id))
+if not ADMIN_IDS:
+    ADMIN_IDS = [1302277958]
 DEFAULT_ADMIN = ADMIN_IDS[0]
 
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "")
