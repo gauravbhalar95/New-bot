@@ -954,10 +954,10 @@ async def handle_youtube_cookie_status(message):
     )
     await send_message(
         message.chat.id,
-        "🍪 <b>YouTube cookie status</b>\\n"
-        f"File present: {'Yes' if exists else 'No'}\\n"
-        f"File size: {size / 1024:.1f} KB\\n"
-        f"Automatic refresh: {escape(mode)}\\n\\n"
+        "🍪 <b>YouTube cookie status</b>\n"
+        f"File present: {'Yes' if exists else 'No'}\n"
+        f"File size: {size / 1024:.1f} KB\n"
+        f"Automatic refresh: {escape(mode)}\n\n"
         "To replace cookies, send <code>youtube_cookies.txt</code> as a document.",
     )
 
