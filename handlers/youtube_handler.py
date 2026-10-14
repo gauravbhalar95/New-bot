@@ -1,36 +1,4 @@
 import os
-import re
-from urllib.parse import urlparse, parse_qs
-
-def normalize_youtube_url(url):
-    """Validate and canonicalize supported YouTube video URLs."""
-    parsed = urlparse((url or "").strip())
-    host = parsed.netloc.lower().split(":")[0]
-
-    if host not in {
-        "youtu.be", "www.youtu.be", "youtube.com",
-        "www.youtube.com", "m.youtube.com", "music.youtube.com",
-    }:
-        raise ValueError("Unsupported YouTube link. Please send a YouTube video URL.")
-
-    video_id = None
-    if host.endswith("youtu.be"):
-        video_id = parsed.path.strip("/").split("/")[0]
-    elif parsed.path == "/watch":
-        video_id = parse_qs(parsed.query).get("v", [None])[0]
-    else:
-        match = re.match(r"^/(?:shorts|embed|live)/([^/?]+)", parsed.path)
-        if match:
-            video_id = match.group(1)
-
-    if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
-        raise ValueError(
-            "Invalid or incomplete YouTube video ID. Copy the link again from YouTube."
-        )
-
-    return f"https://www.youtube.com/watch?v={video_id}"
-
-
 import yt_dlp
 import logging
 from utils.sanitize import sanitize_filename
@@ -90,12 +58,6 @@ def get_youtube_cookie_file():
 
 def process_youtube(url, quality=None):
     """Download a YouTube video with format/client fallbacks."""
-    try:
-        url = normalize_youtube_url(url)
-    except ValueError as exc:
-        logger.warning("Invalid YouTube URL: %s", exc)
-        return None, 0, str(exc)
-
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_template = f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
@@ -245,12 +207,6 @@ def process_youtube(url, quality=None):
 
 def extract_audio_ffmpeg(url):
     """Download and extract audio from a YouTube video synchronously."""
-    try:
-        url = normalize_youtube_url(url)
-    except ValueError as exc:
-        logger.warning("Invalid YouTube URL for audio: %s", exc)
-        return None, 0
-
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     cookie_file = get_youtube_cookie_file()
 
