@@ -1,12 +1,39 @@
 import os
 import yt_dlp
 import logging
+from urllib.parse import urlparse
+
 from utils.sanitize import sanitize_filename
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.logger import setup_logging
 
 
 logger = setup_logging(logging.DEBUG)
+
+
+def is_youtube_community_post(url):
+    """Return True for YouTube Community Post URLs, which are not video URLs."""
+    try:
+        parsed = urlparse(url.strip())
+    except (AttributeError, ValueError):
+        return False
+
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+    }
+    return host in allowed_hosts and parsed.path.strip("/").startswith("post/")
+
+
+def community_post_error():
+    return (
+        "આ YouTube Community Post લિંક છે, સીધી વિડિયો લિંક નથી. "
+        "પોસ્ટમાં જોડાયેલ વિડિયો ખોલો અને Share → Copy link કરીને "
+        "તે વિડિયોનું URL મોકલો."
+    )
 
 
 def get_youtube_cookie_file():
@@ -58,6 +85,13 @@ def get_youtube_cookie_file():
 
 def process_youtube(url, quality=None):
     """Download a YouTube video with format/client fallbacks."""
+    # Community post IDs (Ugkx...) are not YouTube video IDs. Reject these
+    # before yt-dlp tries to interpret them as a channel tab and retries.
+    if is_youtube_community_post(url):
+        message = community_post_error()
+        logger.warning("YouTube Community Post URL is not a direct video URL: %s", url)
+        return None, 0, message
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     output_template = f"{DOWNLOAD_DIR}/{sanitize_filename('%(title)s')}.%(ext)s"
@@ -207,6 +241,10 @@ def process_youtube(url, quality=None):
 
 def extract_audio_ffmpeg(url):
     """Download and extract audio from a YouTube video synchronously."""
+    if is_youtube_community_post(url):
+        logger.warning("Cannot extract audio from a YouTube Community Post URL: %s", url)
+        return None, 0
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     cookie_file = get_youtube_cookie_file()
 
