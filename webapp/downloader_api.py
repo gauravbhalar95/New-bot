@@ -60,8 +60,9 @@ async def download_youtube_api():
     if quality == "best":
         quality = None
 
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    ip = ip.split(",", 1)[0].strip()[:100]
+    # Use the direct peer address rather than a client-supplied forwarding
+    # header, which could be spoofed to bypass this basic rate limiter.
+    ip = (request.remote_addr or "unknown")[:100]
     if _rate_limited(ip):
         return jsonify({"error": "ઘણા પ્રયાસ થયા છે. 10 મિનિટ પછી ફરી પ્રયાસ કરો."}), 429
 
@@ -81,4 +82,6 @@ async def download_youtube_api():
         }), 200
     except Exception:
         logger.exception("Web downloader request failed")
-        return jsonify({"error": "સર્વર પર ડાઉનલોડ નિષ્ફળ ગયું. થોડા સમય પછી ફરી પ્રયાસ કરો."}), 500
+        return jsonify({
+            "error": "સર્વર પર ડાઉનલોડ નિષ્ફળ ગયું. થોડા સમય પછી ફરી પ્રયાસ કરો."
+        }), 500
