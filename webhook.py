@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 app = Quart(__name__)
 
+# Public YouTube downloader API and browser page.
+from webapp.downloader_api import downloader_api
+app.register_blueprint(downloader_api)
+
 WEBHOOK_ENDPOINT = "/telegram-webhook"
 
 
@@ -58,8 +62,6 @@ async def startup():
     if not telegram_webhook_url.startswith("https://"):
         raise RuntimeError("WEBHOOK_URL must use a public HTTPS URL")
 
-    # Register the webhook here: without set_webhook(), Telegram will not send
-    # incoming messages to this Quart application.
     webhook_set = await bot.set_webhook(
         url=telegram_webhook_url,
         secret_token=WEBHOOK_SECRET,
@@ -90,7 +92,11 @@ async def shutdown():
 
 @app.get("/")
 async def home():
-    return "Telegram bot is running", 200
+    html_path = Path(__file__).resolve().parent / "webapp" / "downloader.html"
+    return html_path.read_text(encoding="utf-8"), 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache",
+    }
 
 
 @app.get("/download/<token>")
@@ -200,7 +206,6 @@ async def instagram_logout():
         return jsonify({"ok": True})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 401
-
 
 
 @app.post("/webhook")
