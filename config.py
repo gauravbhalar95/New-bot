@@ -83,7 +83,8 @@ DOWNLOAD_DIR3 = str(BASE_DIR / "downloads" / "story")
 for directory in (DOWNLOAD_DIR, TEMP_DIR, DOWNLOAD_DIR3):
     os.makedirs(directory, exist_ok=True)
 
-X_FILE = str(BASE_DIR / "x.txt")
+# X/Twitter uses a separate Netscape-format cookie export. Keep it out of Git.
+X_FILE = os.getenv("X_COOKIES_FILE", str(BASE_DIR / "x_cookies.txt"))
 # YouTube uses its own separate Netscape-format cookie file.
 # Keep it out of Git; use admin upload or a private HTTPS refresh URL.
 YOUTUBE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", str(BASE_DIR / "youtube_cookies.txt"))
