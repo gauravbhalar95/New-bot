@@ -15,7 +15,7 @@ from telebot.async_telebot import AsyncTeleBot
 from config import API_TOKEN, ADMIN_IDS, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
 from utils.browser_downloads import register_download, is_registered_path
 from utils.youtube_cookie_manager import install_cookie_data, auto_refresh_task as youtube_cookie_auto_refresh_task, MAX_COOKIE_BYTES
-from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
+from handlers.youtube_handler import process_youtube, process_youtube_thumbnail, extract_audio_ffmpeg
 from handlers.instagram_handler import (
     process_instagram,
     process_instagram_images,
@@ -563,13 +563,15 @@ async def process_download(
                     if platform == "Instagram" and detect_media_type(url) == "story":
                         result = await run_blocking(download_instagram_story_url, url)
                     elif is_image:
-                        if platform != "Instagram":
-                            last_error = "Image download is currently supported for Instagram links only."
-                            result = None
+                        if platform == "YouTube":
+                            result = await run_blocking(process_youtube_thumbnail, url)
+                            if not result:
+                                last_error = "Could not fetch a thumbnail image for this YouTube URL."
+                        elif platform == "Instagram":
+                            result = await run_blocking(process_instagram_images, url)
                         else:
-                            result = await run_blocking(
-                                process_instagram_images, url
-                            )
+                            last_error = "Image download is supported for Instagram images and YouTube thumbnails."
+                            result = None
                     elif is_video_trim:
                         result = await run_blocking(
                             process_video_trim, url, start_time, end_time, quality
@@ -1135,12 +1137,13 @@ def build_media_action_keyboard(url, chat_id, user_id):
         types.InlineKeyboardButton("🎵 Audio", callback_data=f"act:audio:{token}"),
     )
 
-    if detect_platform(url) == "Instagram" and media_type in {
-        "image_or_video", "image", "instagram"
-    }:
+    if (
+        (detect_platform(url) == "Instagram" and media_type in {"image_or_video", "image", "instagram"})
+        or detect_platform(url) == "YouTube"
+    ):
         markup.add(
             types.InlineKeyboardButton(
-                "🖼️ Image",
+                "🖼️ Image / Thumbnail",
                 callback_data=f"act:image:{token}",
             )
         )
@@ -1176,15 +1179,15 @@ async def handle_media_action_callback(call):
             return
         await bot.answer_callback_query(call.id, "Selected")
         if action == "image":
-            if detect_platform(url) != "Instagram":
+            if detect_platform(url) not in {"Instagram", "YouTube"}:
                 await bot.edit_message_text(
-                    "⚠️ Image download is currently supported for Instagram links only.",
+                    "⚠️ Image download is supported for Instagram images and YouTube thumbnails.",
                     call.message.chat.id,
                     call.message.message_id,
                 )
                 return
             await bot.edit_message_text(
-                "🖼️ Added to image queue.",
+                "🖼️ Added to image / thumbnail queue.",
                 call.message.chat.id,
                 call.message.message_id,
             )
