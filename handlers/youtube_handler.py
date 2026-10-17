@@ -296,3 +296,36 @@ def extract_audio_ffmpeg(url):
     except Exception as e:
         logger.error(f"⚠️ Error extracting audio: {e}", exc_info=True)
         return None, 0
+
+
+def process_youtube_thumbnail(url):
+    """Download a YouTube video's thumbnail image without downloading the video."""
+    if is_youtube_community_post(url):
+        return None
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    opts = {
+        "skip_download": True,
+        "writethumbnail": True,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 20,
+        "retries": 2,
+        "outtmpl": {
+            "default": os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
+            "thumbnail": os.path.join(DOWNLOAD_DIR, "%(id)s_thumbnail.%(ext)s"),
+        },
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url.strip(), download=True)
+    if not info:
+        return None
+    video_id = sanitize_filename(str(info.get("id") or "youtube-image"))
+    candidates = [
+        os.path.join(DOWNLOAD_DIR, name)
+        for name in os.listdir(DOWNLOAD_DIR)
+        if name.startswith(video_id + "_thumbnail.")
+        and os.path.isfile(os.path.join(DOWNLOAD_DIR, name))
+        and os.path.splitext(name)[1].lower() in {".jpg", ".jpeg", ".png", ".webp"}
+    ]
+    return max(candidates, key=os.path.getmtime) if candidates else None
