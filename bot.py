@@ -17,11 +17,7 @@ from utils.browser_downloads import register_download, is_registered_path
 from utils.youtube_cookie_manager import install_cookie_data, auto_refresh_task as youtube_cookie_auto_refresh_task, MAX_COOKIE_BYTES
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from handlers.instagram_handler import (
-    process_instagram,
-    process_instagram_images,
-    download_instagram_stories,
-    download_instagram_dp,
-    refresh_instagram_session,
+    process_instagram
 )
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
