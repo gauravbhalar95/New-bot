@@ -1,6 +1,6 @@
-import gc
-import logging
-import re
+lazy import gc
+lazy import logging
+lazy import re
 from pathlib import Path
 from urllib.parse import urlparse
 
