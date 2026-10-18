@@ -1,5 +1,6 @@
 import logging
 import gc
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
@@ -54,8 +55,7 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     title = str(info_dict.get("title") or info_dict.get("id") or "video").strip()
     media_id = info_dict.get("id") or "media"
 
-    # Instagram sometimes exposes uploader_id as a numeric internal user ID
-    # (e.g. 1736833039), not the public username. Prefer a real handle instead.
+    # Prefer public creator/channel names over internal numeric IDs.
     uploader_id = str(info_dict.get("uploader_id") or "").strip()
     candidates = [
         info_dict.get("creator"),
@@ -76,7 +76,7 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     # Use that handle when metadata only gives us a numeric internal ID.
     if not uploader:
         match = re.search(
-            r"\\b(?:video|reel|photo)\\s+by\\s+@?([A-Za-z0-9._]+)",
+            r"\b(?:video|reel|photo)\s+by\s+@?([A-Za-z0-9._]+)",
             title,
             flags=re.IGNORECASE,
         )
@@ -88,21 +88,17 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     if not uploader:
         uploader = "Instagram"
 
-    # Build desired filename and sanitize it using utils.sanitize.sanitize_filename
     raw_filename = f"{uploader} - {title}{ext}"
     safe_filename = sanitize_filename(raw_filename)
 
-    # Ensure extension is preserved after sanitize_filename
     if not safe_filename.lower().endswith(ext.lower()):
         safe_filename = f"{Path(safe_filename).stem}{ext}"
 
-    # Fallback if sanitize_filename stripped everything
     if not Path(safe_filename).stem.strip(" ._"):
         safe_filename = sanitize_filename(f"Instagram_{media_id}{ext}")
 
     new_path = downloaded_file.parent / safe_filename
 
-    # Avoid colliding with an existing file in DOWNLOAD_DIR
     counter = 1
     while new_path.exists() and new_path != downloaded_file:
         new_path = downloaded_file.parent / f"{Path(safe_filename).stem}_{counter}{ext}"
@@ -111,13 +107,11 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     if downloaded_file != new_path:
         rename_file(str(downloaded_file), str(new_path))
 
-    # Return the new path if rename succeeded, otherwise fall back to original path
     return str(new_path if new_path.exists() else downloaded_file)
 
 
 def process_instagram(url: str) -> str | None:
     """Download Instagram video synchronously, rename it, and return its file path."""
-    # Clean URL fragment while preserving query parameters
     url = url.split('#')[0]
 
     download_dir = Path(DOWNLOAD_DIR)
@@ -126,7 +120,6 @@ def process_instagram(url: str) -> str | None:
     ydl_opts = {
         'format': 'bv*+ba/b',
         'merge_output_format': 'mp4',
-        # Use safe temporary ID template during download, then rename with utils.renamer
         'outtmpl': str(download_dir / 'ig_%(id)s.%(ext)s'),
         'restrictfilenames': True,
         'socket_timeout': 15,
@@ -148,7 +141,6 @@ def process_instagram(url: str) -> str | None:
         ],
     }
 
-    # Check or refresh cookies file; if present, use it, otherwise proceed in public mode
     cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
         refresh_fn = getattr(instagram_cookies, "refresh_instagram_session", None)
@@ -169,7 +161,6 @@ def process_instagram(url: str) -> str | None:
             if not info_dict:
                 raise RuntimeError("❌ Failed to extract Instagram video info.")
 
-            # Handle multi-video / carousel posts
             if 'entries' in info_dict and info_dict['entries']:
                 info_dict = info_dict['entries'][0]
 
@@ -180,7 +171,6 @@ def process_instagram(url: str) -> str | None:
             if not downloaded_file.exists():
                 raise FileNotFoundError(f"Downloaded file not found: {mp4_path}")
 
-            # Rename the downloaded file using utils.renamer
             final_path = _rename_downloaded_video(downloaded_file, info_dict)
             logger.info(f"✅ Final Instagram video ready: {final_path}")
             return final_path
@@ -197,7 +187,11 @@ async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     """Send the downloaded Instagram video to the specified user."""
     try:
         with open(video_path, 'rb') as video:
-            await bot.send_video(chat_id, video)
+            await bot.send_video(
+                chat_id,
+                video,
+                caption=Path(video_path).name,
+            )
         logger.info(f"✅ Video successfully sent to user {chat_id}")
     except Exception as e:
         logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
