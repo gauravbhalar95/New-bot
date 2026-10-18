@@ -51,18 +51,42 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     if not ext.startswith("."):
         ext = f".{ext}"
 
-    # Prefer the creator's actual username/handle over their display name.
-    # Instagram metadata often exposes this as uploader_id (e.g. freaky_myna)
-    # while uploader/channel may be a human-readable display name.
-    uploader = (
-        info_dict.get("uploader_id")
-        or info_dict.get("creator")
-        or info_dict.get("uploader")
-        or info_dict.get("channel")
-        or "Instagram"
-    )
-    title = info_dict.get("title") or info_dict.get("id") or "video"
+    title = str(info_dict.get("title") or info_dict.get("id") or "video").strip()
     media_id = info_dict.get("id") or "media"
+
+    # Instagram sometimes exposes uploader_id as a numeric internal user ID
+    # (e.g. 1736833039), not the public username. Prefer a real handle instead.
+    uploader_id = str(info_dict.get("uploader_id") or "").strip()
+    candidates = [
+        info_dict.get("creator"),
+        info_dict.get("uploader"),
+        info_dict.get("channel"),
+        info_dict.get("channel_id"),
+    ]
+    uploader = next(
+        (
+            str(value).strip()
+            for value in candidates
+            if value and not str(value).strip().isdigit()
+        ),
+        "",
+    )
+
+    # yt-dlp Instagram titles commonly contain "Video by username".
+    # Use that handle when metadata only gives us a numeric internal ID.
+    if not uploader:
+        match = re.search(
+            r"\\b(?:video|reel|photo)\\s+by\\s+@?([A-Za-z0-9._]+)",
+            title,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            uploader = match.group(1)
+
+    if not uploader and uploader_id and not uploader_id.isdigit():
+        uploader = uploader_id
+    if not uploader:
+        uploader = "Instagram"
 
     # Build desired filename and sanitize it using utils.sanitize.sanitize_filename
     raw_filename = f"{uploader} - {title}{ext}"
