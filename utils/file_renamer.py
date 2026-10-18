@@ -25,7 +25,10 @@ def rename_media_files(paths: Iterable[str | Path], uploader: object, identifier
     Missing uploader metadata becomes "creator", never the requester username.
     """
     clean_uploader = _clean_uploader(uploader)
-    clean_identifier = sanitize_filename(str(identifier or ""), max_length=80).strip(" ._- ")
+    clean_identifier = (
+        sanitize_filename(str(identifier), max_length=80).strip(" ._- ")
+        if identifier else ""
+    )
     renamed: list[Path] = []
     used: set[str] = set()
 
