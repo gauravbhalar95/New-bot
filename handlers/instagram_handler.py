@@ -1,995 +1,126 @@
-# handlers/instagram_handler.py
-
-import gc
-import html
 import logging
-import re
-import requests
-import shutil
-import subprocess
+import gc
+import asyncio
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
-from typing import Optional, Tuple, Union
-
+from urllib.parse import urlparse
 import yt_dlp
-from instagrapi import Client
-
-from config import (DOWNLOAD_DIR, COOKIES_FILE, INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD, INSTAGRAM_SESSIONID, INSTAGRAM_CSRFTOKEN, INSTAGRAM_AUTO_LOGIN)
-from utils.instagram_cookies import save_instagram_client_state, get_saved_instagram_sessionid
-from utils.logger import setup_logging
+from config import DOWNLOAD_DIR
+from utils.instagram_cookies import COOKIES_FILE
 from utils.sanitize import sanitize_filename
-from utils.instaloader_downloader import download_instagram_post as download_with_instaloader
+from utils.logger import setup_logging
 
-
+# Logger setup
 logger = setup_logging(logging.DEBUG)
+logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
-logger.add(
-    "instagram_handler.log",
-    rotation="10 MB",
-    level="DEBUG"
-)
+# Supported Domains
+SUPPORTED_DOMAINS = ['instagram.com']
 
-SUPPORTED_DOMAINS = ["instagram.com"]
-
-# Reuse one authenticated client per worker process. This avoids repeated
-# Instagram login attempts for a single download/retry cycle.
-_INSTAGRAM_CLIENT: Optional[Client] = None
-
-Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
-
-
-def _rename_instagram_media_files(paths, username: str, identifier: str) -> list[Path]:
-    """Give downloaded Instagram media stable, meaningful filenames.
-
-    Instagram does not expose the uploader's local/original filename, so use
-    the public username plus post shortcode/media ID instead. Existing file
-    extensions are preserved and carousel items receive _1, _2, ... suffixes.
-    """
-    clean_username = sanitize_filename(str(username).strip().lstrip("@"), 80)
-    clean_identifier = sanitize_filename(str(identifier).strip(), 100)
-    if not clean_identifier:
-        clean_identifier = "post"
-
-    renamed = []
-    used = set()
-    for index, path_value in enumerate(paths, start=1):
-        path = Path(path_value)
-        if not path.is_file():
-            continue
-
-        suffix = path.suffix.lower() or ".jpg"
-        stem = f"{clean_username} - {clean_identifier}"
-        if len(paths) > 1:
-            stem += f"_{index}"
-
-        target = path.with_name(sanitize_filename(stem + suffix, 240))
-        counter = 2
-        while target.exists() and target.resolve() != path.resolve():
-            target = path.with_name(
-                sanitize_filename(f"{stem}_{counter}{suffix}", 240)
-            )
-            counter += 1
-
-        try:
-            if target.resolve() != path.resolve():
-                path.replace(target)
-            target = target
-            if str(target) not in used:
-                renamed.append(target)
-                used.add(str(target))
-        except OSError as rename_error:
-            logger.warning("Could not rename Instagram media {}: {}", path, rename_error)
-            renamed.append(path)
-
-    return renamed
-
-
-def _get_instagram_media_identity(url: str) -> tuple[str, str]:
-    """Fetch the Instagram username and public media identifier for naming."""
-    fallback_id = urlparse(url).path.rstrip("/").split("/")[-1] or "post"
-    username = "instagram"
-    identifier = fallback_id
-    try:
-        client = _instagram_login()
-        media_pk = client.media_pk_from_url(url)
-        media = client.media_info(media_pk)
-        username = (
-            getattr(getattr(media, "user", None), "username", None)
-            or username
-        )
-        identifier = getattr(media, "code", None) or str(media_pk) or identifier
-    except Exception as metadata_error:
-        logger.debug("Instagram media identity lookup failed: {}", metadata_error)
-    return username, identifier
-
-
+# URL Validation
 def is_valid_url(url: str) -> bool:
+    """Check if the given URL is a valid Instagram link."""
     try:
         result = urlparse(url)
-        return (
-            result.scheme in ["http", "https"]
-            and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
-        )
+        return result.scheme in ['http', 'https'] and any(domain in result.netloc for domain in SUPPORTED_DOMAINS)
     except ValueError:
         return False
 
-
+# Identify Instagram Video
 def is_instagram_video(url: str) -> bool:
-    return any(x in url for x in ["/reel/", "/tv/", "/video/"])
+    """Identify if the given URL points to an Instagram video."""
+    return any(x in url for x in ['/reel/', '/tv/', '/video/'])
 
-
+# Progress Hook for Downloads
 def download_progress_hook(d: dict) -> None:
-    status = d.get("status")
+    """Track and log download progress."""
+    if d['status'] == 'downloading':
+        percent = d.get('_percent_str', '0%')
+        speed = d.get('_speed_str', 'N/A')
+        eta = d.get('_eta_str', 'N/A')
+        logger.info(f"Downloading... {percent} at {speed}, ETA: {eta}")
+    elif d['status'] == 'finished':
+        logger.info(f"✅ Download finished: {d['filename']}")
 
-    if status == "downloading":
-        logger.info(
-            "Downloading... %s at %s, ETA: %s",
-            d.get("_percent_str", "0%"),
-            d.get("_speed_str", "N/A"),
-            d.get("_eta_str", "N/A"),
-        )
-    elif status == "finished":
-        logger.info("✅ Download finished: %s", d.get("filename"))
+# Instagram Video Downloader
+async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
+    """Download Instagram video asynchronously and return its path, size, and any errors."""
 
+    # Clean URL to avoid unwanted parameters (Keep query parameters)
+    url = url.split('#')[0]    
 
-
-def _download_image_instagrapi(url: str) -> list[Path]:
-    """Download Instagram photo/carousel media with one session-recovery retry."""
-    global _INSTAGRAM_CLIENT
-
-    last_error = None
-    for attempt in range(1, 3):
-        try:
-            client = _instagram_login()
-            media_pk = client.media_pk_from_url(url)
-            media = client.media_info(media_pk)
-            media_type = getattr(media, "media_type", None)
-            media_user = getattr(getattr(media, "user", None), "username", None)
-            username = media_user or "instagram"
-            identifier = getattr(media, "code", None) or str(media_pk)
-
-            logger.info(
-                "Instagram image handler: media_pk=%s media_type=%s",
-                media_pk,
-                media_type,
-            )
-
-            media_extensions = {
-                ".jpg", ".jpeg", ".png", ".webp",
-                ".mp4", ".mov", ".m4v", ".webm",
-            }
-
-            # A /p/ URL can be a photo, a video, or a mixed carousel.
-            # Download the actual media type instead of treating every /p/
-            # post as an image-only post.
-            if media_type == 1:
-                path = client.photo_download(
-                    media_pk,
-                    folder=DOWNLOAD_DIR,
-                )
-                paths = [Path(path)] if path and Path(path).is_file() else []
-                return _rename_instagram_media_files(paths, username, identifier)
-
-            if media_type == 2:
-                path = client.video_download(
-                    media_pk,
-                    folder=DOWNLOAD_DIR,
-                )
-                paths = [Path(path)] if path and Path(path).is_file() else []
-                return _rename_instagram_media_files(paths, username, identifier)
-
-            if media_type == 8:
-                paths = client.album_download(
-                    media_pk,
-                    folder=DOWNLOAD_DIR,
-                )
-                media_paths = [
-                    Path(path)
-                    for path in paths
-                    if path
-                    and Path(path).is_file()
-                    and Path(path).suffix.lower() in media_extensions
-                    and Path(path).stat().st_size > 0
-                ]
-                return _rename_instagram_media_files(media_paths, username, identifier)
-
-            return []
-        except Exception as e:
-            last_error = e
-            error_text = str(e).lower()
-            recoverable = any(
-                marker in error_text
-                for marker in (
-                    "401", "403", "forbidden", "unauthorized",
-                    "exceeded 30 redirects", "login_required",
-                    "checkpoint_required", "challenge_required",
-                )
-            )
-            logger.warning(
-                "instagrapi image handler attempt %s/2 failed for {}: {}",
-                attempt,
-                url,
-                e,
-            )
-            if attempt == 1 and recoverable:
-                # The cached client can remain alive even after Instagram has
-                # invalidated its session. Force a fresh password login instead
-                # of reusing the same stale session/cookie.
-                try:
-                    _INSTAGRAM_CLIENT = None
-                    _instagram_login(force=True)
-                    logger.info("Instagram image session refreshed; retrying once.")
-                    continue
-                except Exception as refresh_error:
-                    last_error = refresh_error
-                    logger.warning(
-                        "Instagram image session refresh failed: {}",
-                        refresh_error,
-                    )
-            break
-
-    logger.warning("instagrapi image handler failed for {}: {}", url, last_error)
-    return []
-
-
-def process_instagram_images(url: str) -> list[str]:
-    """Download public Instagram post/carousel images without login.
-
-    Try one method at a time. Stop immediately when a method returns media;
-    later fallbacks run only when the previous method fails.
-    """
-    url = url.split("#")[0]
-    image_paths: list[Path] = []
-
-    # 1) Instaloader public-post attempt (no session/cookies).
-    try:
-        image_paths = [Path(p) for p in download_with_instaloader(url)]
-        image_paths = [p for p in image_paths if p.is_file() and p.stat().st_size > 0]
-        if image_paths:
-            logger.info("Public Instaloader fallback succeeded: %s image(s)", len(image_paths))
-            return [str(p) for p in image_paths]
-    except Exception as e:
-        logger.warning("Public Instaloader image attempt failed for %s: %s", url, e)
-
-    # 2) Public HTML metadata fallback. Do not pass session cookies.
-    try:
-        image_paths = _download_image_fallback(url, Path(COOKIES_FILE))
-        image_paths = [Path(p) for p in image_paths if Path(p).is_file() and Path(p).stat().st_size > 0]
-        if image_paths:
-            logger.info("Public HTML image fallback succeeded: %s image(s)", len(image_paths))
-            return [str(p) for p in image_paths]
-    except Exception as e:
-        logger.warning("Public HTML image fallback failed for %s: %s", url, e)
-
-    raise RuntimeError(
-        "Could not download public Instagram images without login. "
-        "The post may be private or Instagram may require access/verification."
-    )
-
-def _download_image_fallback(url: str, cookie_path: Path) -> list[Path]:
-    """Download Instagram post images when the post has no video."""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/140.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml",
-        "Referer": "https://www.instagram.com/",
-    }
-
-    # Public-only request: deliberately do not load or send session cookies.\n    cookies = {}\n\n    # Instagram's CSRF header must match the csrftoken cookie from the same
-    # session. Never generate a random token or mix tokens from different sessions.
-    csrf_token = cookies.get("csrftoken")
-    if csrf_token:
-        headers["X-CSRFToken"] = csrf_token
-    headers["X-Requested-With"] = "XMLHttpRequest"
-
-    response = requests.get(
-        url,
-        headers=headers,
-        cookies=cookies,
-        timeout=25,
-        allow_redirects=True,
-    )
-    response.raise_for_status()
-
-    final_url = response.url.lower()
-    response_text = response.text.lower()
-    if (
-        "/challenge/" in final_url
-        or "rd_challenge" in final_url
-        or "/accounts/login" in final_url
-        or "challenge_required" in response_text
-        or "checkpoint_required" in response_text
-    ):
-        raise RuntimeError(
-            "Instagram rd_challenge/login checkpoint detected. "
-            "Complete verification on a trusted device and refresh the session cookies."
-        )
-
-    page_html = html.unescape(response.text).replace("\\/", "/")
-    image_urls = []
-
-    # Handle both <meta property="og:image" content="..."> and
-    # <meta content="..." property="og:image">.
-    patterns = [
-        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-        r'<meta[^>]+property=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']twitter:image["\']',
-        r'"display_url"\s*:\s*"([^"]+)"',
-        r'"thumbnail_src"\s*:\s*"([^"]+)"',
-    ]
-
-    for pattern in patterns:
-        image_urls.extend(re.findall(pattern, page_html, re.IGNORECASE))
-
-    unique_urls = []
-    seen = set()
-
-    for image_url in image_urls:
-        image_url = (
-            image_url
-            .replace("\\u0026", "&")
-            .replace("\\/", "/")
-            .replace("\\u002F", "/")
-        )
-        if image_url.startswith("//"):
-            image_url = "https:" + image_url
-        if image_url.startswith("http") and image_url not in seen:
-            seen.add(image_url)
-            unique_urls.append(image_url)
-
-    if not unique_urls:
-        logger.warning("Instagram image fallback found no image URL for {}", url)
-        return []
-
-    username, post_id = _get_instagram_media_identity(url)
-    downloaded = []
-
-    for index, image_url in enumerate(unique_urls, start=1):
-        try:
-            image_response = requests.get(
-                image_url,
-                headers=headers,
-                cookies=cookies,
-                timeout=30,
-                stream=True,
-            )
-            image_response.raise_for_status()
-
-            content_type = image_response.headers.get("Content-Type", "").lower()
-            extension = ".jpg"
-            for candidate in (".jpg", ".jpeg", ".png", ".webp"):
-                if candidate in content_type:
-                    extension = candidate
-                    break
-
-            output = Path(DOWNLOAD_DIR) / f"instagram_{post_id}_{index}{extension}"
-
-            with output.open("wb") as file:
-                for chunk in image_response.iter_content(chunk_size=262144):
-                    if chunk:
-                        file.write(chunk)
-
-            if output.is_file() and output.stat().st_size > 0:
-                downloaded.append(output)
-
-        except Exception as image_error:
-            logger.warning(
-                "Instagram image fallback failed for {}: {}",
-                image_url,
-                image_error,
-            )
-
-    return _rename_instagram_media_files(downloaded, username, post_id)
-
-
-def _get_ffmpeg_path() -> Optional[str]:
-    """Find a usable FFmpeg binary from the system or imageio-ffmpeg."""
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path:
-        return ffmpeg_path
-    try:
-        import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        if ffmpeg_path and Path(ffmpeg_path).is_file():
-            return ffmpeg_path
-    except Exception as e:
-        logger.debug("imageio-ffmpeg lookup failed: %s", e)
-    return None
-
-
-def _merge_video_audio(info_dict) -> Optional[Path]:
-    """Explicitly mux separate yt-dlp video/audio files into one MP4."""
-    if not isinstance(info_dict, dict):
-        return None
-    ffmpeg = _get_ffmpeg_path()
-    if not ffmpeg:
-        logger.warning("FFmpeg not found; cannot explicitly merge Instagram video/audio")
-        return None
-    entries = info_dict.get("entries") or [info_dict]
-    for entry in entries:
-        if not entry:
-            continue
-        requested = entry.get("requested_downloads") or []
-        files = []
-        for item in requested:
-            filepath = item.get("filepath")
-            if filepath and Path(filepath).is_file():
-                files.append((item, Path(filepath)))
-        video = next((path for item, path in files if item.get("vcodec") not in (None, "none")), None)
-        audio = next((path for item, path in files if item.get("acodec") not in (None, "none") and item.get("vcodec") in (None, "none")), None)
-        if not video or not audio:
-            continue
-        output = video.with_name(video.stem + "_merged.mp4")
-        try:
-            subprocess.run([
-                ffmpeg, "-y", "-i", str(video), "-i", str(audio),
-                "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                "-movflags", "+faststart", str(output),
-            ], capture_output=True, text=True, timeout=900, check=True)
-            if output.is_file() and output.stat().st_size > 0:
-                for source in (video, audio):
-                    try:
-                        source.unlink()
-                    except OSError:
-                        pass
-                logger.info("✅ FFmpeg merged Instagram video + audio: %s", output)
-                return output
-        except subprocess.CalledProcessError as e:
-            logger.error("FFmpeg Instagram merge failed: %s", e.stderr[-3000:] if e.stderr else e)
-        except Exception as e:
-            logger.error("Instagram FFmpeg merge error: %s", e, exc_info=True)
-    return None
-
-
-def _find_downloaded_files(info_dict) -> list[Path]:
-    """Find all final media files produced by yt-dlp, including carousels."""
-    files = []
-
-    entries = info_dict.get("entries") if isinstance(info_dict, dict) else None
-    items = list(entries) if entries else [info_dict]
-
-    for entry in items:
-        if not entry:
-            continue
-
-        requested = entry.get("requested_downloads") or []
-        candidates = []
-
-        for item in requested:
-            filepath = item.get("filepath")
-            if filepath and Path(filepath).is_file():
-                candidates.append(Path(filepath))
-
-        for key in ("_filename", "filename"):
-            filepath = entry.get(key)
-            if filepath and Path(filepath).is_file():
-                candidates.append(Path(filepath))
-
-        # Prefer the merged MP4 over source streams.
-        mp4 = next(
-            (p for p in candidates if p.suffix.lower() == ".mp4"),
-            None,
-        )
-        chosen = mp4 or (candidates[0] if candidates else None)
-
-        if chosen and chosen.is_file() and chosen not in files:
-            files.append(chosen)
-
-    return files
-
-
-def process_instagram(
-    url: str
-) -> Tuple[Optional[Union[str, list]], int, Optional[str]]:
-
-    url = url.split("#")[0]
-
+    # Validate cookies
     cookie_path = Path(COOKIES_FILE)
+    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
+        logger.error("❌ Instagram cookies file is missing or empty!")
+        return None, 0, "Instagram cookies file is missing or empty"
 
-    # Public posts do not require the Netscape cookie file; let Instaloader try them.
-    outtmpl = str(
-        Path(DOWNLOAD_DIR) / "%(uploader)s - %(title)s.%(ext)s"
-    )
     ydl_opts = {
-        # Download both streams when Instagram exposes separate video/audio.
-        # FFmpeg only muxes them; it does not re-encode the video here.
-        "format": "best",
-        "merge_output_format": "mp4",
-        "outtmpl": outtmpl,
-        "socket_timeout": 20,
-        "retries": 5,
-        "fragment_retries": 5,
-        "progress_hooks": [download_progress_hook],
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; "
-                "rv:123.0 Gecko/20100101 Firefox/123.0"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.instagram.com/",
+        'format': 'bv+ba/b',
+        'merge_output_format': 'mp4',
+        'outtmpl': str(Path(DOWNLOAD_DIR) / '%(uploader)s - %(title)s.%(ext)s'),
+        'socket_timeout': 10,
+        'retries': 5,
+        'compat_opts': ['instagram:login_all'],  # Compatibility fix
+        'force_generic_extractor': True,         # Fallback fix
+        'progress_hooks': [download_progress_hook],
+        'verbose': True,
+        'cookiefile': str(cookie_path),
+        'extractor_args': {
+            'instagram:ap_user': ['1'],
+            'instagram:viewport_width': ['1920'],
         },
+        'http_headers': {
+            'User-Agent': (
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0 '
+                'Gecko/20100101 Firefox/123.0'
+            ),
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Dest': 'document'
+        },
+        'postprocessors': [
+            {
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }
+        ],
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-
-        if not info_dict:
+            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
+            if info_dict:
+                video_path = Path(ydl.prepare_filename(info_dict))
+                file_size = info_dict.get('filesize', video_path.stat().st_size if video_path.exists() else 0)
+                return str(video_path), file_size, None
             return None, 0, "❌ Failed to extract info"
-
-        merged_path = _merge_video_audio(info_dict)
-        video_paths = [merged_path] if merged_path else _find_downloaded_files(info_dict)
-
-        # Single-item fallback: find the newest media file if yt-dlp did not
-        # expose a final filepath.
-        if not video_paths:
-            media_extensions = {
-                ".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v"
-            }
-            candidates = sorted(
-                (
-                    p for p in Path(DOWNLOAD_DIR).iterdir()
-                    if p.is_file() and p.suffix.lower() in media_extensions
-                ),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            if candidates:
-                video_paths = [candidates[0]]
-
-        if not video_paths:
-            # Final fallback: Instaloader downloads the post itself, including sidecars.
-            try:
-                insta_paths = download_with_instaloader(url)
-                if insta_paths:
-                    total_size = sum(p.stat().st_size for p in insta_paths)
-                    if len(insta_paths) == 1:
-                        return str(insta_paths[0]), int(total_size), None
-                    return [str(p) for p in insta_paths], int(total_size), None
-            except Exception as instaloader_error:
-                logger.warning("Instaloader media fallback failed for %s: %s", url, instaloader_error)
-
-            logger.error("❌ Instagram download completed but no media file was found.")
-            return (
-                None,
-                0,
-                "❌ Download completed, but the media file could not be found.",
-            )
-
-        total_size = sum(p.stat().st_size for p in video_paths)
-
-        if len(video_paths) > 1:
-            logger.info(
-                "✅ Instagram carousel downloaded: %s media files, %.2f MB total",
-                len(video_paths),
-                total_size / (1024 ** 2),
-            )
-            return [str(p) for p in video_paths], int(total_size), None
-
-        video_path = video_paths[0]
-        username, media_id = _get_instagram_media_identity(url)
-        renamed_video = _rename_instagram_media_files(
-            [video_path], username, media_id
-        )
-        if renamed_video:
-            video_path = renamed_video[0]
-
-        logger.info(
-            "✅ Final Instagram video ready for @{}: {} (%.2f MB)",
-            username,
-            video_path,
-            video_path.stat().st_size / (1024 ** 2),
-        )
-
-        if video_path.suffix.lower() == ".mp4":
-            logger.info(
-                "✅ MP4 contains merged video/audio when separate audio was available."
-            )
-
-        return str(video_path), int(video_path.stat().st_size), None
-
     except yt_dlp.utils.DownloadError as e:
-        logger.error("❌ Instagram download error: %s", e, exc_info=True)
-
-        # yt-dlp sometimes fails on carousel entries with "No video formats
-        # found" even when the parent post contains photos or mixed media.
-        # First use the authenticated Instagram API client, which understands
-        # photo/video/carousel media types; then try Instaloader; finally use
-        # the HTML image-only fallback.
-        error_text = str(e).lower()
-        if (
-            "no video formats found" in error_text
-            or "there is no video" in error_text
-            or "requested format is not available" in error_text
-        ):
-            try:
-                media_paths = _download_image_instagrapi(url)
-                if media_paths:
-                    total_size = sum(p.stat().st_size for p in media_paths if p.is_file())
-                    logger.info(
-                        "✅ Authenticated Instagram media fallback ready: %s file(s), %.2f MB total",
-                        len(media_paths),
-                        total_size / (1024 ** 2),
-                    )
-                    return (
-                        [str(p) for p in media_paths]
-                        if len(media_paths) > 1 else str(media_paths[0]),
-                        int(total_size),
-                        None,
-                    )
-            except Exception as api_error:
-                logger.warning(
-                    "Authenticated Instagram media fallback failed: %s",
-                    api_error,
-                    exc_info=True,
-                )
-
-            try:
-                insta_paths = download_with_instaloader(url)
-                insta_paths = [Path(p) for p in (insta_paths or []) if Path(p).is_file()]
-                if insta_paths:
-                    total_size = sum(p.stat().st_size for p in insta_paths)
-                    logger.info(
-                        "✅ Instaloader Instagram fallback ready: %s file(s), %.2f MB total",
-                        len(insta_paths),
-                        total_size / (1024 ** 2),
-                    )
-                    return (
-                        [str(p) for p in insta_paths]
-                        if len(insta_paths) > 1 else str(insta_paths[0]),
-                        int(total_size),
-                        None,
-                    )
-            except Exception as instaloader_error:
-                logger.warning(
-                    "Instaloader Instagram fallback failed: %s",
-                    instaloader_error,
-                    exc_info=True,
-                )
-
-            # HTML metadata is only an image fallback; do not mistake it for
-            # a complete mixed carousel downloader.
-            try:
-                image_paths = _download_image_fallback(url, cookie_path)
-                if image_paths:
-                    total_size = sum(p.stat().st_size for p in image_paths)
-                    logger.info(
-                        "✅ Instagram HTML image fallback ready: %s file(s), %.2f MB total",
-                        len(image_paths),
-                        total_size / (1024 ** 2),
-                    )
-                    return (
-                        [str(p) for p in image_paths]
-                        if len(image_paths) > 1 else str(image_paths[0]),
-                        int(total_size),
-                        None,
-                    )
-            except Exception as image_error:
-                logger.warning(
-                    "Instagram image fallback failed: %s",
-                    image_error,
-                    exc_info=True,
-                )
-
+        logger.error(f"❌ Instagram download error: {e}")
         return None, 0, str(e)
-
     except Exception as e:
-        logger.exception("⚠️ Unexpected Instagram error: %s", e)
+        logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
         return None, 0, str(e)
 
-
-
-
-def refresh_instagram_session(force: bool = False) -> Client:
-    """Automatically authenticate Instagram and refresh the local session.
-
-    Authentication order:
-      1. Saved local session cookie.
-      2. INSTAGRAM_SESSIONID environment secret.
-      3. Username/password automatic login.
-
-    If a session expires, the function automatically falls back to password
-    login and persists the newly issued cookies/session. A 2FA/challenge
-    cannot be bypassed and is reported without crashing the bot.
-    """
-    global _INSTAGRAM_CLIENT
-
-    client = Client()
-    client.delay_range = [1, 2]
-    client.read_timeout = 30
-
-    # A forced refresh intentionally skips all saved/session secrets. This
-    # prevents repeatedly restoring the same invalid Instagram session.
-    saved_session = get_saved_instagram_sessionid()
-    configured_session = INSTAGRAM_SESSIONID
-
-    session_candidates = []
-    if not force:
-        if saved_session:
-            session_candidates.append(("saved cookie", saved_session))
-        if configured_session and configured_session != saved_session:
-            session_candidates.append(("Koyeb secret", configured_session))
-
-    for source, session_id in session_candidates:
-        try:
-            client.login_by_sessionid(session_id)
-            if save_instagram_client_state(client):
-                logger.info(
-                    "Instagram authenticated using %s; cookies refreshed.",
-                    source,
-                )
-            else:
-                logger.warning(
-                    "Instagram authenticated using %s, but cookie persistence failed.",
-                    source,
-                )
-            _INSTAGRAM_CLIENT = client
-            return client
-        except Exception as session_error:
-            error_text = str(session_error).lower()
-            verification_required = any(
-                marker in error_text
-                for marker in (
-                    "challenge_required",
-                    "checkpoint_required",
-                    "two_factor_required",
-                    "email_verification",
-                    "verify your email",
-                    "confirm your email",
-                    "login_required",
-                )
-            )
-            if verification_required:
-                # Do not repeatedly submit credentials when Instagram is asking
-                # for a human verification step. Complete it in the official app,
-                # then provide a fresh session cookie through deployment secrets.
-                logger.warning(
-                    "Instagram session needs verification; automatic login stopped."
-                )
-                raise RuntimeError(
-                    "Instagram requires login/email verification. Open Instagram "
-                    "on a trusted device, complete the requested verification, "
-                    "then update INSTAGRAM_SESSIONID in Koyeb Secrets and restart "
-                    "the service. Automatic retries are stopped to avoid repeated "
-                    "security challenges."
-                ) from session_error
-
-            logger.warning(
-                "Instagram {} session is invalid; trying automatic login: {}",
-                source,
-                session_error,
-            )
-
-    # No usable session remains. Automatically use username/password if
-    # configured. This also lets a stale INSTAGRAM_SESSIONID recover.
-    if not INSTAGRAM_USERNAME or not INSTAGRAM_PASSWORD:
-        raise RuntimeError(
-            "Instagram session expired and automatic login credentials are not "
-            "configured. Set INSTAGRAM_USERNAME and INSTAGRAM_PASSWORD, or "
-            "provide a fresh INSTAGRAM_SESSIONID."        )
-
+# Send Video to User
+async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
+    """Send the downloaded Instagram video to the specified user."""
     try:
-        client.login(INSTAGRAM_USERNAME, INSTAGRAM_PASSWORD)
-    except Exception as login_error:
-        error_text = str(login_error).lower()
-        verification_required = any(
-            marker in error_text
-            for marker in (
-                "challenge_required",
-                "checkpoint_required",
-                "two_factor_required",
-                "email_verification",
-                "verify your email",
-                "confirm your email",
-                "login_required",
-            )
-        )
-        if verification_required:
-            message = (
-                "Instagram requires email/login verification. Complete the "
-                "verification in the official Instagram app or website, then "
-                "update INSTAGRAM_SESSIONID in Koyeb Secrets and restart the "
-                "service. The bot will not attempt to bypass verification."
-            )
-        else:
-            message = (
-                "Instagram automatic login failed. Check the credentials, or "
-                "complete any security verification in the official Instagram "
-                "app and then provide a fresh INSTAGRAM_SESSIONID."
-            )
-        raise RuntimeError(message) from login_error
+        with open(video_path, 'rb') as video:
+            await bot.send_video(chat_id, video)
+        logger.info(f"✅ Video successfully sent to user {chat_id}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send video to user {chat_id}: {e}")
 
-    if save_instagram_client_state(client):
-        logger.info(
-            "Instagram automatic login succeeded; new cookies/session saved."
-        )
-    else:
-        logger.warning(
-            "Instagram automatic login succeeded, but cookie persistence failed."
-        )
-
-    _INSTAGRAM_CLIENT = client
-    return client
-
-def _instagram_login(force: bool = False) -> Client:
-    """Return the cached Instagram client, optionally forcing a fresh login."""
-    global _INSTAGRAM_CLIENT
-
-    if force:
-        _INSTAGRAM_CLIENT = None
-
-    if _INSTAGRAM_CLIENT is not None:
-        return _INSTAGRAM_CLIENT
-
-    return refresh_instagram_session(force=force)
-
-def _instagram_username_from_input(value: str) -> str:
-    """Extract a clean Instagram username from a username/profile/story input."""
-    value = value.strip().strip("/")
-    if value.startswith("@"):
-        value = value[1:]
-
-    if "instagram.com" in value.lower():
-        parsed = urlparse(value)
-        parts = [part for part in parsed.path.split("/") if part]
-        if not parts:
-            raise ValueError("Instagram username was not found in the URL.")
-
-        # /stories/<username>/... or /story/<username>/...
-        if parts[0].lower() in {"stories", "story"} and len(parts) >= 2:
-            value = parts[1]
-        else:
-            value = parts[0]
-
-    value = value.split("?")[0].split("#")[0].strip("@/")
-    if not re.fullmatch(r"[A-Za-z0-9._]{1,30}", value):
-        raise ValueError("Invalid Instagram username.")
-    return value
-
-
-def download_instagram_story_url(url: str) -> list[str]:
-    """Automatically download a specific Instagram story/highlight media URL."""
-    parsed = urlparse(url)
-    query = parse_qs(parsed.query)
-    story_media_id = query.get("story_media_id", [None])[0]
-
-    story_pk = None
-    if story_media_id:
-        story_pk = story_media_id.split("_", 1)[0]
-    else:
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) >= 3 and parts[0].lower() in {"stories", "story"}:
-            story_pk = parts[2]
-
-    if story_pk and str(story_pk).isdigit():
-        client = _instagram_login()
-        output_dir = Path(DOWNLOAD_DIR) / "story"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        path = client.story_download(int(story_pk), folder=str(output_dir))
-        if path and Path(path).is_file():
-            username = "instagram"
-            try:
-                story = client.story_info(int(story_pk))
-                username = getattr(getattr(story, "user", None), "username", None) or username
-            except Exception:
-                pass
-            renamed = _rename_instagram_media_files(
-                [Path(path)], username, f"story_{story_pk}"
-            )
-            return [str(renamed[0] if renamed else Path(path))]
-
-    parts = [part for part in parsed.path.split("/") if part]
-    if len(parts) >= 2 and parts[0].lower() in {"stories", "story"}:
-        return download_instagram_stories(parts[1])
-
-    raise RuntimeError("Instagram story URL does not contain a usable story ID.")
-
-
-def download_instagram_stories(value: str) -> list[str]:
-    """Download all currently available stories for an Instagram user."""
-    username = _instagram_username_from_input(value)
-    client = _instagram_login()
-
-    user_id = client.user_id_from_username(username)
-    stories = client.user_stories(user_id)
-
-    if not stories:
-        raise RuntimeError(f"No active stories found for @{username}.")
-
-    output_dir = Path(DOWNLOAD_DIR) / "story"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    downloaded = []
-
-    for index, story in enumerate(stories, start=1):
-        try:
-            path = client.story_download(
-                story.pk,
-                folder=str(output_dir),
-            )
-            if path and Path(path).is_file():
-                story_path = Path(path)
-                story_id = getattr(story, "pk", None) or index
-                renamed_story = _rename_instagram_media_files(
-                    [story_path], username, f"story_{story_id}"
-                )
-                downloaded.append(str(renamed_story[0] if renamed_story else story_path))
-                logger.info(
-                    "Instagram story %s/%s downloaded for @%s: %s",
-                    index, len(stories), username, path,
-                )
-        except Exception as story_error:
-            logger.warning(
-                "Failed to download story %s for @%s: %s",
-                getattr(story, "pk", "?"),
-                username,
-                story_error,
-            )
-
-    if not downloaded:
-        raise RuntimeError(f"Instagram stories for @{username} could not be downloaded.")
-
-    return downloaded
-
-
-def download_instagram_dp(value: str) -> str:
-    """Download the highest-resolution Instagram profile picture available."""
-    username = _instagram_username_from_input(value)
-    client = _instagram_login()
-    user = client.user_info_by_username(username)
-
-    image_url = getattr(user, "profile_pic_url_hd", None) or getattr(
-        user, "profile_pic_url", None
-    )
-    if not image_url:
-        raise RuntimeError(f"No profile picture URL found for @{username}.")
-
-    output_dir = Path(DOWNLOAD_DIR) / "dp"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output = output_dir / f"{username}_dp.jpg"
-
-    response = requests.get(
-        str(image_url),
-        headers={
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.instagram.com/",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    content_type = response.headers.get("Content-Type", "").lower()
-    extension = ".jpg"
-    if "png" in content_type:
-        extension = ".png"
-    elif "webp" in content_type:
-        extension = ".webp"
-    output = output.with_suffix(extension)
-
-    output.write_bytes(response.content)
-    if not output.is_file() or output.stat().st_size == 0:
-        raise RuntimeError("Downloaded profile picture is empty.")
-
-    logger.info(
-        "Instagram HD DP downloaded for @%s: %.2f MB",
-        username,
-        output.stat().st_size / (1024 ** 2),
-    )
-    return str(output)
-
-
+# Cleanup Downloaded Files
 def cleanup_video(video_path: str) -> None:
+    """Remove the downloaded video file to free up space."""
     video_file = Path(video_path)
-
     try:
         if video_file.exists():
             video_file.unlink()
             gc.collect()
-            logger.info("🧹 Cleaned up %s", video_path)
+            logger.info(f"🧹 Cleaned up {video_path}")
     except Exception as e:
-        logger.error("❌ Failed to clean up %s: %s", video_path, e)
+        logger.error(f"❌ Failed to clean up {video_path}: {e}")
