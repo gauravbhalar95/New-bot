@@ -11,6 +11,7 @@ import requests
 import yt_dlp
 
 from config import DOWNLOAD_DIR
+from utils.file_renamer import rename_media_files
 from utils.logger import setup_logging
 
 logger = setup_logging(logging.DEBUG)
@@ -215,6 +216,7 @@ def process_threads(url: str):
         ]
 
         if video_paths:
+            video_paths = rename_media_files(video_paths, info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
             total_size = sum(p.stat().st_size for p in video_paths)
             logger.info(
                 "Threads reel/video ready: %s file(s), %.2f MB total",
@@ -236,6 +238,9 @@ def process_threads(url: str):
     try:
         image_paths = _download_images(url)
         if image_paths:
+            from urllib.parse import urlparse
+            author = urlparse(url).path.strip("/").split("/")[0].lstrip("@") or "creator"
+            image_paths = rename_media_files(image_paths, author, urlparse(url).path.strip("/").split("/")[-1])
             total_size = sum(p.stat().st_size for p in image_paths)
             logger.info(
                 "Threads image post ready: %s file(s), %.2f MB total",
