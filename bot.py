@@ -1,11 +1,11 @@
-import os
-import gc
-import logging
-import re
-import time
-import asyncio
-import subprocess
-import secrets
+lazy import os
+lazy import gc
+lazy import logging
+lazy import re
+lazy import time
+lazy import asyncio
+lazy import subprocess
+lazy import secrets
 from html import escape
 from datetime import datetime, timezone
 
