@@ -1,6 +1,5 @@
 import logging
 import gc
-import asyncio
 from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
@@ -11,7 +10,6 @@ from utils.logger import setup_logging
 
 # Logger setup
 logger = setup_logging(logging.DEBUG)
-# Only call logger.add if setup_logging returns a Loguru logger
 if hasattr(logger, "add"):
     logger.add("instagram_handler.log", rotation="10 MB", level="DEBUG")
 
@@ -41,14 +39,15 @@ def download_progress_hook(d: dict) -> None:
     elif d['status'] == 'finished':
         logger.info(f"✅ Download finished: {d.get('filename')}")
 
-async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
-    """Download Instagram video asynchronously and return its path, size, and any errors."""
+# ✅ Synchronous def so bot.py gets the actual result instead of a coroutine object
+def process_instagram(url: str) -> str | None:
+    """Download Instagram video and return its file path string."""
     url = url.split('#')[0]
 
     cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
         logger.error("❌ Instagram cookies file is missing or empty!")
-        return None, 0, "Instagram cookies file is missing or empty"
+        raise RuntimeError("Instagram cookies file is missing or empty")
 
     ydl_opts = {
         'format': 'bv+ba/b',
@@ -77,19 +76,14 @@ async def process_instagram(url: str) -> tuple[str | None, int, str | None]:
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = await asyncio.to_thread(ydl.extract_info, url, True)
+            info_dict = ydl.extract_info(url, download=True)
             if info_dict:
                 video_path = Path(ydl.prepare_filename(info_dict)).with_suffix('.mp4')
-                file_size = (
-                    info_dict.get('filesize')
-                    or info_dict.get('filesize_approx')
-                    or (video_path.stat().st_size if video_path.exists() else 0)
-                )
-                return str(video_path), file_size, None
-            return None, 0, "❌ Failed to extract info"
+                return str(video_path)
+            return None
     except yt_dlp.utils.DownloadError as e:
         logger.error(f"❌ Instagram download error: {e}")
-        return None, 0, str(e)
+        raise
     except Exception as e:
         logger.error(f"⚠️ Unexpected error downloading Instagram video: {e}")
-        return None, 0, str(e)
+        raise
