@@ -20,6 +20,7 @@ from utils.instagram_cookies import (
     save_instagram_client_state,
     get_saved_instagram_sessionid,
 )
+from handlers.instagram import process_instagram
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
