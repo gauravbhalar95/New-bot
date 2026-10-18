@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import yt_dlp
 from config import DOWNLOAD_DIR, COOKIES_FILE
-from utils.instagram_cookies import refresh_instagram_session
+import utils.instagram_cookies as instagram_cookies
 from utils.sanitize import sanitize_filename
 from utils.logger import setup_logging
 
@@ -46,7 +46,6 @@ def download_progress_hook(d: dict) -> None:
 
 def process_instagram(url: str) -> str | None:
     """Download Instagram video synchronously and return its file path."""
-    # Clean URL fragment while keeping query parameters
     url = url.split('#')[0]
 
     download_dir = Path(DOWNLOAD_DIR)
@@ -76,10 +75,11 @@ def process_instagram(url: str) -> str | None:
         ],
     }
 
-    # Ensure cookies are refreshed if missing, and attach only if non-empty
     cookie_path = Path(COOKIES_FILE)
     if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        refresh_instagram_session()
+        refresh_fn = getattr(instagram_cookies, "refresh_instagram_session", None)
+        if callable(refresh_fn):
+            refresh_fn()
 
     if cookie_path.exists() and cookie_path.stat().st_size > 0:
         ydl_opts['cookiefile'] = str(cookie_path)
@@ -95,7 +95,6 @@ def process_instagram(url: str) -> str | None:
             if not info_dict:
                 raise RuntimeError("❌ Failed to extract Instagram video info.")
 
-            # Handle multi-video / carousel posts
             if 'entries' in info_dict and info_dict['entries']:
                 info_dict = info_dict['entries'][0]
 
