@@ -14,6 +14,8 @@ def _clean_uploader(value: object) -> str:
     """Normalize a platform uploader/channel value into a safe filename prefix."""
     text = str(value or "").strip().lstrip("@")
     text = re.sub(r"\s+", " ", text)
+    if not text:
+        return "creator"
     text = sanitize_filename(text, max_length=80).strip(" ._-")
     return text or "creator"
 
