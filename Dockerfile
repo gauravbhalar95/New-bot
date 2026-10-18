@@ -1,7 +1,7 @@
 # -------------------------------
 # Use latest stable official Python base image
 # -------------------------------
-FROM python:3.14-slim
+FROM python:3.15
 
 # -------------------------------
 # Set working directory
