@@ -19,7 +19,6 @@ from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from utils.instagram_cookies import (
     save_instagram_client_state,
     get_saved_instagram_sessionid,
-    refresh_instagram_session,
 )
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
