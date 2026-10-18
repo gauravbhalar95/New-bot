@@ -216,7 +216,7 @@ def process_threads(url: str):
         ]
 
         if video_paths:
-            video_paths = rename_media_files(video_paths, info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+            video_paths = rename_media_files(video_paths, info_dict.get("uploader_id") or info_dict.get("channel_id") or info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
             total_size = sum(p.stat().st_size for p in video_paths)
             logger.info(
                 "Threads reel/video ready: %s file(s), %.2f MB total",
