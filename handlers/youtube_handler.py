@@ -2,6 +2,7 @@ import os
 import yt_dlp
 import logging
 from utils.sanitize import sanitize_filename
+from utils.file_renamer import rename_media_files
 from config import YOUTUBE_FILE, DOWNLOAD_DIR
 from utils.logger import setup_logging
 
@@ -158,6 +159,8 @@ def process_youtube(url, quality=None):
                         "yt-dlp completed but the output file was not found"
                     )
 
+                renamed_paths = rename_media_files([file_path], info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+                file_path = str(renamed_paths[0]) if renamed_paths else file_path
                 file_size = os.path.getsize(file_path)
 
                 logger.info(
@@ -238,6 +241,9 @@ def extract_audio_ffmpeg(url):
             audio_filename = os.path.splitext(
                 ydl.prepare_filename(info_dict)
             )[0] + ".mp3"
+
+            renamed_paths = rename_media_files([audio_filename], info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+            audio_filename = str(renamed_paths[0]) if renamed_paths else audio_filename
 
             file_size = (
                 os.path.getsize(audio_filename)
