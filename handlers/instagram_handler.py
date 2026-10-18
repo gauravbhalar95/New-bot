@@ -185,6 +185,8 @@ def process_instagram(url: str) -> str | list[str]:
         logger.exception("Unexpected Instagram download error")
         raise
 
+print(process_instagram(url: str))
+
 
 async def send_video_to_user(bot, chat_id: int, video_path: str) -> None:
     """Send one downloaded video to a Telegram user."""
