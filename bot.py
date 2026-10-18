@@ -16,8 +16,10 @@ from config import API_TOKEN, ADMIN_IDS, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOG
 from utils.browser_downloads import register_download, is_registered_path
 from utils.youtube_cookie_manager import install_cookie_data, auto_refresh_task as youtube_cookie_auto_refresh_task, MAX_COOKIE_BYTES
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
-from handlers.instagram_handler import (
-    process_instagram
+from utils.instagram_cookies import (
+    save_instagram_client_state,
+    get_saved_instagram_sessionid,
+    refresh_instagram_session,
 )
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
