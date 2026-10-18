@@ -16,6 +16,7 @@ import yt_dlp
 from config import DOWNLOAD_DIR, X_FILE, FFMPEG_PATH
 from utils.logger import setup_logging
 from utils.thumb_generator import generate_thumbnail
+from utils.file_renamer import rename_media_files
 
 logger = setup_logging(logging.DEBUG)
 
@@ -258,6 +259,8 @@ def download_twitter_media(url):
                 None,
             )
             if file_path:
+                renamed_paths = rename_media_files([file_path], info.get("uploader") or info.get("channel") or info.get("creator"), info.get("id"))
+                file_path = str(renamed_paths[0]) if renamed_paths else file_path
                 file_size = os.path.getsize(file_path)
                 thumbnail_path = None
                 try:
@@ -277,6 +280,10 @@ def download_twitter_media(url):
     try:
         image_path = _download_tweet_images(url)
         if image_path and os.path.isfile(image_path) and os.path.getsize(image_path) > 0:
+            from urllib.parse import urlparse
+            author = urlparse(url).path.strip("/").split("/")[0] or "creator"
+            renamed_paths = rename_media_files([image_path], author, urlparse(url).path.strip("/").split("/")[-1])
+            image_path = str(renamed_paths[0]) if renamed_paths else image_path
             file_size = os.path.getsize(image_path)
             logger.info("X photo fallback completed: %s", image_path)
             return image_path, file_size, None
