@@ -259,7 +259,7 @@ def download_twitter_media(url):
                 None,
             )
             if file_path:
-                renamed_paths = rename_media_files([file_path], info.get("uploader") or info.get("channel") or info.get("creator"), info.get("id"))
+                renamed_paths = rename_media_files([file_path], info.get("uploader_id") or info.get("channel_id") or info.get("uploader") or info.get("channel") or info.get("creator"), info.get("id"))
                 file_path = str(renamed_paths[0]) if renamed_paths else file_path
                 file_size = os.path.getsize(file_path)
                 thumbnail_path = None
