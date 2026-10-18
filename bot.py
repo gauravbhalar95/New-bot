@@ -19,6 +19,7 @@ from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from utils.instagram_cookies import (
     save_instagram_client_state,
     get_saved_instagram_sessionid,
+    refresh_instagram_session,
 )
 from handlers.instagram_handler import process_instagram
 from handlers.threads_handler import process_threads
@@ -406,24 +407,24 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
 
     if extension in image_extensions:
         try:
-            await bot.send_photo(chat_id, types.InputFile(file_path), caption=caption)
+            await bot.send_photo(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
         except Exception as photo_error:
             logger.warning(
                 "send_photo failed; sending image as document: %s",
                 photo_error,
                 exc_info=True,
             )
-            await bot.send_document(chat_id, types.InputFile(file_path), caption=caption)
+            await bot.send_document(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
         return True
 
     if is_audio:
-        await bot.send_audio(chat_id, types.InputFile(file_path), caption=caption)
+        await bot.send_audio(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
         return True
 
     try:
         await bot.send_video(
             chat_id,
-            types.InputFile(file_path),
+            types.InputFile(file_path, file_name=os.path.basename(file_path)),
             supports_streaming=True,
             caption=caption,
         )
@@ -434,7 +435,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             video_error,
             exc_info=True,
         )
-        await bot.send_document(chat_id, types.InputFile(file_path), caption=caption)
+        await bot.send_document(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
         return True
 
 
