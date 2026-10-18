@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import http.cookiejar
 import json
 import logging
 import os
@@ -22,14 +24,64 @@ logger = setup_logging(logging.DEBUG)
 X_PROXY = os.getenv("X_PROXY") or os.getenv("VPN_PROXY_URL")
 
 
+def _get_x_cookie_file():
+    """
+    Resolve the Netscape-format X login cookie file.
+
+    On Koyeb, either mount/upload x.txt at X_FILE, set X_COOKIES_FILE to a
+    readable cookie-file path, or store the base64-encoded Netscape cookie
+    file in the X_COOKIES_B64 secret. Never commit login cookies to Git.
+    """
+    configured_path = os.getenv("X_COOKIES_FILE", "").strip()
+    cookie_path = configured_path or X_FILE
+
+    if os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0:
+        return cookie_path
+
+    encoded_cookies = os.getenv("X_COOKIES_B64", "").strip()
+    if encoded_cookies:
+        try:
+            cookie_bytes = base64.b64decode(encoded_cookies, validate=True)
+            if b"# Netscape HTTP Cookie File" not in cookie_bytes[:512] and b"# HTTP Cookie File" not in cookie_bytes[:512]:
+                logger.warning("X_COOKIES_B64 does not look like a Netscape-format cookie file.")
+            target = Path(X_FILE)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(cookie_bytes)
+            try:
+                target.chmod(0o600)
+            except OSError:
+                pass
+            if target.stat().st_size > 0:
+                logger.info("Loaded X login cookies from the X_COOKIES_B64 secret.")
+                return str(target)
+        except (ValueError, OSError) as exc:
+            logger.error("Could not load X_COOKIES_B64 secret: %s", exc)
+
+    logger.warning(
+        "X login cookies are unavailable. Provide a Netscape-format cookie file "
+        "at %s or configure X_COOKIES_FILE/X_COOKIES_B64.",
+        cookie_path,
+    )
+    return None
+
+
 def _open_x_url(request, timeout=30):
-    """Open an X request through the configured proxy when one is provided."""
+    """Open an X request with login cookies and the optional configured proxy."""
+    handlers = []
     if X_PROXY:
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({"http": X_PROXY, "https": X_PROXY})
-        )
-        return opener.open(request, timeout=timeout)
-    return urllib.request.urlopen(request, timeout=timeout)
+        handlers.append(urllib.request.ProxyHandler({"http": X_PROXY, "https": X_PROXY}))
+
+    cookie_path = _get_x_cookie_file()
+    if cookie_path:
+        cookie_jar = http.cookiejar.MozillaCookieJar(cookie_path)
+        try:
+            cookie_jar.load(ignore_discard=True, ignore_expires=True)
+            handlers.append(urllib.request.HTTPCookieProcessor(cookie_jar))
+        except (http.cookiejar.LoadError, OSError) as exc:
+            logger.warning("Could not parse X cookie file for HTTP fallback: %s", exc)
+
+    opener = urllib.request.build_opener(*handlers)
+    return opener.open(request, timeout=timeout)
 
 
 def _tweet_id(url):
@@ -39,9 +91,8 @@ def _tweet_id(url):
 
 def _download_tweet_images(url):
     """
-    Fallback for public X posts containing photos but no downloadable video.
-    Returns a single image path, or a ZIP path when the post contains several
-    images, so the existing bot return contract remains unchanged.
+    Fallback for X posts containing photos but no downloadable video.
+    Returns a single image path, or a ZIP path for multiple images.
     """
     tweet_id = _tweet_id(url)
     if not tweet_id:
@@ -74,7 +125,6 @@ def _download_tweet_images(url):
 
     photos = payload.get("photos") or []
     if not photos:
-        # Some responses expose media through mediaDetails instead.
         for media in payload.get("mediaDetails") or []:
             if media.get("type") == "photo" and media.get("media_url_https"):
                 photos.append({"url": media["media_url_https"]})
@@ -146,12 +196,13 @@ def _download_tweet_images(url):
 
 def download_twitter_media(url):
     """
-    Downloads an X/Twitter video and returns (file_path, file_size, thumbnail_path).
-    If no video is available, falls back to downloading public tweet photos.
-    Multiple photos are bundled into a ZIP to preserve the existing bot interface.
+    Download X videos using login cookies. If no video is available, try
+    public photo metadata and return a single image or ZIP for photo posts.
+    Return contract: (file_path, file_size, thumbnail_path).
     """
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
     output_path = os.path.join(DOWNLOAD_DIR, "%(title).100s [%(id)s].%(ext)s")
+    cookie_path = _get_x_cookie_file()
 
     ydl_opts = {
         "outtmpl": output_path,
@@ -171,8 +222,12 @@ def download_twitter_media(url):
             "Referer": "https://x.com/",
         },
     }
-    if X_FILE and os.path.isfile(X_FILE):
-        ydl_opts["cookiefile"] = X_FILE
+    if cookie_path:
+        ydl_opts["cookiefile"] = cookie_path
+        logger.info("X yt-dlp authentication enabled using cookie file: %s", cookie_path)
+    else:
+        logger.warning("X yt-dlp is running without login cookies; protected posts may fail.")
+
     if X_PROXY:
         ydl_opts["proxy"] = X_PROXY
         logger.info("X download proxy is configured; routing X requests through proxy.")
