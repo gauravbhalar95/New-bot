@@ -7,6 +7,7 @@ import yt_dlp
 
 from config import DOWNLOAD_DIR, FACEBOOK_FILE
 from utils.sanitize import sanitize_filename
+from utils.file_renamer import rename_media_files
 from utils.logger import setup_logging
 
 
@@ -206,6 +207,9 @@ def process_facebook(
                         info_dict
                     )
                 )
+
+                renamed_paths = rename_media_files([video_path], info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+                video_path = renamed_paths[0] if renamed_paths else video_path
 
                 file_size = (
                     info_dict.get(
