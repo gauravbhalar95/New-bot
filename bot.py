@@ -962,24 +962,16 @@ async def handle_youtube_cookie_status(message):
 
 
 @bot.message_handler(commands=["instagram"])
-async def handle_instagram_auth_app(message):
-    if not MINIAPP_URL:
-        await send_message(message.chat.id, "⚠️ Instagram Mini App is not configured.")
-        return
-
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton(
-            "🔐 Connect Instagram",
-            web_app=types.WebAppInfo(url=MINIAPP_URL),
-        )
-    )
-    await bot.send_message(
+async def handle_instagram_download_help(message):
+    # This bot's /instagram command is for media downloads, not OAuth account linking.
+    # The normal URL handler detects Instagram links and runs the downloader.
+    await send_message(
         message.chat.id,
-        "🔐 <b>Instagram authentication</b>\n\n"
-        "Open the Mini App and authorize Instagram there. "
-        "Your Instagram password is entered only on Instagram.",
-        reply_markup=markup,
+        "📥 <b>Instagram downloader</b>\n\n"
+        "Instagram Reel, post, or video download કરવા માટે તેનો link અહીં મોકલો.\n"
+        "ઉદાહરણ: <code>https://www.instagram.com/reel/...</code>\n\n"
+        "આ command માટે Instagram OAuth App ID/Secret જરૂરી નથી. "
+        "જો કોઈ link પર login/challenge error આવે, તો botના Instagram cookies/session તપાસવા પડશે.",
     )
 
 
