@@ -159,7 +159,7 @@ def process_youtube(url, quality=None):
                         "yt-dlp completed but the output file was not found"
                     )
 
-                renamed_paths = rename_media_files([file_path], info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+                renamed_paths = rename_media_files([file_path], info_dict.get("uploader_id") or info_dict.get("channel_id") or info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
                 file_path = str(renamed_paths[0]) if renamed_paths else file_path
                 file_size = os.path.getsize(file_path)
 
@@ -242,7 +242,7 @@ def extract_audio_ffmpeg(url):
                 ydl.prepare_filename(info_dict)
             )[0] + ".mp3"
 
-            renamed_paths = rename_media_files([audio_filename], info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
+            renamed_paths = rename_media_files([audio_filename], info_dict.get("uploader_id") or info_dict.get("channel_id") or info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
             audio_filename = str(renamed_paths[0]) if renamed_paths else audio_filename
 
             file_size = (
