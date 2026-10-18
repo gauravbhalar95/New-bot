@@ -51,7 +51,16 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     if not ext.startswith("."):
         ext = f".{ext}"
 
-    uploader = info_dict.get("uploader") or info_dict.get("channel") or "Instagram"
+    # Prefer the creator's actual username/handle over their display name.
+    # Instagram metadata often exposes this as uploader_id (e.g. freaky_myna)
+    # while uploader/channel may be a human-readable display name.
+    uploader = (
+        info_dict.get("uploader_id")
+        or info_dict.get("creator")
+        or info_dict.get("uploader")
+        or info_dict.get("channel")
+        or "Instagram"
+    )
     title = info_dict.get("title") or info_dict.get("id") or "video"
     media_id = info_dict.get("id") or "media"
 
