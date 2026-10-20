@@ -47,7 +47,7 @@ def get_youtube_cookie_file():
             return None
 
         logger.info(
-            "✅ YouTube cookie file loaded: %.1f KB",
+            "YouTube cookie file loaded: %.1f KB",
             size / 1024,
         )
         return YOUTUBE_FILE
@@ -225,6 +225,10 @@ def extract_audio_ffmpeg(url):
         "logger": logger,
         "verbose": True,
         "noplaylist": True,
+        "socket_timeout": 20,
+        "retries": 5,
+        "fragment_retries": 5,
+        "file_access_retries": 3,
         "js_runtimes": {
             "node": {"path": "/usr/bin/node"},
         },
@@ -245,12 +249,23 @@ def extract_audio_ffmpeg(url):
             renamed_paths = rename_media_files([audio_filename], info_dict.get("uploader_id") or info_dict.get("channel_id") or info_dict.get("uploader") or info_dict.get("channel") or info_dict.get("creator"), info_dict.get("id"))
             audio_filename = str(renamed_paths[0]) if renamed_paths else audio_filename
 
-            file_size = (
-                os.path.getsize(audio_filename)
-                if os.path.exists(audio_filename)
-                else 0
-            )
+            if not os.path.isfile(audio_filename):
+                logger.error(
+                    "Audio post-processing finished but output file is missing: %s",
+                    audio_filename,
+                )
+                return None, 0
 
+            file_size = os.path.getsize(audio_filename)
+            if file_size <= 0:
+                logger.error("Audio output file is empty: %s", audio_filename)
+                return None, 0
+
+            logger.info(
+                "YouTube audio download finished: %s (%.2f MB)",
+                audio_filename,
+                file_size / (1024 * 1024),
+            )
             return audio_filename, file_size
 
     except yt_dlp.utils.ExtractorError as e:
