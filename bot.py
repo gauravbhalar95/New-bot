@@ -4,6 +4,7 @@ lazy import logging
 lazy import re
 lazy import time
 lazy import asyncio
+lazy import aiohttp
 lazy import subprocess
 lazy import secrets
 from html import escape
@@ -396,35 +397,64 @@ async def send_browser_download_link(chat_id, file_path):
         f"⏳ This link expires in 24 hours.",
     )
 
+async def _send_telegram_file(method, chat_id, file_path, **kwargs):
+    """Send a local file with bounded retries for transient network failures."""
+    for attempt in range(1, 4):
+        try:
+            # Reopen the file for every attempt; the previous request may have
+            # consumed the file handle before the connection was interrupted.
+            media = types.InputFile(
+                file_path,
+                file_name=os.path.basename(file_path),
+            )
+            return await method(chat_id, media, **kwargs)
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            logger.warning(
+                "Telegram %s network failure (attempt %s/3)",
+                getattr(method, "__name__", "file upload"),
+                attempt,
+                exc_info=True,
+            )
+            if attempt == 3:
+                raise
+            await asyncio.sleep(attempt * 2)
+
+
 async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=None, source_url=None):
     if cancel_key in cancelled_downloads:
         return False
 
     extension = os.path.splitext(file_path)[1].lower()
     image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-
     caption = source_url if source_url else None
 
     if extension in image_extensions:
         try:
-            await bot.send_photo(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
+            await _send_telegram_file(
+                bot.send_photo, chat_id, file_path, caption=caption
+            )
         except Exception as photo_error:
             logger.warning(
                 "send_photo failed; sending image as document: %s",
                 photo_error,
                 exc_info=True,
             )
-            await bot.send_document(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
+            await _send_telegram_file(
+                bot.send_document, chat_id, file_path, caption=caption
+            )
         return True
 
     if is_audio:
-        await bot.send_audio(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
+        await _send_telegram_file(
+            bot.send_audio, chat_id, file_path, caption=caption
+        )
         return True
 
     try:
-        await bot.send_video(
+        await _send_telegram_file(
+            bot.send_video,
             chat_id,
-            types.InputFile(file_path, file_name=os.path.basename(file_path)),
+            file_path,
             supports_streaming=True,
             caption=caption,
         )
@@ -435,7 +465,9 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             video_error,
             exc_info=True,
         )
-        await bot.send_document(chat_id, types.InputFile(file_path, file_name=os.path.basename(file_path)), caption=caption)
+        await _send_telegram_file(
+            bot.send_document, chat_id, file_path, caption=caption
+        )
         return True
 
 
