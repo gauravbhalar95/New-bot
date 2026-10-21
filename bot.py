@@ -23,6 +23,7 @@ from utils.instagram_cookies import (
     refresh_instagram_session,
 )
 from handlers.instagram_handler import process_instagram
+from handlers.instagram_tools import download_instagram_dp, download_instagram_stories
 from handlers.threads_handler import process_threads
 from handlers.facebook_handlers import process_facebook
 from handlers.common_handler import process_adult
