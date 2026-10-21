@@ -35,24 +35,45 @@ def _configure_loader(instaloader_module):
         filename_pattern="{shortcode}_{date_utc}",
         quiet=True,
     )
+    # Load the complete Netscape cookie jar when available. A sessionid alone
+    # is often insufficient: Instagram requests may also require csrftoken,
+    # ds_user_id, mid and other cookies from the same browser session.
+    cookie_path = None
+    try:
+        from config import COOKIES_FILE
+        candidate = Path(COOKIES_FILE)
+        if candidate.is_file() and candidate.stat().st_size:
+            cookie_path = candidate
+    except Exception:
+        cookie_path = None
+
+    if cookie_path:
+        try:
+            import http.cookiejar
+            jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
+            jar.load(ignore_discard=True, ignore_expires=True)
+            loader.context._session.cookies.update(jar)
+        except Exception:
+            # Netscape files are occasionally malformed; keep the sessionid
+            # fallback below so a valid single-cookie session can still work.
+            pass
+
     sessionid = (INSTAGRAM_SESSIONID or "").strip()
     if not sessionid:
-        # Reuse the sessionid from the existing Netscape cookie file as well.
-        # Many deployments configure INSTAGRAM_COOKIES_TXT instead of the
-        # single INSTAGRAM_SESSIONID environment variable.
         try:
             from utils.instagram_cookies import get_saved_instagram_sessionid
             sessionid = (get_saved_instagram_sessionid() or "").strip()
         except Exception:
             sessionid = ""
-    if sessionid:
+    if sessionid and not loader.context._session.cookies.get("sessionid"):
         loader.context._session.cookies.set(
             "sessionid", sessionid, domain=".instagram.com", path="/"
         )
         loader.context._session.cookies.set(
             "sessionid", sessionid, domain="instagram.com", path="/"
         )
-        loader.context.username = INSTAGRAM_USERNAME or "session"
+    if INSTAGRAM_USERNAME:
+        loader.context.username = INSTAGRAM_USERNAME
     return loader
 
 
