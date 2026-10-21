@@ -36,6 +36,15 @@ def _configure_loader(instaloader_module):
         quiet=True,
     )
     sessionid = (INSTAGRAM_SESSIONID or "").strip()
+    if not sessionid:
+        # Reuse the sessionid from the existing Netscape cookie file as well.
+        # Many deployments configure INSTAGRAM_COOKIES_TXT instead of the
+        # single INSTAGRAM_SESSIONID environment variable.
+        try:
+            from utils.instagram_cookies import get_saved_instagram_sessionid
+            sessionid = (get_saved_instagram_sessionid() or "").strip()
+        except Exception:
+            sessionid = ""
     if sessionid:
         loader.context._session.cookies.set(
             "sessionid", sessionid, domain=".instagram.com", path="/"
