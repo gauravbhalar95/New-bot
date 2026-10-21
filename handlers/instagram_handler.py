@@ -107,6 +107,53 @@ def _try_instagram_post_images(url: str) -> list[str]:
     return []
 
 
+def _try_gallery_dl_images(url: str) -> list[str]:
+    """Fallback Instagram downloader using gallery-dl, without Instaloader."""
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    output_root = Path(DOWNLOAD_DIR)
+    output_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="gallery_dl_instagram_") as temp_dir:
+        command = [
+            sys.executable, "-m", "gallery_dl",
+            "--dest", temp_dir,
+        ]
+        if Path(COOKIES_FILE).is_file() and Path(COOKIES_FILE).stat().st_size:
+            command.extend(["--cookies", str(COOKIES_FILE)])
+        command.append(url)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=180, check=False
+        )
+        downloaded = sorted(
+            path for path in Path(temp_dir).rglob("*")
+            if path.is_file()
+            and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".avif", ".mp4"}
+            and path.stat().st_size > 0
+        )
+        if result.returncode != 0 and not downloaded:
+            detail = (result.stderr or result.stdout or "gallery-dl failed").strip()
+            logger.warning("gallery-dl Instagram fallback failed: %s", detail[-1200:])
+            return []
+
+        paths = []
+        for index, source in enumerate(downloaded, start=1):
+            name = sanitize_filename(source.name) or f"instagram_{index}{source.suffix.lower()}"
+            destination = output_root / name
+            counter = 1
+            while destination.exists():
+                destination = output_root / f"{source.stem}_{counter}{source.suffix.lower()}"
+                counter += 1
+            shutil.copy2(source, destination)
+            if destination.is_file() and destination.stat().st_size > 0:
+                paths.append(str(destination))
+        if paths:
+            logger.info("gallery-dl downloaded %d Instagram media item(s)", len(paths))
+        return paths
+
+
 def process_instagram(url: str) -> str | list[str]:
     """Download an Instagram image/carousel or video. Heavy dependencies load on demand."""
     url = url.split("#", 1)[0].strip()
@@ -121,7 +168,13 @@ def process_instagram(url: str) -> str | list[str]:
             if image_paths:
                 return image_paths
         except Exception as exc:
-            logger.warning("Instaloader post download failed; trying yt-dlp next: %s", exc)
+            logger.warning("Instaloader post download failed; trying gallery-dl: %s", exc)
+        try:
+            image_paths = _try_gallery_dl_images(url)
+            if image_paths:
+                return image_paths
+        except Exception as exc:
+            logger.warning("gallery-dl Instagram fallback raised an error; trying yt-dlp next: %s", exc)
 
     # Import yt-dlp and cookie refresh code only when a download is requested.
     import yt_dlp
