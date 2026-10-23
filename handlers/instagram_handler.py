@@ -160,21 +160,25 @@ def process_instagram(url: str) -> str | list[str]:
     if not is_valid_url(url):
         raise ValueError("Please provide a valid Instagram URL.")
 
-    # /p/ can contain a single image, a carousel, or a video. Try the
-    # image-aware downloader first; stop as soon as it returns media.
-    if re.search(r"/p/[^/?#]+", url, flags=re.IGNORECASE):
-        try:
-            image_paths = _try_instagram_post_images(url)
-            if image_paths:
-                return image_paths
-        except Exception as exc:
-            logger.warning("Instaloader post download failed; trying gallery-dl: %s", exc)
+    # If the URL explicitly points to an image/carousel (for example
+    # ?img_index=2), try gallery-dl first, then Instaloader. Reels/videos
+    # and ordinary post URLs go to yt-dlp first.
+    is_post_url = bool(re.search(r"/p/[^/?#]+", url, flags=re.IGNORECASE))
+    has_image_hint = bool(re.search(r"(?:img|image)", url, flags=re.IGNORECASE))
+
+    if is_post_url and has_image_hint:
         try:
             image_paths = _try_gallery_dl_images(url)
             if image_paths:
                 return image_paths
         except Exception as exc:
-            logger.warning("gallery-dl Instagram fallback raised an error; trying yt-dlp next: %s", exc)
+            logger.warning("gallery-dl image-first attempt failed; trying Instaloader: %s", exc)
+        try:
+            image_paths = _try_instagram_post_images(url)
+            if image_paths:
+                return image_paths
+        except Exception as exc:
+            logger.warning("Instaloader image fallback failed; trying yt-dlp: %s", exc)
 
     # Import yt-dlp and cookie refresh code only when a download is requested.
     import yt_dlp
