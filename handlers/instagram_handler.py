@@ -235,11 +235,36 @@ def process_instagram(url: str) -> str | list[str]:
             final_path = _rename_downloaded_video(downloaded_file, info)
             logger.info("Instagram media ready: %s", final_path)
             return final_path
-    except yt_dlp.utils.DownloadError:
-        logger.exception("Instagram download failed")
-        raise
-    except Exception:
-        logger.exception("Unexpected Instagram download error")
+    except Exception as exc:
+        # yt-dlp can fail with "No video formats found" for image posts and
+        # carousels. Try gallery-dl after the primary attempt, then Instaloader
+        # for /p/ posts. Keep the original yt-dlp-first behavior for reels/videos.
+        logger.warning("Instagram yt-dlp attempt failed: %s", exc)
+
+        try:
+            fallback_paths = _try_gallery_dl_images(url)
+            if fallback_paths:
+                logger.info(
+                    "Instagram fallback succeeded with gallery-dl (%d file(s))",
+                    len(fallback_paths),
+                )
+                return fallback_paths
+        except Exception as fallback_exc:
+            logger.warning("Instagram gallery-dl fallback failed: %s", fallback_exc)
+
+        if is_post_url:
+            try:
+                fallback_paths = _try_instagram_post_images(url)
+                if fallback_paths:
+                    logger.info(
+                        "Instagram fallback succeeded with Instaloader (%d file(s))",
+                        len(fallback_paths),
+                    )
+                    return fallback_paths
+            except Exception as fallback_exc:
+                logger.warning("Instagram Instaloader fallback failed: %s", fallback_exc)
+
+        # Preserve the real primary error so the caller can report failure.
         raise
 
 
