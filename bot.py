@@ -15,7 +15,8 @@ from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, ADMIN_IDS, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
 from utils.browser_downloads import register_download, is_registered_path
-from utils.youtube_cookie_manager import install_cookie_data, auto_refresh_task as youtube_cookie_auto_refresh_task, MAX_COOKIE_BYTES
+from utils.youtube_cookie_manager import auto_refresh_task as youtube_cookie_auto_refresh_task
+from utils.cookie_upload_manager import get_cookie_target, install_cookie_file, cookie_file_status, MAX_COOKIE_BYTES
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
 from utils.instagram_cookies import (
     save_instagram_client_state,
@@ -934,20 +935,25 @@ async def send_welcome(message):
     content_types=["document"],
     func=lambda message: bool(
         message.document
-        and (message.document.file_name or "").lower()
-        in {"youtube_cookies.txt", "youtube-cookies.txt"}
+        and get_cookie_target(message.document.file_name or "")
     ),
 )
-async def handle_youtube_cookie_upload(message):
-    """Only admins can replace the YouTube cookie file by uploading a document."""
+async def handle_cookie_upload(message):
+    """Allow only admins to securely replace a supported platform cookie file."""
     if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can update cookie files.")
+        return
+
+    # Cookies should not be uploaded into group chats where other members may see them.
+    if getattr(message.chat, "type", "") != "private":
         await send_message(
             message.chat.id,
-            "⛔ Only the bot admin can update YouTube cookies.",
+            "🔒 Please send cookie files to the bot in a private chat, not a group.",
         )
         return
 
     document = message.document
+    filename = document.file_name or ""
     if document.file_size and document.file_size > MAX_COOKIE_BYTES:
         await send_message(message.chat.id, "⚠️ Cookie file is too large (maximum 2 MB).")
         return
@@ -955,43 +961,50 @@ async def handle_youtube_cookie_upload(message):
     try:
         file_info = await bot.get_file(document.file_id)
         data = await bot.download_file(file_info.file_path)
-        install_cookie_data(data)
+        platform = install_cookie_file(filename, data)
         await send_message(
             message.chat.id,
-            "✅ YouTube cookies updated securely. The bot will use the new file on the next download.",
+            "✅ <b>" + escape(platform) + " cookies updated securely.</b>\n"
+            "The downloader will use the new file on the next request.\n"
+            "Cookie contents are never displayed in chat or written to logs.",
         )
-        logger.info("YouTube cookies replaced by authorized admin upload.")
+        logger.info("%s cookies replaced by authorized admin upload.", platform)
     except ValueError as error:
-        await send_message(message.chat.id, f"⚠️ {escape(str(error))}")
+        await send_message(message.chat.id, "⚠️ " + escape(str(error)))
     except Exception as error:
-        logger.warning("Admin YouTube cookie upload failed: %s", type(error).__name__)
+        logger.warning("Admin cookie upload failed: %s", type(error).__name__)
         await send_message(
             message.chat.id,
-            "❌ Could not update YouTube cookies. Check the file format and try again.",
+            "❌ Could not update the cookie file. Check its filename, format, and try again.",
         )
 
 
-@bot.message_handler(commands=["ytcookiesstatus"])
-async def handle_youtube_cookie_status(message):
+@bot.message_handler(commands=["cookiesstatus", "ytcookiesstatus"])
+async def handle_cookie_status(message):
     if not message.from_user or message.from_user.id not in ADMIN_IDS:
         await send_message(message.chat.id, "⛔ Only the bot admin can check cookie status.")
         return
 
-    exists = os.path.isfile(YOUTUBE_FILE)
-    size = os.path.getsize(YOUTUBE_FILE) if exists else 0
-    mode = (
-        f"Private HTTPS URL every {YOUTUBE_COOKIE_REFRESH_HOURS} hour(s)"
-        if YOUTUBE_COOKIES_URL
-        else "Admin Telegram upload only (URL not configured)"
-    )
-    await send_message(
-        message.chat.id,
-        "🍪 <b>YouTube cookie status</b>\n"
-        f"File present: {'Yes' if exists else 'No'}\n"
-        f"File size: {size / 1024:.1f} KB\n"
-        f"Automatic refresh: {escape(mode)}\n\n"
-        "To replace cookies, send <code>youtube_cookies.txt</code> as a document.",
-    )
+    statuses = cookie_file_status()
+    lines = ["🍪 <b>Cookie file status</b>"]
+    for platform, status in statuses.items():
+        state = "Present" if status["exists"] else "Missing"
+        size = status["size"] / 1024
+        lines.append(
+            f"• <b>{escape(platform)}</b>: {state}"
+            + (f" ({size:.1f} KB)" if status["exists"] else "")
+        )
+    lines.extend([
+        "",
+        "Send the matching file as a Telegram document in this private chat:",
+        "• <code>youtube_cookies.txt</code>",
+        "• <code>x.txt</code>",
+        "• <code>facebook.txt</code>",
+        "• <code>instagram_cookies.txt</code>",
+        "",
+        "Maximum size: 2 MB. Files must use Netscape cookies.txt format.",
+    ])
+    await send_message(message.chat.id, "\n".join(lines))
 
 
 @bot.message_handler(commands=["instagram"])
