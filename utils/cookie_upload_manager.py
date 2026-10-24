@@ -67,12 +67,15 @@ def validate_cookie_data(data: bytes, allowed_domains: tuple[str, ...]) -> bool:
     lines = text.splitlines()
     rows = []
     for line in lines:
-        if not line or line.startswith("#"):
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
             continue
         columns = line.split("\t")
         if len(columns) < 7:
             continue
-        domain = columns[0].strip().lower().lstrip(".")
+        domain = columns[0].strip().lower()
+        if domain.startswith("#httponly_"):
+            domain = domain[len("#HttpOnly_"):].lower()
+        domain = domain.lstrip(".")
         if domain:
             rows.append(domain)
 
