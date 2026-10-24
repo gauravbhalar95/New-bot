@@ -1426,7 +1426,7 @@ TRIM_TIME_PATTERN = r"(?:\d{1,2}:)?(?:\d{1,2}:)?\d{1,2}(?::\d{2})?"
 async def handle_video_trim_request(message):
     try:
         match = re.search(
-            rf"(https?://[^\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            rf"(https?://[^\s]+)\s+({TRIM_TIME_PATTERN})\s+({TRIM_TIME_PATTERN})",
             message.text or "",
             re.IGNORECASE,
         )
@@ -1452,7 +1452,7 @@ async def handle_video_trim_request(message):
 async def handle_audio_trim_request(message):
     try:
         match = re.search(
-            rf"(https?://[^\s]+)\\s+({TRIM_TIME_PATTERN})\\s+({TRIM_TIME_PATTERN})",
+            rf"(https?://[^\s]+)\s+({TRIM_TIME_PATTERN})\s+({TRIM_TIME_PATTERN})",
             message.text or "",
             re.IGNORECASE,
         )
