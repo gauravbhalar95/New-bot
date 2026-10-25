@@ -62,6 +62,7 @@ def rename_downloaded_file(
         return file_path
 
     new_name = f"{prefix}{safe_stem}{extension}"
+    print(new_name)
     target = os.path.join(directory, new_name)
     counter = 2
     while os.path.exists(target) and os.path.abspath(target) != os.path.abspath(file_path):
