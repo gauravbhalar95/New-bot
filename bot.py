@@ -458,27 +458,10 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
     image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
     caption = source_url if source_url else None
 
-    # Add a browser download button under each delivered media item.
-    # The URL is served by this bot's own /download/<token> endpoint.
-    reply_markup = None
-    if WEBHOOK_URL and os.path.isfile(file_path):
-        try:
-            download_url = make_browser_download_url(file_path, source_url=source_url)
-            reply_markup = types.InlineKeyboardMarkup()
-            reply_markup.add(
-                types.InlineKeyboardButton(
-                    "⬇️ Download in Chrome",
-                    url=download_url,
-                )
-            )
-        except Exception as exc:
-            logger.warning("Could not create browser download button: %s", exc)
-
     if extension in image_extensions:
         try:
             await _send_telegram_file(
-                bot.send_photo, chat_id, file_path,
-                caption=caption, reply_markup=reply_markup
+                bot.send_photo, chat_id, file_path, caption=caption
             )
         except Exception as photo_error:
             logger.warning(
@@ -487,15 +470,13 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
                 exc_info=True,
             )
             await _send_telegram_file(
-                bot.send_document, chat_id, file_path,
-                caption=caption, reply_markup=reply_markup
+                bot.send_document, chat_id, file_path, caption=caption
             )
         return True
 
     if is_audio:
         await _send_telegram_file(
-            bot.send_audio, chat_id, file_path,
-            caption=caption, reply_markup=reply_markup
+            bot.send_audio, chat_id, file_path, caption=caption
         )
         return True
 
@@ -506,7 +487,6 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             file_path,
             supports_streaming=True,
             caption=caption,
-            reply_markup=reply_markup,
         )
         return True
     except Exception as video_error:
@@ -516,8 +496,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
             exc_info=True,
         )
         await _send_telegram_file(
-            bot.send_document, chat_id, file_path,
-            caption=caption, reply_markup=reply_markup
+            bot.send_document, chat_id, file_path, caption=caption
         )
         return True
 
