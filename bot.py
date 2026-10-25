@@ -15,6 +15,7 @@ from telebot.async_telebot import AsyncTeleBot
 
 from config import API_TOKEN, ADMIN_IDS, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
 from utils.browser_downloads import register_download, is_registered_path
+from utils.rename_utility import rename_downloaded_file
 from utils.youtube_cookie_manager import auto_refresh_task as youtube_cookie_auto_refresh_task
 from utils.cookie_upload_manager import get_cookie_target, install_cookie_file, cookie_file_status, MAX_COOKIE_BYTES
 from handlers.youtube_handler import process_youtube, extract_audio_ffmpeg
@@ -706,6 +707,17 @@ async def process_download(
                 if not original_path or not os.path.exists(original_path):
                     logger.warning("File does not exist: %s", original_path)
                     continue
+
+                # Name each downloaded asset using the uploader/creator when available.
+                # URL-based username extraction is a fallback for profile-style links.
+                try:
+                    media_info = await get_media_info(url)
+                    uploader = media_info.get("uploader") if media_info else None
+                    original_path = await run_blocking(
+                        rename_downloaded_file, original_path, uploader, url
+                    )
+                except Exception as rename_error:
+                    logger.warning("Could not rename downloaded file: %s", rename_error, exc_info=True)
 
                 actual_size = os.path.getsize(original_path)
 
