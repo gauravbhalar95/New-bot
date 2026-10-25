@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from config import DOWNLOAD_DIR
+from config import COOKIES_FILE, DOWNLOAD_DIR
 
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v"}
 
@@ -20,8 +20,8 @@ def _shortcode(url: str) -> str:
     return match.group(1)
 
 
-def _configure_loader(instaloader_module):
-    """Create an Instaloader instance only when a post download is requested."""
+def _configure_loader(instaloader_module, cookie_file=None):
+    """Create an Instaloader instance and load an explicitly configured cookie jar."""
     loader = instaloader_module.Instaloader(
         download_pictures=True,
         download_videos=True,
@@ -35,8 +35,28 @@ def _configure_loader(instaloader_module):
         filename_pattern="{shortcode}_{date_utc}",
         quiet=True,
     )
-    # Public-only mode: deliberately do not load browser cookies, sessionid,
-    # or saved account state. This avoids triggering account security checks.
+    if cookie_file and Path(cookie_file).is_file():
+        import http.cookiejar
+
+        jar = http.cookiejar.MozillaCookieJar(str(cookie_file))
+        try:
+            jar.load(ignore_discard=True, ignore_expires=True)
+            session = getattr(loader.context, "_session", None)
+            cookies = getattr(session, "cookies", None)
+            if cookies is not None:
+                for cookie in jar:
+                    cookies.set(
+                        cookie.name,
+                        cookie.value,
+                        domain=cookie.domain,
+                        path=cookie.path,
+                        secure=cookie.secure,
+                        expires=cookie.expires,
+                    )
+        except Exception:
+            # Let the normal downloader report authentication failures without
+            # exposing cookie values or interrupting public-post downloads.
+            pass
     return loader
 
 
@@ -50,7 +70,11 @@ def download_instagram_post(url: str) -> list[Path]:
     output_root.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix=f"instaloader_{shortcode}_") as temp:
-        loader = _configure_loader(instaloader)
+        cookie_file = Path(COOKIES_FILE)
+        loader = _configure_loader(
+            instaloader,
+            str(cookie_file) if cookie_file.is_file() and cookie_file.stat().st_size else None,
+        )
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
         username = (
             getattr(post, "owner_username", None)
