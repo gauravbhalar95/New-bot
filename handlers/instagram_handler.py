@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from config import COOKIES_FILE, DOWNLOAD_DIR
+from config import DOWNLOAD_DIR
 from utils.logger import setup_logging
 from utils.renamer import get_file_extension, rename_file
 from utils.sanitize import sanitize_filename
@@ -121,8 +121,6 @@ def _try_gallery_dl_images(url: str) -> list[str]:
             sys.executable, "-m", "gallery_dl",
             "--dest", temp_dir,
         ]
-        if Path(COOKIES_FILE).is_file() and Path(COOKIES_FILE).stat().st_size:
-            command.extend(["--cookies", str(COOKIES_FILE)])
         command.append(url)
         result = subprocess.run(
             command, capture_output=True, text=True, timeout=180, check=False
@@ -204,19 +202,9 @@ def process_instagram(url: str) -> str | list[str]:
         "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
     }
 
-    cookie_path = Path(COOKIES_FILE)
-    if not cookie_path.exists() or cookie_path.stat().st_size == 0:
-        try:
-            from utils.instagram_cookies import refresh_instagram_session
-            refresh_instagram_session()
-        except Exception as exc:
-            logger.warning("Instagram cookie refresh skipped/failed: %s", exc)
-
-    if cookie_path.exists() and cookie_path.stat().st_size > 0:
-        ydl_opts["cookiefile"] = str(cookie_path)
-        logger.info("Using Instagram cookies file.")
-    else:
-        logger.warning("Instagram cookies unavailable; attempting public download.")
+    # Public-only mode: do not load cookies or trigger a login/session refresh.
+    # Automated logins can trigger Instagram security checkpoints or email-change prompts.
+    logger.info("Attempting Instagram download without account cookies (public access only).")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
