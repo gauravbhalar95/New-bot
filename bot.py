@@ -377,7 +377,34 @@ def compress_video_for_telegram(file_path):
         pass
     return file_path
 
-def make_browser_download_url(file_path):
+def make_browser_download_url(file_path, source_url=None):
+    """Register a download using a readable filename instead of generic IDs."""
+    if os.path.isfile(file_path):
+        directory, filename = os.path.split(file_path)
+        stem, extension = os.path.splitext(filename)
+        if re.match(r"^(?:download|ig)_?\d", stem, re.IGNORECASE):
+            post_id = None
+            if source_url:
+                match = re.search(
+                    r"/(?:p|reel|reels|tv)/([^/?#]+)",
+                    source_url,
+                    re.IGNORECASE,
+                )
+                if match:
+                    post_id = match.group(1)
+            readable_stem = f"Instagram_{post_id}" if post_id else "Instagram_media"
+            candidate = f"{readable_stem}{extension.lower()}"
+            target = os.path.join(directory, candidate)
+            counter = 2
+            while os.path.exists(target) and os.path.abspath(target) != os.path.abspath(file_path):
+                target = os.path.join(directory, f"{readable_stem}_{counter}{extension.lower()}")
+                counter += 1
+            if os.path.abspath(target) != os.path.abspath(file_path):
+                try:
+                    os.replace(file_path, target)
+                    file_path = target
+                except OSError:
+                    logger.warning("Could not rename generic download filename: %s", file_path, exc_info=True)
     token = register_download(file_path)
     base_url = WEBHOOK_URL.rstrip("/")
     for suffix in ("/webhook", "/telegram-webhook"):
@@ -436,7 +463,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
     reply_markup = None
     if WEBHOOK_URL and os.path.isfile(file_path):
         try:
-            download_url = make_browser_download_url(file_path)
+            download_url = make_browser_download_url(file_path, source_url=source_url)
             reply_markup = types.InlineKeyboardMarkup()
             reply_markup.add(
                 types.InlineKeyboardButton(
