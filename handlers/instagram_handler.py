@@ -108,11 +108,32 @@ def _try_instagram_post_images(url: str) -> list[str]:
 
 
 def _prepare_instagram_cookie_file() -> str | None:
-    """Return the configured Netscape cookie file, creating one from explicit session secrets if needed."""
+    """Load auth tokens from the stored cookie jar, or create one from deployment secrets."""
     import os
+
+    global INSTAGRAM_SESSIONID, INSTAGRAM_CSRFTOKEN
 
     cookie_path = Path(COOKIES_FILE)
     if cookie_path.is_file() and cookie_path.stat().st_size > 0:
+        # Netscape cookie files store name/value in columns 6 and 7.
+        # Read the tokens for in-process compatibility, but never log their values.
+        try:
+            for line in cookie_path.read_text(encoding="utf-8-sig").splitlines():
+                if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
+                    continue
+                columns = line.split("\t")
+                if len(columns) < 7:
+                    continue
+                domain = columns[0].lower().removeprefix("#httponly_").lstrip(".")
+                if domain != "instagram.com" and not domain.endswith(".instagram.com"):
+                    continue
+                name, value = columns[5].strip(), columns[6].strip()
+                if name == "sessionid" and value:
+                    INSTAGRAM_SESSIONID = value
+                elif name == "csrftoken" and value:
+                    INSTAGRAM_CSRFTOKEN = value
+        except (OSError, UnicodeError):
+            logger.warning("Could not read Instagram auth tokens from cookie file.")
         return str(cookie_path)
 
     # Support explicit deployment secrets without ever logging their values.
