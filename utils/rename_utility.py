@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 def _safe_filename_part(value: str, fallback: str = "download") -> str:
     """Return a short, filesystem-safe filename component."""
     value = unicodedata.normalize("NFKC", str(value or ""))
-    value = re.sub(r'[\\\\/:*?"<>|\\x00-\\x1f]', "", value)
-    value = re.sub(r"\\s+", "_", value.strip())
-    value = re.sub(r"[^\\w.\\-]", "", value, flags=re.UNICODE)
+    value = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", value)
+    value = re.sub(r"\s+", "_", value.strip())
+    value = re.sub(r"[^\w.\-]", "", value, flags=re.UNICODE)
     value = value.strip(" ._-")
     return value[:80] or fallback
 
