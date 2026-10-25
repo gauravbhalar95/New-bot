@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from config import DOWNLOAD_DIR
+from config import COOKIES_FILE, DOWNLOAD_DIR, INSTAGRAM_CSRFTOKEN, INSTAGRAM_SESSIONID
 from utils.logger import setup_logging
 from utils.renamer import get_file_extension, rename_file
 from utils.sanitize import sanitize_filename
@@ -107,6 +107,37 @@ def _try_instagram_post_images(url: str) -> list[str]:
     return []
 
 
+def _prepare_instagram_cookie_file() -> str | None:
+    """Return the configured Netscape cookie file, creating one from explicit session secrets if needed."""
+    import os
+
+    cookie_path = Path(COOKIES_FILE)
+    if cookie_path.is_file() and cookie_path.stat().st_size > 0:
+        return str(cookie_path)
+
+    # Support explicit deployment secrets without ever logging their values.
+    session_id = str(INSTAGRAM_SESSIONID or "").strip()
+    csrf_token = str(INSTAGRAM_CSRFTOKEN or "").strip()
+    if not session_id:
+        return None
+
+    cookie_path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        "# Netscape HTTP Cookie File",
+        f".instagram.com\\tTRUE\\t/\\tTRUE\\t2147483647\\tsessionid\\t{session_id}",
+    ]
+    if csrf_token:
+        rows.append(
+            f".instagram.com\\tTRUE\\t/\\tTRUE\\t2147483647\\tcsrftoken\\t{csrf_token}"
+        )
+    cookie_path.write_text("\\n".join(rows) + "\\n", encoding="utf-8")
+    try:
+        os.chmod(cookie_path, 0o600)
+    except OSError:
+        pass
+    return str(cookie_path)
+
+
 def _try_gallery_dl_images(url: str) -> list[str]:
     """Fallback Instagram downloader using gallery-dl, without Instaloader."""
     import shutil
@@ -121,6 +152,9 @@ def _try_gallery_dl_images(url: str) -> list[str]:
             sys.executable, "-m", "gallery_dl",
             "--dest", temp_dir,
         ]
+        cookie_file = _prepare_instagram_cookie_file()
+        if cookie_file:
+            command.extend(["--cookies", cookie_file])
         command.append(url)
         result = subprocess.run(
             command, capture_output=True, text=True, timeout=180, check=False
@@ -133,7 +167,7 @@ def _try_gallery_dl_images(url: str) -> list[str]:
         )
         if result.returncode != 0 and not downloaded:
             detail = (result.stderr or result.stdout or "gallery-dl failed").strip()
-            logger.warning("gallery-dl Instagram fallback failed: %s", detail[-1200:])
+            logger.warning("gallery-dl Instagram fallback failed: {}", detail[-1200:])
             return []
 
         paths = []
@@ -202,9 +236,14 @@ def process_instagram(url: str) -> str | list[str]:
         "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
     }
 
-    # Public-only mode: do not load cookies or trigger a login/session refresh.
-    # Automated logins can trigger Instagram security checkpoints or email-change prompts.
-    logger.info("Attempting Instagram download without account cookies (public access only).")
+    # Use an explicitly configured/uploaded session cookie jar when available.
+    # Never attempt an automated username/password login from the downloader.
+    cookie_file = _prepare_instagram_cookie_file()
+    if cookie_file:
+        ydl_opts["cookiefile"] = cookie_file
+        logger.info("Instagram authenticated download enabled using configured cookies.")
+    else:
+        logger.info("No Instagram cookie jar configured; using public access only.")
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
