@@ -124,13 +124,13 @@ def _prepare_instagram_cookie_file() -> str | None:
     cookie_path.parent.mkdir(parents=True, exist_ok=True)
     rows = [
         "# Netscape HTTP Cookie File",
-        f".instagram.com\\tTRUE\\t/\\tTRUE\\t2147483647\\tsessionid\\t{session_id}",
+        f".instagram.com\tTRUE\t/\tTRUE\t2147483647\tsessionid\t{session_id}",
     ]
     if csrf_token:
         rows.append(
-            f".instagram.com\\tTRUE\\t/\\tTRUE\\t2147483647\\tcsrftoken\\t{csrf_token}"
+            f".instagram.com\tTRUE\t/\tTRUE\t2147483647\tcsrftoken\t{csrf_token}"
         )
-    cookie_path.write_text("\\n".join(rows) + "\\n", encoding="utf-8")
+    cookie_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     try:
         os.chmod(cookie_path, 0o600)
     except OSError:
