@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from config import DOWNLOAD_DIR, INSTAGRAM_SESSIONID, INSTAGRAM_USERNAME
+from config import DOWNLOAD_DIR
 
 MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v"}
 
@@ -35,45 +35,8 @@ def _configure_loader(instaloader_module):
         filename_pattern="{shortcode}_{date_utc}",
         quiet=True,
     )
-    # Load the complete Netscape cookie jar when available. A sessionid alone
-    # is often insufficient: Instagram requests may also require csrftoken,
-    # ds_user_id, mid and other cookies from the same browser session.
-    cookie_path = None
-    try:
-        from config import COOKIES_FILE
-        candidate = Path(COOKIES_FILE)
-        if candidate.is_file() and candidate.stat().st_size:
-            cookie_path = candidate
-    except Exception:
-        cookie_path = None
-
-    if cookie_path:
-        try:
-            import http.cookiejar
-            jar = http.cookiejar.MozillaCookieJar(str(cookie_path))
-            jar.load(ignore_discard=True, ignore_expires=True)
-            loader.context._session.cookies.update(jar)
-        except Exception:
-            # Netscape files are occasionally malformed; keep the sessionid
-            # fallback below so a valid single-cookie session can still work.
-            pass
-
-    sessionid = (INSTAGRAM_SESSIONID or "").strip()
-    if not sessionid:
-        try:
-            from utils.instagram_cookies import get_saved_instagram_sessionid
-            sessionid = (get_saved_instagram_sessionid() or "").strip()
-        except Exception:
-            sessionid = ""
-    if sessionid and not loader.context._session.cookies.get("sessionid"):
-        loader.context._session.cookies.set(
-            "sessionid", sessionid, domain=".instagram.com", path="/"
-        )
-        loader.context._session.cookies.set(
-            "sessionid", sessionid, domain="instagram.com", path="/"
-        )
-    if INSTAGRAM_USERNAME:
-        loader.context.username = INSTAGRAM_USERNAME
+    # Public-only mode: deliberately do not load browser cookies, sessionid,
+    # or saved account state. This avoids triggering account security checks.
     return loader
 
 
