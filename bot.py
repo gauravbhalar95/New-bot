@@ -382,7 +382,7 @@ def make_browser_download_url(file_path, source_url=None):
     if os.path.isfile(file_path):
         directory, filename = os.path.split(file_path)
         stem, extension = os.path.splitext(filename)
-        if re.match(r"^(?:download|ig)_?\d", stem, re.IGNORECASE):
+        if re.match(r"^(?:(?:download|ig)_?\d|\d+_\d+)", stem, re.IGNORECASE):
             post_id = None
             if source_url:
                 match = re.search(
@@ -392,7 +392,7 @@ def make_browser_download_url(file_path, source_url=None):
                 )
                 if match:
                     post_id = match.group(1)
-            readable_stem = f"Instagram_{post_id}" if post_id else "Instagram_media"
+            readable_stem = f"Instagram_{post_id}" if post_id else "Instagram_Post"
             candidate = f"{readable_stem}{extension.lower()}"
             target = os.path.join(directory, candidate)
             counter = 2
@@ -457,49 +457,34 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
     extension = os.path.splitext(file_path)[1].lower()
     image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
     caption = source_url if source_url else None
+    reply_markup = None
+    if WEBHOOK_URL and os.path.isfile(file_path):
+        try:
+            download_url = make_browser_download_url(file_path, source_url=source_url)
+            reply_markup = types.InlineKeyboardMarkup()
+            reply_markup.add(types.InlineKeyboardButton("⬇️ Download in Chrome", url=download_url))
+        except Exception as exc:
+            logger.warning("Could not create browser download button: %s", exc, exc_info=True)
 
     if extension in image_extensions:
         try:
-            await _send_telegram_file(
-                bot.send_photo, chat_id, file_path, caption=caption
-            )
+            await _send_telegram_file(bot.send_photo, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         except Exception as photo_error:
-            logger.warning(
-                "send_photo failed; sending image as document: %s",
-                photo_error,
-                exc_info=True,
-            )
-            await _send_telegram_file(
-                bot.send_document, chat_id, file_path, caption=caption
-            )
+            logger.warning("send_photo failed; sending image as document: %s", photo_error, exc_info=True)
+            await _send_telegram_file(bot.send_document, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         return True
 
     if is_audio:
-        await _send_telegram_file(
-            bot.send_audio, chat_id, file_path, caption=caption
-        )
+        await _send_telegram_file(bot.send_audio, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         return True
 
     try:
-        await _send_telegram_file(
-            bot.send_video,
-            chat_id,
-            file_path,
-            supports_streaming=True,
-            caption=caption,
-        )
+        await _send_telegram_file(bot.send_video, chat_id, file_path, supports_streaming=True, caption=caption, reply_markup=reply_markup)
         return True
     except Exception as video_error:
-        logger.warning(
-            "send_video failed; sending original file as document: %s",
-            video_error,
-            exc_info=True,
-        )
-        await _send_telegram_file(
-            bot.send_document, chat_id, file_path, caption=caption
-        )
+        logger.warning("send_video failed; sending original file as document: %s", video_error, exc_info=True)
+        await _send_telegram_file(bot.send_document, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         return True
-
 async def get_media_info(url):
     """Get lightweight metadata for the media preview feature."""
     try:
