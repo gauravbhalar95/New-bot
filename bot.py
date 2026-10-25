@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, ADMIN_IDS, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
+from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
 from utils.browser_downloads import register_download, is_registered_path
 from utils.rename_utility import rename_downloaded_file
 from utils.youtube_cookie_manager import auto_refresh_task as youtube_cookie_auto_refresh_task
@@ -923,6 +923,37 @@ async def start_background_tasks():
     return tasks
 
 
+@bot.message_handler(commands=["clear"])
+async def handle_clear_downloads(message):
+    """Delete downloaded files only; restrict this destructive action to admins."""
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can clear downloaded files.")
+        return
+
+    deleted = 0
+    failed = 0
+    try:
+        # Clear files recursively inside downloads (including the story subfolder),
+        # but keep the folders themselves in place.
+        for root, _, filenames in os.walk(DOWNLOAD_DIR):
+            for filename in filenames:
+                path = os.path.join(root, filename)
+                try:
+                    if os.path.isfile(path) or os.path.islink(path):
+                        os.remove(path)
+                        deleted += 1
+                except OSError:
+                    failed += 1
+        await send_message(
+            message.chat.id,
+            f"🧹 Downloads folder cleared. Deleted: {deleted} file(s)."
+            + (f"\n⚠️ Could not delete: {failed} file(s)." if failed else ""),
+        )
+    except Exception as exc:
+        logger.error("Could not clear downloads folder: %s", exc, exc_info=True)
+        await send_message(message.chat.id, "❌ Could not clear the downloads folder. Check the bot logs.")
+
+
 @bot.message_handler(commands=["start", "help"], content_types=["text"])
 async def send_welcome(message):
     welcome_text = (
@@ -938,6 +969,7 @@ async def send_welcome(message):
         "• /story <username> - Download active Instagram stories\n"
         "• /dp <username> - Download Instagram HD profile picture\n"
         "• /cancel <ID> - Cancel a running download\n"
+        "• /clear - Delete downloaded files (admin only)\n"
         "• /trim <URL> <Start> <End>\n"
         "• /trimAudio <URL> <Start> <End>"
     )
