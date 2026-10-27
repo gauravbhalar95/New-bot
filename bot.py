@@ -104,7 +104,7 @@ def check_memory_usage():
         )
         return memory_usage < MAX_MEMORY_USAGE
     except Exception as e:
-        logger.error("Memory check error: %s", e)
+        logger.error("Memory check error: {}", e)
         return True
 
 
@@ -127,7 +127,7 @@ async def send_message(chat_id, text):
     try:
         return await bot.send_message(chat_id, text)
     except Exception as e:
-        logger.error("Error sending message: %s", e, exc_info=True)
+        logger.error("Error sending message: {}", e, exc_info=True)
         return None
 
 
@@ -378,33 +378,15 @@ def compress_video_for_telegram(file_path):
     return file_path
 
 def make_browser_download_url(file_path, source_url=None):
-    """Register a download using a readable filename instead of generic IDs."""
-    if os.path.isfile(file_path):
-        directory, filename = os.path.split(file_path)
-        stem, extension = os.path.splitext(filename)
-        if re.match(r"^(?:(?:download|ig)_?\d|\d+_\d+)", stem, re.IGNORECASE):
-            post_id = None
-            if source_url:
-                match = re.search(
-                    r"/(?:p|reel|reels|tv)/([^/?#]+)",
-                    source_url,
-                    re.IGNORECASE,
-                )
-                if match:
-                    post_id = match.group(1)
-            readable_stem = f"Instagram_{post_id}" if post_id else "Instagram_Post"
-            candidate = f"{readable_stem}{extension.lower()}"
-            target = os.path.join(directory, candidate)
-            counter = 2
-            while os.path.exists(target) and os.path.abspath(target) != os.path.abspath(file_path):
-                target = os.path.join(directory, f"{readable_stem}_{counter}{extension.lower()}")
-                counter += 1
-            if os.path.abspath(target) != os.path.abspath(file_path):
-                try:
-                    os.replace(file_path, target)
-                    file_path = target
-                except OSError:
-                    logger.warning("Could not rename generic download filename: %s", file_path, exc_info=True)
+    """Register the existing file path without renaming it behind the caller's back.
+
+    Renaming here used to leave send_downloaded_file() holding the old path.
+    Telegram then tried to upload a file that no longer existed. Keep the
+    already-renamed filename intact for both Telegram and the Chrome link.
+    """
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"Download file does not exist: {file_path}")
+
     token = register_download(file_path)
     base_url = WEBHOOK_URL.rstrip("/")
     for suffix in ("/webhook", "/telegram-webhook"):
@@ -412,8 +394,6 @@ def make_browser_download_url(file_path, source_url=None):
             base_url = base_url[:-len(suffix)]
             break
     return f"{base_url}/download/{token}"
-
-
 async def send_browser_download_link(chat_id, file_path):
     url = make_browser_download_url(file_path)
     name = escape(os.path.basename(file_path))
@@ -470,7 +450,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
         try:
             await _send_telegram_file(bot.send_photo, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         except Exception as photo_error:
-            logger.warning("send_photo failed; sending image as document: %s", photo_error, exc_info=True)
+            logger.warning("send_photo failed; sending image as document: {}", photo_error, exc_info=True)
             await _send_telegram_file(bot.send_document, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         return True
 
@@ -482,7 +462,7 @@ async def send_downloaded_file(chat_id, file_path, is_audio=False, cancel_key=No
         await _send_telegram_file(bot.send_video, chat_id, file_path, supports_streaming=True, caption=caption, reply_markup=reply_markup)
         return True
     except Exception as video_error:
-        logger.warning("send_video failed; sending original file as document: %s", video_error, exc_info=True)
+        logger.warning("send_video failed; sending original file as document: {}", video_error, exc_info=True)
         await _send_telegram_file(bot.send_document, chat_id, file_path, caption=caption, reply_markup=reply_markup)
         return True
 async def get_media_info(url):
