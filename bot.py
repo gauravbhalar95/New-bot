@@ -7,6 +7,8 @@ import asyncio
 import aiohttp
 import subprocess
 import secrets
+import tempfile
+import shutil
 from html import escape
 from datetime import datetime, timezone
 
@@ -377,6 +379,96 @@ def compress_video_for_telegram(file_path):
         pass
     return file_path
 
+
+LONG_VIDEO_SCREENSHOT_THRESHOLD_SECONDS = 180
+LONG_VIDEO_SCREENSHOT_INTERVAL_SECONDS = 60
+MAX_LONG_VIDEO_SCREENSHOTS = 10
+
+
+def extract_video_screenshots(file_path):
+    """Extract up to ten preview frames from videos longer than three minutes.
+
+    Frames are captured every 60 seconds (starting at 60s) and stored in a
+    temporary directory so they can be removed after being sent to Telegram.
+    Returns (frame_paths, duration_seconds, temp_dir).
+    """
+    probe = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if probe.returncode != 0 or not probe.stdout.strip():
+        raise RuntimeError(
+            f"Could not read video duration: {probe.stderr.strip()[-500:]}"
+        )
+
+    duration = float(probe.stdout.strip().splitlines()[0])
+    if duration <= LONG_VIDEO_SCREENSHOT_THRESHOLD_SECONDS:
+        return [], duration, None
+
+    temp_dir = tempfile.mkdtemp(prefix="long_video_frames_")
+    frame_paths = []
+    try:
+        for timestamp in range(
+            LONG_VIDEO_SCREENSHOT_INTERVAL_SECONDS,
+            int(duration),
+            LONG_VIDEO_SCREENSHOT_INTERVAL_SECONDS,
+        ):
+            if len(frame_paths) >= MAX_LONG_VIDEO_SCREENSHOTS:
+                break
+            frame_path = os.path.join(temp_dir, f"frame_{timestamp:06d}.jpg")
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-ss", str(timestamp), "-i", file_path,
+                    "-frames:v", "1", "-vf", "scale=960:-2",
+                    "-q:v", "3", frame_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            if result.returncode == 0 and os.path.isfile(frame_path) and os.path.getsize(frame_path) > 0:
+                frame_paths.append((frame_path, timestamp))
+            else:
+                logger.warning(
+                    "Could not extract video frame at %ss: {}",
+                    timestamp,
+                    result.stderr.strip()[-500:],
+                )
+        return frame_paths, duration, temp_dir
+    except Exception:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+
+
+async def send_long_video_screenshots(chat_id, frame_paths, duration):
+    """Send extracted frames individually to avoid Telegram album limits."""
+    if not frame_paths:
+        return
+    await send_message(
+        chat_id,
+        f"🎞️ <b>Long video screenshots</b>\n"
+        f"⏱ Video length: {int(duration // 60)}m {int(duration % 60)}s\n"
+        f"🖼️ Sending {len(frame_paths)} frames (about every minute).",
+    )
+    for index, (frame_path, timestamp) in enumerate(frame_paths, start=1):
+        caption = (
+            f"📸 Screenshot {index}/{len(frame_paths)} · "
+            f"{timestamp // 60:02d}:{timestamp % 60:02d}"
+        )
+        await bot.send_photo(
+            chat_id,
+            types.InputFile(frame_path, file_name=os.path.basename(frame_path)),
+            caption=caption,
+        )
+
 def make_browser_download_url(file_path, source_url=None):
     """Register the existing file path without renaming it behind the caller's back.
 
@@ -711,6 +803,33 @@ async def process_download(
                     logger.warning("Could not rename downloaded file: %s", rename_error, exc_info=True)
 
                 actual_size = os.path.getsize(original_path)
+
+                # For long videos, send preview screenshots at one-minute intervals
+                # before compression/splitting potentially removes the source file.
+                screenshot_dir = None
+                if (
+                    not (is_audio or is_audio_trim)
+                    and os.path.splitext(original_path)[1].lower()
+                    in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+                ):
+                    try:
+                        frames, video_duration, screenshot_dir = await run_blocking(
+                            extract_video_screenshots, original_path
+                        )
+                        if frames:
+                            await send_long_video_screenshots(
+                                message.chat.id, frames, video_duration
+                            )
+                    except Exception as screenshot_error:
+                        logger.warning(
+                            "Long-video screenshot feature failed for %s: {}",
+                            original_path,
+                            screenshot_error,
+                            exc_info=True,
+                        )
+                    finally:
+                        if screenshot_dir:
+                            shutil.rmtree(screenshot_dir, ignore_errors=True)
 
                 # First try a smaller H.264/AAC version for large video files.
                 if actual_size > MAX_UPLOAD_PART_SIZE and not (is_audio or is_audio_trim):
