@@ -95,18 +95,6 @@ def _rename_downloaded_video(downloaded_file: Path, info_dict: dict) -> str:
     return str(destination if destination.exists() else downloaded_file)
 
 
-def _try_instagram_post_images(url: str) -> list[str]:
-    """Try Instaloader for image posts/carousels; import it only on demand."""
-    from utils.instaloader_downloader import download_instagram_post
-
-    paths = download_instagram_post(url)
-    valid_paths = [str(path) for path in paths if Path(path).is_file() and Path(path).stat().st_size]
-    if valid_paths:
-        logger.info("Downloaded %d Instagram post media item(s)", len(valid_paths))
-        return valid_paths
-    return []
-
-
 def _prepare_instagram_cookie_file() -> str | None:
     """Load auth tokens from the stored cookie jar, or create one from deployment secrets."""
     import os
@@ -213,25 +201,17 @@ def process_instagram(url: str) -> str | list[str]:
     if not is_valid_url(url):
         raise ValueError("Please provide a valid Instagram URL.")
 
-    # If the URL explicitly points to an image/carousel (for example
-    # ?img_index=2), try gallery-dl first, then Instaloader. Reels/videos
-    # and ordinary post URLs go to yt-dlp first.
+    # Use gallery-dl for every post/carousel URL first. yt-dlp remains the
+    # primary downloader for Reels and other video URLs. No Instaloader path.
     is_post_url = bool(re.search(r"/p/[^/?#]+", url, flags=re.IGNORECASE))
-    has_image_hint = bool(re.search(r"(?:img|image)", url, flags=re.IGNORECASE))
 
-    if is_post_url and has_image_hint:
+    if is_post_url:
         try:
             image_paths = _try_gallery_dl_images(url)
             if image_paths:
                 return image_paths
         except Exception as exc:
-            logger.warning("gallery-dl image-first attempt failed; trying Instaloader: %s", exc)
-        try:
-            image_paths = _try_instagram_post_images(url)
-            if image_paths:
-                return image_paths
-        except Exception as exc:
-            logger.warning("Instaloader image fallback failed; trying yt-dlp: %s", exc)
+            logger.warning("gallery-dl image-first attempt failed; trying yt-dlp: %s", exc)
 
     # Import yt-dlp and cookie refresh code only when a download is requested.
     import yt_dlp
@@ -284,9 +264,8 @@ def process_instagram(url: str) -> str | list[str]:
             logger.info("Instagram media ready: %s", final_path)
             return final_path
     except Exception as exc:
-        # yt-dlp can fail with "No video formats found" for image posts and
-        # carousels. Try gallery-dl after the primary attempt, then Instaloader
-        # for /p/ posts. Keep the original yt-dlp-first behavior for reels/videos.
+        # yt-dlp may not expose image-only posts or carousels. Try
+        # gallery-dl as the image fallback; do not invoke Instaloader.
         logger.warning("Instagram yt-dlp attempt failed: %s", exc)
 
         try:
@@ -299,18 +278,6 @@ def process_instagram(url: str) -> str | list[str]:
                 return fallback_paths
         except Exception as fallback_exc:
             logger.warning("Instagram gallery-dl fallback failed: %s", fallback_exc)
-
-        if is_post_url:
-            try:
-                fallback_paths = _try_instagram_post_images(url)
-                if fallback_paths:
-                    logger.info(
-                        "Instagram fallback succeeded with Instaloader (%d file(s))",
-                        len(fallback_paths),
-                    )
-                    return fallback_paths
-            except Exception as fallback_exc:
-                logger.warning("Instagram Instaloader fallback failed: %s", fallback_exc)
 
         # Preserve the real primary error so the caller can report failure.
         raise
