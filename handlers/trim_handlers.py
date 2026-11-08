@@ -11,6 +11,19 @@ logger = setup_logging(logging.DEBUG)
 # Ensure the download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
+
+def is_geo_restricted(error):
+    """Return True when YouTube explicitly reports a regional restriction."""
+    message = str(error).casefold()
+    return any(marker in message for marker in (
+        "not made this video available in your country",
+        "geo-restricted",
+        "geo restricted",
+        "not available in your region",
+    ))
+
+
 def time_to_seconds(time_str):
     """
     Converts time string to seconds.
@@ -71,6 +84,8 @@ def download_media(url, is_audio=False, quality=None):
         "socket_timeout": 20,
         "retries": 5,
         "fragment_retries": 5,
+        # Match the runtime configured by the normal YouTube downloader.
+        "js_runtimes": {"node": {"path": "/usr/bin/node"}},
     }
 
     if is_audio:
@@ -152,7 +167,17 @@ def download_media(url, is_audio=False, quality=None):
 
         except yt_dlp.utils.DownloadError as e:
             last_error = e
-            logger.warning("YouTube trim download attempt failed: %s", e, exc_info=True)
+            if is_geo_restricted(e):
+                logger.error(
+                    "YouTube reports a regional restriction for this video. "
+                    "Stopping client retries; changing player clients cannot "
+                    "resolve a genuine Koyeb egress-region restriction: %s",
+                    e,
+                )
+                return None
+            logger.warning(
+                "YouTube trim download attempt failed: %s", e, exc_info=True
+            )
             continue
         except Exception as e:
             last_error = e
