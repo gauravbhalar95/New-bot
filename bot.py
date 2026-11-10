@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
-from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS
+from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS, MEGA_EMAIL, MEGA_PASSWORD
 from utils.browser_downloads import register_download, is_registered_path
 from utils.rename_utility import rename_downloaded_file
 from utils.youtube_cookie_manager import auto_refresh_task as youtube_cookie_auto_refresh_task
@@ -1053,6 +1053,108 @@ async def handle_clear_downloads(message):
         await send_message(message.chat.id, "❌ Could not clear the downloads folder. Check the bot logs.")
 
 
+
+
+# MEGA link -> configured MEGA account -> Telegram
+def _mega_transfer_sync(url, destination_dir):
+    """Download a public MEGA link and upload the file to the configured account."""
+    from mega import Mega
+
+    if not MEGA_EMAIL or not MEGA_PASSWORD:
+        raise RuntimeError("MEGA_EMAIL and MEGA_PASSWORD are not configured.")
+
+    client = Mega().login(MEGA_EMAIL, MEGA_PASSWORD)
+    downloaded_path = client.download_url(url, dest_path=destination_dir)
+    if not downloaded_path:
+        raise RuntimeError("MEGA did not return a downloaded file path.")
+
+    downloaded_path = os.path.abspath(str(downloaded_path))
+    if not os.path.isfile(downloaded_path):
+        candidates = [
+            os.path.join(destination_dir, name)
+            for name in os.listdir(destination_dir)
+            if os.path.isfile(os.path.join(destination_dir, name))
+        ]
+        if not candidates:
+            raise RuntimeError("Downloaded MEGA file could not be located.")
+        downloaded_path = max(candidates, key=os.path.getmtime)
+
+    uploaded = client.upload(downloaded_path)
+    if not uploaded:
+        raise RuntimeError("The file downloaded, but MEGA cloud upload failed.")
+    return downloaded_path
+
+
+@bot.message_handler(commands=["megaconfig"])
+async def handle_megaconfig(message):
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can check MEGA configuration.")
+        return
+
+    if MEGA_EMAIL and MEGA_PASSWORD:
+        masked_email = MEGA_EMAIL[:2] + "***" if "@" not in MEGA_EMAIL else MEGA_EMAIL[:2] + "***" + MEGA_EMAIL[MEGA_EMAIL.find("@"):]
+        await send_message(
+            message.chat.id,
+            "✅ <b>MEGA is configured.</b>\n"
+            f"Account: <code>{escape(masked_email)}</code>\n\n"
+            "Use <code>/mega &lt;MEGA link&gt;</code> to save the file to this account and send it here.",
+        )
+    else:
+        await send_message(
+            message.chat.id,
+            "⚙️ MEGA is not configured yet. Set <code>MEGA_EMAIL</code> and "
+            "<code>MEGA_PASSWORD</code> as private Koyeb environment variables, then restart the service. "
+            "Do not send your password in Telegram.",
+        )
+
+
+@bot.message_handler(commands=["mega"])
+async def handle_mega_request(message):
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can use /mega.")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    url = parts[1].strip() if len(parts) > 1 else ""
+    if not re.match(r"^https?://(?:www\\.)?mega\\.nz/(?:file|folder)/", url, re.IGNORECASE):
+        await send_message(
+            message.chat.id,
+            "⚠️ Send a valid MEGA file link.\nExample: <code>/mega https://mega.nz/file/...</code>",
+        )
+        return
+
+    if not MEGA_EMAIL or not MEGA_PASSWORD:
+        await send_message(
+            message.chat.id,
+            "⚙️ MEGA account is not configured. Set <code>MEGA_EMAIL</code> and "
+            "<code>MEGA_PASSWORD</code> in Koyeb Environment Variables, then restart the bot.",
+        )
+        return
+
+    status = await send_message(
+        message.chat.id,
+        "⏳ Downloading the MEGA link, saving it to your configured MEGA account, then sending it to Telegram…",
+    )
+    temp_dir = tempfile.mkdtemp(prefix="mega_transfer_", dir=DOWNLOAD_DIR)
+    file_path = None
+    try:
+        file_path = await asyncio.to_thread(_mega_transfer_sync, url, temp_dir)
+        if not os.path.isfile(file_path):
+            raise RuntimeError("The downloaded file is no longer available.")
+        await send_downloaded_file(message.chat.id, file_path, source_url=url)
+        await send_message(message.chat.id, "✅ File uploaded to your configured MEGA account and sent to Telegram.")
+    except Exception as exc:
+        logger.error("MEGA transfer failed: %s", exc, exc_info=True)
+        await send_message(message.chat.id, f"❌ MEGA transfer failed: {escape(str(exc))}")
+    finally:
+        if status:
+            try:
+                await bot.delete_message(message.chat.id, status.message_id)
+            except Exception:
+                pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 @bot.message_handler(commands=["start", "help"], content_types=["text"])
 async def send_welcome(message):
     welcome_text = (
@@ -1068,6 +1170,8 @@ async def send_welcome(message):
         "• /story <username> - Download active Instagram stories\n"
         "• /dp <username> - Download Instagram HD profile picture\n"
         "• /cancel <ID> - Cancel a running download\n"
+        "• /megaconfig - Check configured MEGA account\n"
+        "• /mega <link> - Save MEGA file to cloud and send to Telegram\n"
         "• /clear - Delete downloaded files (admin only)\n"
         "• /trim <URL> <Start> <End>\n"
         "• /trimAudio <URL> <Start> <End>"
