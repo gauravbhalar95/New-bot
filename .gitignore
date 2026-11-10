@@ -32,3 +32,4 @@ venv/
 
 # Legacy Instagram cookie export
 ig.txt
+\n# Private MEGA account credentials\npython/Meganz/accounts.json\npython/Meganz/accounts.tmp\n
