@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
+from python.Meganz.config import add_account, list_accounts, get_account
 from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS, MEGA_EMAIL, MEGA_PASSWORD
 from utils.browser_downloads import register_download, is_registered_path
 from utils.rename_utility import rename_downloaded_file
@@ -1056,14 +1057,16 @@ async def handle_clear_downloads(message):
 
 
 # MEGA link -> configured MEGA account -> Telegram
-def _mega_transfer_sync(url, destination_dir):
-    """Download a public MEGA link and upload the file to the configured account."""
+def _mega_transfer_sync(url, destination_dir, email=None, password=None):
+    """Download a public MEGA link and upload it to the selected MEGA account."""
     from mega import Mega
 
-    if not MEGA_EMAIL or not MEGA_PASSWORD:
-        raise RuntimeError("MEGA_EMAIL and MEGA_PASSWORD are not configured.")
+    email = email or MEGA_EMAIL
+    password = password or MEGA_PASSWORD
+    if not email or not password:
+        raise RuntimeError("MEGA email and password are not configured.")
 
-    client = Mega().login(MEGA_EMAIL, MEGA_PASSWORD)
+    client = Mega().login(email, password)
     downloaded_path = client.download_url(url, dest_path=destination_dir)
     if not downloaded_path:
         raise RuntimeError("MEGA did not return a downloaded file path.")
@@ -1083,6 +1086,75 @@ def _mega_transfer_sync(url, destination_dir):
     if not uploaded:
         raise RuntimeError("The file downloaded, but MEGA cloud upload failed.")
     return downloaded_path
+
+
+
+
+@bot.message_handler(commands=["megaadd"])
+async def handle_megaadd(message):
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can add MEGA accounts.")
+        return
+    parts = (message.text or "").split(maxsplit=2)
+    if len(parts) != 3 or "@" not in parts[1]:
+        await send_message(message.chat.id, "Use privately: <code>/megaadd email@example.com password</code>")
+        return
+    try:
+        account_id = add_account(parts[1].strip(), parts[2].strip())
+        await send_message(message.chat.id, f"✅ MEGA account saved as <code>{account_id}</code>.\nUse <code>/{account_id} MEGA_LINK</code> to run a task.")
+    except Exception as exc:
+        logger.error("Could not add MEGA account: %s", exc, exc_info=True)
+        await send_message(message.chat.id, "❌ Could not save the MEGA account. Check server logs.")
+
+
+@bot.message_handler(commands=["megalist"])
+async def handle_megalist(message):
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can list MEGA accounts.")
+        return
+    accounts = list_accounts()
+    if not accounts:
+        await send_message(message.chat.id, "No stored MEGA accounts. Add one with <code>/megaadd email password</code>.")
+        return
+    lines = [f"<code>{escape(item['id'])}</code> — <code>{escape(item['email'])}</code>" for item in accounts]
+    await send_message(message.chat.id, "📋 <b>Stored MEGA accounts</b>\n" + "\n".join(lines))
+
+
+@bot.message_handler(func=lambda message: bool(re.match(r"^/g\\d+(?:@\\w+)?(?:\\s|$)", (message.text or "").strip())), content_types=["text"])
+async def handle_mega_account_task(message):
+    if not message.from_user or message.from_user.id not in ADMIN_IDS:
+        await send_message(message.chat.id, "⛔ Only the bot admin can run MEGA account tasks.")
+        return
+    match = re.match(r"^/(g\\d+)(?:@\\w+)?\\s+(https?://\\S+)", (message.text or "").strip(), re.IGNORECASE)
+    if not match:
+        await send_message(message.chat.id, "Use <code>/g1 https://mega.nz/file/...</code>")
+        return
+    account_id, url = match.groups()
+    account = get_account(account_id.lower())
+    if not account:
+        await send_message(message.chat.id, f"⚠️ Account <code>{escape(account_id)}</code> not found. Use /megalist.")
+        return
+    if not re.match(r"^https?://(?:www\\.)?mega\\.nz/(?:file|folder)/", url, re.IGNORECASE):
+        await send_message(message.chat.id, "⚠️ Please send a valid MEGA file/folder link.")
+        return
+    status = await send_message(message.chat.id, f"⏳ Processing with MEGA account <code>{escape(account_id.lower())}</code>…")
+    temp_dir = tempfile.mkdtemp(prefix=f"mega_{account_id}_", dir=DOWNLOAD_DIR)
+    try:
+        file_path = await asyncio.to_thread(_mega_transfer_sync, url, temp_dir, account["email"], account["password"])
+        if not os.path.isfile(file_path):
+            raise RuntimeError("Downloaded file is no longer available.")
+        await send_downloaded_file(message.chat.id, file_path, source_url=url)
+        await send_message(message.chat.id, f"✅ Task completed using <code>{escape(account_id.lower())}</code>.")
+    except Exception as exc:
+        logger.error("MEGA account task failed: %s", exc, exc_info=True)
+        await send_message(message.chat.id, f"❌ MEGA task failed: {escape(str(exc))}")
+    finally:
+        if status:
+            try:
+                await bot.delete_message(message.chat.id, status.message_id)
+            except Exception:
+                pass
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @bot.message_handler(commands=["megaconfig"])
