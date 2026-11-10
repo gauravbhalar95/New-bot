@@ -1116,7 +1116,7 @@ async def handle_mega_request(message):
 
     parts = (message.text or "").split(maxsplit=1)
     url = parts[1].strip() if len(parts) > 1 else ""
-    if not re.match(r"^https?://(?:www\\.)?mega\\.nz/(?:file|folder)/", url, re.IGNORECASE):
+    if not re.match(r"^https?://(?:www\.)?mega\.nz/(?:file|folder)/", url, re.IGNORECASE):
         await send_message(
             message.chat.id,
             "⚠️ Send a valid MEGA file link.\nExample: <code>/mega https://mega.nz/file/...</code>",
