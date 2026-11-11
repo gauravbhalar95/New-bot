@@ -239,7 +239,7 @@ def process_instagram(url: str) -> str | list[str]:
     download_dir = Path(DOWNLOAD_DIR)
     download_dir.mkdir(parents=True, exist_ok=True)
     ydl_opts = {
-        "format": "bv*+ba/b",
+        "format": "bestvideo[ext=mp4]/bestvideo",  # Video-only: never select or download an audio stream.
         "merge_output_format": "mp4",
         "outtmpl": str(download_dir / "ig_%(id)s.%(ext)s"),
         "restrictfilenames": True,
