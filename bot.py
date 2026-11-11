@@ -1327,10 +1327,10 @@ async def handle_cookie_status(message):
     lines.extend([
         "",
         "Send the matching file as a Telegram document in this private chat:",
-        "• <code>youtube_cookies.txt</code>",
-        "• <code>x.txt</code>",
+        "• <code>m.youtube.com_cookies.txt</code>",
+        "• <code>x.com_cookies.txt</code>",
         "• <code>facebook.txt</code>",
-        "• <code>instagram_cookies.txt</code>",
+        "• <code>www.instagram.com_cookies.txt</code>",
         "",
         "Maximum size: 2 MB. Files must use Netscape cookies.txt format.",
     ])
