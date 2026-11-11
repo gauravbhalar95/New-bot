@@ -11,6 +11,11 @@ from config import FACEBOOK_FILE, INSTAGRAM_FILE, X_FILE, YOUTUBE_FILE
 MAX_COOKIE_BYTES = 2 * 1024 * 1024
 
 COOKIE_TARGETS = {
+    "m.youtube.com_cookies.txt": {
+        "platform": "YouTube",
+        "path": YOUTUBE_FILE,
+        "domains": ("youtube.com", "google.com", "googlevideo.com", "youtube-nocookie.com"),
+    },
     "youtube_cookies.txt": {
         "platform": "YouTube",
         "path": YOUTUBE_FILE,
@@ -21,6 +26,11 @@ COOKIE_TARGETS = {
         "path": YOUTUBE_FILE,
         "domains": ("youtube.com", "google.com", "googlevideo.com", "youtube-nocookie.com"),
     },
+    "x.com_cookies.txt": {
+        "platform": "X/Twitter",
+        "path": X_FILE,
+        "domains": ("x.com", "twitter.com", "twimg.com", "t.co"),
+    },
     "x.txt": {
         "platform": "X/Twitter",
         "path": X_FILE,
@@ -30,6 +40,11 @@ COOKIE_TARGETS = {
         "platform": "Facebook",
         "path": FACEBOOK_FILE,
         "domains": ("facebook.com", "fb.com", "fbcdn.net", "messenger.com"),
+    },
+    "www.instagram.com_cookies.txt": {
+        "platform": "Instagram",
+        "path": INSTAGRAM_FILE,
+        "domains": ("instagram.com", "cdninstagram.com"),
     },
     "instagram_cookies.txt": {
         "platform": "Instagram",
@@ -94,8 +109,9 @@ def install_cookie_file(filename: str, data: bytes) -> str:
     target = get_cookie_target(filename)
     if not target:
         raise ValueError(
-            "Unsupported filename. Send youtube_cookies.txt, x.txt, "
-            "facebook.txt, or instagram_cookies.txt."
+            "Unsupported filename. Send m.youtube.com_cookies.txt, "
+            "x.com_cookies.txt, www.instagram.com_cookies.txt, "
+            "or facebook.txt."
         )
     if len(data or b"") > MAX_COOKIE_BYTES:
         raise ValueError("Cookie file is too large (maximum 2 MB).")
