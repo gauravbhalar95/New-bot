@@ -83,16 +83,16 @@ DOWNLOAD_DIR3 = str(BASE_DIR / "downloads" / "story")
 for directory in (DOWNLOAD_DIR, TEMP_DIR, DOWNLOAD_DIR3):
     os.makedirs(directory, exist_ok=True)
 
-X_FILE = str(BASE_DIR / "x.txt")
+X_FILE = str(BASE_DIR / "x.com_cookies.txt")
 # YouTube uses its own separate Netscape-format cookie file.
 # Keep it out of Git; use admin upload or a private HTTPS refresh URL.
-YOUTUBE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", str(BASE_DIR / "youtube_cookies.txt"))
+YOUTUBE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", str(BASE_DIR / "m.youtube.com_cookies.txt"))
 YOUTUBE_COOKIES_URL = os.getenv("YOUTUBE_COOKIES_URL", "").strip()
 try:
     YOUTUBE_COOKIE_REFRESH_HOURS = max(1, int(os.getenv("YOUTUBE_COOKIE_REFRESH_HOURS", "12")))
 except ValueError:
     YOUTUBE_COOKIE_REFRESH_HOURS = 12
-INSTAGRAM_FILE = str(BASE_DIR / "cookies" / "instagram_cookies.txt")
+INSTAGRAM_FILE = str(BASE_DIR / "cookies" / "www.instagram.com_cookies.txt")
 COOKIES_FILE = INSTAGRAM_FILE
 FACEBOOK_FILE = str(BASE_DIR / "facebook.txt")
 
