@@ -15,7 +15,7 @@ import yt_dlp
 
 from config import DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, FFMPEG_PATH
 from utils.sanitize import sanitize_filename
-from utils.thumb_generator import generate_thumbnail
+from utils.thumb_generator import generate_thumbnail_sync
 from utils.logger import setup_logging
 
 logger = setup_logging(logging.DEBUG)
@@ -66,9 +66,6 @@ def _downloaded_path(ydl: yt_dlp.YoutubeDL, info: dict) -> Path | None:
         if path.is_file() and path.stat().st_size > 0:
             return path
 
-    # Some extractors return a post-processed filepath only on the top-level
-    # info dictionary. As a final safe fallback, find the newest media file
-    # created in DOWNLOAD_DIR during this request.
     return None
 
 
@@ -126,8 +123,6 @@ def process_adult(url: str):
     }
 
     ydl_opts = {
-        # Prefer the best video+audio combination; fall back to a single-file
-        # format on sites that do not expose separate streams.
         "format": "bestvideo*+bestaudio/best",
         "outtmpl": str(Path(DOWNLOAD_DIR) / "%(title).120B [%(id)s].%(ext)s"),
         "merge_output_format": "mp4",
@@ -157,8 +152,6 @@ def process_adult(url: str):
         },
     }
 
-    # Optional site-specific Netscape cookies can be supplied by the operator.
-    # Never require or ask users to paste passwords/cookies into Telegram.
     cookie_file = os.getenv("ADULT_COOKIES_FILE", "").strip()
     if cookie_file and os.path.isfile(cookie_file) and os.path.getsize(cookie_file) > 0:
         ydl_opts["cookiefile"] = cookie_file
@@ -173,8 +166,6 @@ def process_adult(url: str):
             path = _downloaded_path(ydl, info)
 
         if path is None:
-            # Use only files created by this invocation, so an old download
-            # cannot accidentally be sent as the result of a failed request.
             new_files = [
                 Path(item) for item in (
                     str(path.resolve())
@@ -196,7 +187,8 @@ def process_adult(url: str):
         file_size = path.stat().st_size
         thumbnail_path = None
         try:
-            thumbnail_path = generate_thumbnail(str(path))
+            # Must stay synchronous: process_adult runs inside a worker thread.
+            thumbnail_path = generate_thumbnail_sync(str(path))
         except Exception:
             logger.warning("Thumbnail generation failed for %s", path, exc_info=True)
 

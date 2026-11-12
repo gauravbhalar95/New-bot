@@ -1,28 +1,34 @@
 import os
+import shutil
 from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-# Make the bundled imageio-ffmpeg binary available to yt-dlp and subprocess calls.
-try:
-    import imageio_ffmpeg
+# Prefer system ffmpeg+ffprobe when both exist. imageio-ffmpeg typically ships
+# only the ffmpeg binary, which causes yt-dlp to warn:
+#   Unable to extract metadata: ffprobe not found
+_system_ffmpeg = shutil.which("ffmpeg")
+_system_ffprobe = shutil.which("ffprobe")
 
-    FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
-    FFMPEG_DIR = str(Path(FFMPEG_PATH).parent)
-    os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
-except Exception:
-    # Docker deployments may provide a system ffmpeg binary instead.
-    FFMPEG_PATH = "ffmpeg"
+if _system_ffmpeg and _system_ffprobe:
+    FFMPEG_PATH = _system_ffmpeg
+else:
+    try:
+        import imageio_ffmpeg
+
+        FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+        FFMPEG_DIR = str(Path(FFMPEG_PATH).parent)
+        os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        FFMPEG_PATH = _system_ffmpeg or "ffmpeg"
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").rstrip("/")
 PORT = int(os.getenv("PORT", "8080"))
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
-# Official Instagram Business Login / Instagram API with Instagram Login.
-# These values must be configured as deployment secrets, never committed.
 INSTAGRAM_APP_ID = os.getenv("INSTAGRAM_APP_ID", "").strip()
 INSTAGRAM_APP_SECRET = os.getenv("INSTAGRAM_APP_SECRET", "").strip()
 INSTAGRAM_OAUTH_SCOPES = os.getenv(
@@ -45,8 +51,6 @@ if not WEBHOOK_URL:
 if not WEBHOOK_SECRET:
     raise RuntimeError("WEBHOOK_SECRET environment variable is required")
 
-# Configure one or more Telegram numeric user IDs in Koyeb as ADMIN_IDS.
-# Example: ADMIN_IDS=123456789,987654321
 _admin_ids_raw = os.getenv("ADMIN_IDS", "1302277958")
 ADMIN_IDS = []
 for _admin_id in _admin_ids_raw.split(","):
@@ -60,10 +64,7 @@ DEFAULT_ADMIN = ADMIN_IDS[0]
 INSTAGRAM_USERNAME = os.getenv("INSTAGRAM_USERNAME", "")
 INSTAGRAM_PASSWORD = os.getenv("INSTAGRAM_PASSWORD", "")
 INSTAGRAM_SESSIONID = os.getenv("INSTAGRAM_SESSIONID", "").strip()
-# Optional CSRF cookie from the same authenticated Instagram session.
 INSTAGRAM_CSRFTOKEN = os.getenv("INSTAGRAM_CSRFTOKEN", "").strip()
-# Automatic Instagram session maintenance. The default refresh interval is
-# deliberately conservative to reduce unnecessary login/challenge requests.
 INSTAGRAM_AUTO_LOGIN = os.getenv("INSTAGRAM_AUTO_LOGIN", "false").strip().lower() not in {
     "0", "false", "no", "off"
 }
@@ -84,8 +85,6 @@ for directory in (DOWNLOAD_DIR, TEMP_DIR, DOWNLOAD_DIR3):
     os.makedirs(directory, exist_ok=True)
 
 X_FILE = str(BASE_DIR / "x.com_cookies.txt")
-# YouTube uses its own separate Netscape-format cookie file.
-# Keep it out of Git; use admin upload or a private HTTPS refresh URL.
 YOUTUBE_FILE = os.getenv("YOUTUBE_COOKIES_FILE", str(BASE_DIR / "m.youtube.com_cookies.txt"))
 YOUTUBE_COOKIES_URL = os.getenv("YOUTUBE_COOKIES_URL", "").strip()
 try:
