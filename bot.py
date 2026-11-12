@@ -208,6 +208,56 @@ async def run_blocking(function, *args):
     return await asyncio.to_thread(function, *args)
 
 
+def get_video_duration(file_path):
+    """Read duration with ffprobe, falling back to ffmpeg when ffprobe is absent."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        try:
+            probe = subprocess.run(
+                [
+                    ffprobe, "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    file_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            if probe.returncode == 0 and probe.stdout.strip():
+                duration = float(probe.stdout.strip().splitlines()[0])
+                if duration > 0:
+                    return duration
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            logger.warning("ffprobe duration lookup failed; trying ffmpeg")
+
+    # imageio-ffmpeg bundles ffmpeg but not always ffprobe. Its input
+    # inspection output still includes a Duration field.
+    probe = subprocess.run(
+        [FFMPEG_PATH, "-hide_banner", "-i", file_path],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    output = (probe.stderr or "") + "\\n" + (probe.stdout or "")
+    match = re.search(
+        r"Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)",
+        output,
+    )
+    if not match:
+        raise RuntimeError(
+            "Could not determine video duration; ffprobe is unavailable and "
+            "ffmpeg did not report a Duration field."
+        )
+    hours, minutes, seconds = match.groups()
+    duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    if duration <= 0:
+        raise RuntimeError("Video duration is zero or unavailable")
+    return duration
+
+
 def split_large_file(file_path):
     """Split a large video into Telegram-safe MP4 parts."""
     file_size = os.path.getsize(file_path)
@@ -219,30 +269,7 @@ def split_large_file(file_path):
     base, ext = os.path.splitext(file_path)
     target_size = int(MAX_UPLOAD_PART_SIZE * 0.80)
 
-    probe = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-
-    if probe.returncode != 0 or not probe.stdout.strip():
-        raise RuntimeError(
-            f"ffprobe failed: {probe.stderr.strip()[-1000:] or 'unknown error'}"
-        )
-
-    try:
-        duration = float(probe.stdout.strip().splitlines()[0])
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid video duration: {probe.stdout!r}") from exc
-
-    if duration <= 0:
-        raise RuntimeError("Video duration is zero or unavailable")
+    duration = get_video_duration(file_path)
 
     # First try stream-copy splitting. This is fast and preserves quality.
     seconds = max(3, int(duration * target_size / file_size))
@@ -407,23 +434,7 @@ def extract_video_screenshots(file_path):
     temporary directory so they can be removed after being sent to Telegram.
     Returns (frame_paths, duration_seconds, temp_dir).
     """
-    probe = subprocess.run(
-        [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            file_path,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if probe.returncode != 0 or not probe.stdout.strip():
-        raise RuntimeError(
-            f"Could not read video duration: {probe.stderr.strip()[-500:]}"
-        )
-
-    duration = float(probe.stdout.strip().splitlines()[0])
+    duration = get_video_duration(file_path)
     if duration <= LONG_VIDEO_SCREENSHOT_THRESHOLD_SECONDS:
         return [], duration, None
 
