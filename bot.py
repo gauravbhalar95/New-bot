@@ -89,6 +89,7 @@ PLATFORM_HANDLERS = {
     "Facebook": process_facebook,
     "Twitter/X": download_twitter_media,
     "Adult": process_adult,
+    "Other": process_adult,
 }
 
 
@@ -135,9 +136,22 @@ async def send_message(chat_id, text):
 
 
 def detect_platform(url):
+    """Route known platforms to their dedicated handlers and other HTTP URLs
+    through the generic yt-dlp extractor. yt-dlp supports many more sites than
+    a hard-coded domain list, including newly added extractors.
+    """
+    from urllib.parse import urlsplit
+
     for platform, pattern in PLATFORM_PATTERNS.items():
         if pattern.search(url):
             return platform
+
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() in {"http", "https"} and parsed.hostname:
+            return "Other"
+    except ValueError:
+        pass
     return None
 
 
@@ -171,7 +185,7 @@ def detect_media_type(url):
             return "short"
         return "video"
 
-    if platform in {"Facebook", "Twitter/X", "Threads", "Adult"}:
+    if platform in {"Facebook", "Twitter/X", "Threads", "Adult", "Other"}:
         return "video"
 
     return "video"
