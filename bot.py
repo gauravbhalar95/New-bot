@@ -16,7 +16,7 @@ from telebot import types
 from telebot.async_telebot import AsyncTeleBot
 
 from python.Meganz.config import add_account, list_accounts, get_account
-from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS, MEGA_EMAIL, MEGA_PASSWORD
+from config import API_TOKEN, ADMIN_IDS, DOWNLOAD_DIR, FFMPEG_PATH, TELEGRAM_FILE_LIMIT, INSTAGRAM_AUTO_LOGIN, INSTAGRAM_COOKIE_REFRESH_HOURS, MINIAPP_URL, WEBHOOK_URL, YOUTUBE_FILE, YOUTUBE_COOKIES_URL, YOUTUBE_COOKIE_REFRESH_HOURS, MEGA_EMAIL, MEGA_PASSWORD
 from utils.browser_downloads import register_download, is_registered_path
 from utils.rename_utility import rename_downloaded_file
 from utils.youtube_cookie_manager import auto_refresh_task as youtube_cookie_auto_refresh_task
@@ -298,7 +298,7 @@ def split_large_file(file_path):
 
         process = subprocess.run(
             [
-                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                FFMPEG_PATH, "-hide_banner", "-loglevel", "error",
                 "-y", "-i", file_path,
                 "-map", "0:v:0", "-map", "0:a?",
                 "-c", "copy",
@@ -350,7 +350,7 @@ def split_large_file(file_path):
 
         process = subprocess.run(
             [
-                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                FFMPEG_PATH, "-hide_banner", "-loglevel", "error",
                 "-y", "-i", file_path,
                 "-map", "0:v:0", "-map", "0:a?",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
@@ -403,7 +403,7 @@ def compress_video_for_telegram(file_path):
     if extension not in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
         return file_path
     compressed_path = os.path.splitext(file_path)[0] + "_compressed.mp4"
-    command = ["ffmpeg", "-y", "-i", file_path, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", compressed_path]
+    command = [FFMPEG_PATH, "-y", "-i", file_path, "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", compressed_path]
     try:
         subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=900)
         if os.path.isfile(compressed_path) and os.path.getsize(compressed_path) < os.path.getsize(file_path):
@@ -451,7 +451,7 @@ def extract_video_screenshots(file_path):
             frame_path = os.path.join(temp_dir, f"frame_{timestamp:06d}.jpg")
             result = subprocess.run(
                 [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    FFMPEG_PATH, "-hide_banner", "-loglevel", "error", "-y",
                     "-ss", str(timestamp), "-i", file_path,
                     "-frames:v", "1", "-vf", "scale=960:-2",
                     "-q:v", "3", frame_path,
