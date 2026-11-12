@@ -241,9 +241,9 @@ def get_video_duration(file_path):
         timeout=90,
         check=False,
     )
-    output = (probe.stderr or "") + "\\n" + (probe.stdout or "")
+    output = (probe.stderr or "") + "\n" + (probe.stdout or "")
     match = re.search(
-        r"Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)",
+        r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
         output,
     )
     if not match:
